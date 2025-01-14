@@ -1,6 +1,8 @@
 import { ChatCompletionMessageParam } from "openai/resources/chat/completions";
 import { AssistantDefinition } from "../../types/Assistant";
 import { GptService } from "./openai-service";
+import { DeepSeekService } from "./deep-seek";
+import { GroqService } from "./groq-service";
 import { ConversationTurn } from "../../types/ConversationTurn";
 import EventEmitter from "events";
 
@@ -32,8 +34,9 @@ export function createLLMProvider(
     case "openai":
       return new GptService(call_sid, assistant);
     case "deepseek":
-      throw new Error("DeepSeek provider has not been implemented yet");
-
+      return new DeepSeekService(call_sid, assistant);
+    case "groq":
+      return new GroqService(call_sid, assistant);
     default:
       throw new Error(`Error no such provider: ${assistant.llm_provider}`);
   }

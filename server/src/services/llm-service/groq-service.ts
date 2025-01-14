@@ -1,21 +1,19 @@
 import EventEmitter from "events";
 import colors from "colors";
-import OpenAI from "openai";
-import toolDefinitions from "../../tools/tools-manifest";
+import groq, { Groq } from "groq-sdk";
 import { AssistantDefinition } from "../../types/Assistant";
 import {
   ChatCompletionMessageParam,
   ChatCompletionTool,
-} from "openai/resources/chat/completions";
-
+} from "openai/resources";
 import { ILargeLanguageModelService } from ".";
 
-export class GptService
+export class GroqService
   extends EventEmitter
   implements ILargeLanguageModelService
 {
   call_sid: string;
-  openai: OpenAI;
+  groq: Groq;
   userContext: ChatCompletionMessageParam[] = [];
   partialResponseIndex: number;
   assistant: AssistantDefinition;
@@ -25,7 +23,7 @@ export class GptService
   constructor(call_sid: string, assistant: AssistantDefinition) {
     super();
     this.call_sid = call_sid;
-    this.openai = new OpenAI();
+    this.groq = new Groq({ apiKey: process.env.GROQ_API_KEY });
     this.partialResponseIndex = 0;
     this.assistant = assistant;
     this.tools = assistant.tools;
@@ -75,21 +73,10 @@ export class GptService
       case "system":
         this.userContext.push({ role, content: text });
         break;
-      case "function":
-        if (!name)
-          throw new Error(
-            "Completion with type 'function' called without function name"
-          );
-        this.userContext.push({ name, role, content: text });
-        break;
-      case "tool":
-        if (!tool_call_id)
-          throw new Error(
-            "Completion with type 'tool' called without tool_call_id"
-          );
-
-        this.userContext.push({ tool_call_id, role, content: text });
-        break;
+      default:
+        throw new Error(
+          `Completion with type '${role}' not implemented for bard service`
+        );
     }
   }
 
@@ -105,14 +92,14 @@ export class GptService
     name?: string,
     tool_call_id?: string
   ) {
-    console.time(`gpt-completion-${this.call_sid}-${interactionCount}`);
+    console.time(`groq-completion-${this.call_sid}-${interactionCount}`);
 
     await this.addContext(text, role, name, tool_call_id);
 
-    const stream = await this.openai.beta.chat.completions.stream({
-      model: process.env.OPENAI_MODEL || "",
-      messages: this.userContext,
-      tools: toolDefinitions,
+    const stream = await this.groq.chat.completions.create({
+      model: process.env.GROQ_MODEL || "",
+      messages: this
+        .userContext as groq.Chat.Completions.ChatCompletionMessage[],
       stream: true,
     });
 
@@ -143,6 +130,10 @@ export class GptService
           );
       }
 
+      if (finishReason === "stop")
+        if (!this.destroyed)
+          this.emit("llm.complete", { call_sid: this.call_sid });
+
       // Emit TTS as soon as practicable or when there is a we stop
       if (finishReason !== "tool_calls") {
         {
@@ -157,7 +148,8 @@ export class GptService
               partialResponseIndex: this.partialResponseIndex,
               partialResponse,
             };
-            if (partialResponse.trim() !== "") {
+
+            if (partialResponse != "") {
               if (!this.destroyed)
                 this.emit(
                   "llm.reply",
@@ -165,9 +157,8 @@ export class GptService
                   interactionCount
                 );
             } else {
-              console.log("GPT > Ignoring empty response");
+              console.log("GROQ > Ignoring empty response");
             }
-
             this.partialResponseIndex++;
             partialResponse = "";
           }
@@ -177,40 +168,13 @@ export class GptService
 
     /*********************
      *
-     *  Wait until the end to see if we need to call a function or tool
-     *
-     *********************/
-    const finalChatCompletion = await stream.finalChatCompletion();
-
-    console.log(
-      `Finish reason ${finalChatCompletion.choices[0].finish_reason}`
-    );
-
-    if (finalChatCompletion.choices[0].finish_reason === "tool_calls") {
-      this.userContext.push({
-        tool_calls: finalChatCompletion.choices[0]?.message?.tool_calls,
-        role: "assistant",
-        content: finalChatCompletion.choices[0].message.content,
-      });
-      finalChatCompletion.choices[0]?.message?.tool_calls?.map((tool_call) => {
-        if (!this.destroyed)
-          this.emit("tool.request", this.userContext, tool_call);
-      });
-    }
-
-    if (finishReason === "stop")
-      if (!this.destroyed)
-        this.emit("llm.complete", {
-          call_sid: this.call_sid,
-        });
-
-    /*********************
-     *
      *  Store user context
      *
      *********************/
     this.userContext.push({ role: "assistant", content: completeResponse });
-    console.log(`GPT -> user context length: ${this.userContext.length}`.green);
-    console.timeEnd(`gpt-completion-${this.call_sid}-${interactionCount}`);
+    console.log(
+      `GROQ -> user context length: ${this.userContext.length}`.green
+    );
+    console.timeEnd(`groq-completion-${this.call_sid}-${interactionCount}`);
   }
 }

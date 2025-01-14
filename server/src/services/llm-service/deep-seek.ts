@@ -10,7 +10,7 @@ import {
 
 import { ILargeLanguageModelService } from ".";
 
-export class GptService
+export class DeepSeekService
   extends EventEmitter
   implements ILargeLanguageModelService
 {
@@ -25,7 +25,15 @@ export class GptService
   constructor(call_sid: string, assistant: AssistantDefinition) {
     super();
     this.call_sid = call_sid;
-    this.openai = new OpenAI();
+    /*********************
+     *
+     * Using the OpenAI SDK with the DeepSeek API Endpoint
+     *
+     *********************/
+    this.openai = new OpenAI({
+      baseURL: `https://api.deepseek.com`,
+      apiKey: process.env.DEEPSEEK_API_KEY,
+    });
     this.partialResponseIndex = 0;
     this.assistant = assistant;
     this.tools = assistant.tools;
@@ -105,12 +113,12 @@ export class GptService
     name?: string,
     tool_call_id?: string
   ) {
-    console.time(`gpt-completion-${this.call_sid}-${interactionCount}`);
+    console.time(`deepseek-completion-${this.call_sid}-${interactionCount}`);
 
     await this.addContext(text, role, name, tool_call_id);
 
     const stream = await this.openai.beta.chat.completions.stream({
-      model: process.env.OPENAI_MODEL || "",
+      model: process.env.DEEPSEEK_MODEL || "",
       messages: this.userContext,
       tools: toolDefinitions,
       stream: true,
