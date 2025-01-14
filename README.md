@@ -1,15 +1,20 @@
-# Simple Conversation Relay
+# Multi-LLM + Conversation Relay
 
-This project consists of two main components:
-- A WebSocket server for handling conversation relay
-- Twilio Serverless Functions for customer verification and tools
+This project consists of a WebSocket server for communicating with Twilio Conversation Relay. It has a set of LLM connectors for:
+- Groq
+- DeepSeek
+- OpenAI
+
+Additionally it stores the assistant definitions in Airtable
+
+This project is a fork from Des Hartman's repo, moving to Typescript, adding Airtable and some abstraction. Check the repo out [here](https://github.com/deshartman/simple-conversation-relay) to get started with Conversation Relay. Note that THIS repo does not currently use the serverless functions/tools and it is left to the reader to implement tools as needed.
 
 ## Prerequisites
 
 - Node.js v18
 - pnpm
 - ngrok
-- Twilio CLI with Serverless plugin
+- Twilio CLI
 
 ## Project Structure
 
@@ -141,18 +146,6 @@ ngrok http --domain serverless-yourdomain.ngrok.dev 3000
    - Call SID
    - Other call metadata
 
-3. The server then:
-   - Stores the call parameters for the session
-   - Makes a request to the `get-customer` function with the caller's phone number
-   - Receives customer details (including first name)
-   - Uses this information to generate a personalized greeting
-   - Initiates the verification process
-
-4. The `get-customer` function:
-   - Receives the caller's phone number
-   - Looks up customer information
-   - Returns customer details for personalization
-   - Enables the conversation to proceed with verified customer context
 
 ### Important Note on WebSocket Implementation
 
@@ -180,47 +173,6 @@ app.ws('/conversation-relay', (ws, req) => {
 });
 ```
 
-## GPT Context Configuration
-
-The server uses two key files to configure the GPT conversation context:
-
-### context.md
-
-Located in `serverless/assets/context.md`, this file defines:
-- The AI assistant's persona (Joules, an energy company phone operator)
-- Conversation style guidelines
-- Response formatting rules
-- Authentication process steps
-- Customer validation requirements
-
-Key sections to configure:
-1. Objective - Define the AI's role and primary tasks
-2. Style Guardrails - Set conversation tone and behavior rules
-3. Response Guidelines - Specify formatting and delivery rules
-4. Instructions - Detail specific process steps
-5. Validation - Define the customer verification workflow
-
-### toolManifest.json
-
-Located in `serverless/assets/toolManifest.json`, this file defines the available tools for the GPT service:
-
-1. `get-customer`
-   - Retrieves customer details using caller's phone number
-   - Required parameter: `from` (phone number)
-
-2. `verify-code`
-   - Verifies provided authentication code
-   - Required parameters: `code` and `from`
-
-3. `verify-send`
-   - Sends verification code via SMS
-   - Required parameter: `from`
-
-4. `live-agent-handoff`
-   - Transfers call to human agent
-   - Required parameter: `callSid`
-
-The server fetches both files during initialization to hydrate the GPT context and enable tool usage during conversations.
 
 ## Environment Configuration
 
