@@ -100,10 +100,10 @@ app.post("/twiml", async (req, res) => {
    *  Direct the call to our assistant
    *
    *********************/
-  let xml = `
+  let twiml = `
   <Response>
     <Connect>
-      <ConversationRelay url="wss://${process.env.CRELAY_SERVER_DOMAIN}/conversation-relay">
+      <ConversationRelay url="wss://${process.env.CRELAY_SERVER_DOMAIN}/conversation-relay" language="${assistant?.language_code}">
         <Language code="${assistant?.language_code}" ttsProvider="${assistant?.tts_provider}" voice="${assistant?.tts_voice}" />
         <Parameter name="assistant" value ="${assistant?.assistant_name}"/>
       </ConversationRelay>
@@ -111,11 +111,11 @@ app.post("/twiml", async (req, res) => {
   </Response>
   `;
 
-  console.log(`Response TwiML`, xml);
+  console.log(`Response TwiML`, twiml);
 
   res.status(200);
   res.type("text/xml");
-  res.end(xml);
+  res.end(twiml);
 });
 
 /*********************
