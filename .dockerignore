@@ -1,0 +1,19 @@
+# flyctl launch added from .gitignore
+# Node Websocket server
+**/server/pnpm-lock.yaml
+**/server/node_modules/.modules.yaml
+**/server/node_modules
+**/server/.env
+**/server/fly.toml
+
+# Twilio functions
+**/serverless/node_modules
+**/serverless/package-lock.json
+**/serverless/pnpm-lock.yaml
+**/serverless/.twiliodeployinfo
+**/.DS_Store
+**/serverless/.env
+**/serverless/.nvmrc
+**/serverless/package-lock.json
+**/serverless/pnpm-lock.yaml
+
