@@ -86,30 +86,6 @@ app.get("/assistant", (req, res) => {
 
 /*********************
  *
- *  Create conference
- *
- *********************/
-app.post("/incoming-call", (req, res) => {
-  console.log(`REQ HEADERS`, req.headers);
-  console.log(`REQ PARAMS`, req.params);
-  const twiml = new VoiceResponse();
-  // Create a conference
-  twiml.dial().conference(
-    {
-      startConferenceOnEnter: true,
-      endConferenceOnExit: true,
-    },
-    "MyConferenceRoom"
-  );
-
-  console.log(`TWIML`, twiml.toString());
-
-  res.type("text/xml");
-  res.send(twiml.toString());
-});
-
-/*********************
- *
  *  Background Music for the Conference
  *
  *********************/
@@ -159,16 +135,15 @@ app.post("/start-conference", (req, res) => {
 
 /*********************
  *
- *  Background Music for the Conference
+ *  Background audio for the Conference
  *
  *********************/
 app.post("/background-music", (req, res) => {
-  const MUSIC_URL_1 = `http://com.twilio.music.ambient.s3.amazonaws.com/aerosolspray_-_Living_Taciturn.mp3`;
-  const MUSIC_URL_2 = `https://redwood-vulture-1231.twil.io/assets/shop4.mp3`;
-  console.log(`Sending background music`, MUSIC_URL_2);
+  const BACKGROUND_AUDIO_URL = process.env.BACKGROUND_AUDIO_URL || "";
+  console.log(`Sending background music`, BACKGROUND_AUDIO_URL);
 
   const twiml = new VoiceResponse();
-  twiml.play(MUSIC_URL_2);
+  twiml.play(BACKGROUND_AUDIO_URL);
   res.type("text/xml");
   res.send(twiml.toString());
 });
