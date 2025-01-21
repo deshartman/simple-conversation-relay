@@ -1,4 +1,5 @@
 import "dotenv/config";
+import twilio from "twilio";
 import colors from "colors";
 import express from "express";
 import expressWs from "express-ws";
@@ -14,6 +15,7 @@ import {
 
 import { SilenceHandler } from "./services/SilenceHandler";
 import { ChatCompletionMessageToolCall } from "openai/resources/chat/completions";
+import VoiceResponse from "twilio/lib/twiml/VoiceResponse";
 
 const serverDomain =
   process.env.HOSTNAME ||
@@ -30,6 +32,11 @@ const SILENCE_SECONDS_THRESHOLD = 5; // The maximum time in seconds that the ser
 const SILENCE_RETRY_THRESHOLD = 3; // The maximum number of times the server will request user input
 
 const assistantService = new AssistantService();
+
+const client = twilio(
+  process.env.TWILIO_ACCOUNT_SID,
+  process.env.TWILIO_AUTH_TOKEN
+);
 
 /*********************
  *
@@ -79,6 +86,98 @@ app.get("/assistant", (req, res) => {
 
 /*********************
  *
+ *  Background Music for the Conference
+ *
+ *********************/
+app.post("/start-conference", (req, res) => {
+  const conferenceRoomId =
+    "CONF" + Math.floor(10000 + Math.random() * 90000).toString();
+
+  const twiml = new VoiceResponse();
+  // Create a conference
+  twiml.dial().conference(
+    {
+      startConferenceOnEnter: true,
+      endConferenceOnExit: true,
+      waitUrl: `https://${serverDomain}/background-music`,
+    },
+    conferenceRoomId
+  );
+
+  console.log(`TWIML`, twiml.toString());
+
+  res.type("text/xml");
+  res.send(twiml.toString());
+
+  setTimeout(() => {
+    client
+      .conferences(conferenceRoomId)
+      .participants.create({
+        to: process.env.DESTINATION_NUMBER || "",
+        from: process.env.ORIGINATION_NUMBER || "", // Replace with your Twilio phone number
+      })
+      .then((participant) => {
+        console.log(
+          `Added participant to conference: ${conferenceRoomId} with Call SID: ${participant.callSid}`
+        );
+
+        client
+          .conferences(participant.conferenceSid)
+          .update({ announceUrl: `https://${serverDomain}/background-music` });
+
+        console.log("Announcement URL added successfully.");
+      })
+      .catch((error) => {
+        console.error("Error adding participant:", error);
+      });
+  }, 500);
+});
+
+/*********************
+ *
+ *  Background audio for the Conference
+ *
+ *********************/
+app.post("/background-music", (req, res) => {
+  const BACKGROUND_AUDIO_URL = process.env.BACKGROUND_AUDIO_URL || "";
+  console.log(`Sending background music`, BACKGROUND_AUDIO_URL);
+
+  const twiml = new VoiceResponse();
+  twiml.play(BACKGROUND_AUDIO_URL);
+  res.type("text/xml");
+  res.send(twiml.toString());
+});
+
+/*********************
+ *
+ *  Background Music for the Conference
+ *
+ *********************/
+// Step 4: Add another participant to the conference
+app.post("/add-participant", (req, res) => {
+  client
+    .conferences("MyConferenceRoom")
+    .participants.create({
+      to: process.env.DESTINATION_NUMBER || "",
+      from: process.env.ORIGINATION_NUMBER || "", // Replace with your Twilio phone number
+    })
+    .then((participant) => {
+      console.log(`Added participant with Call SID: ${participant.callSid}`);
+
+      client
+        .conferences(participant.conferenceSid)
+        .update({ announceUrl: `https://${serverDomain}/background-music` });
+
+      res.status(200).send("Participant added successfully.");
+    })
+    .catch((error) => {
+      console.error("Error adding participant:", error);
+      res.status(500).send("Failed to add participant.");
+    });
+});
+
+/*********************
+ *
  *  Web endpoint to get starting TwiML
  *
  *********************/
@@ -103,8 +202,7 @@ app.post("/twiml", async (req, res) => {
   let twiml = `
   <Response>
     <Connect>
-      <ConversationRelay url="wss://${process.env.CRELAY_SERVER_DOMAIN}/conversation-relay" language="${assistant?.language_code}">
-        <Language code="${assistant?.language_code}" ttsProvider="${assistant?.tts_provider}" voice="${assistant?.tts_voice}" />
+      <ConversationRelay url="wss://${process.env.CRELAY_SERVER_DOMAIN}/conversation-relay" ttsLanguage="${assistant?.language_code}" voice="${assistant?.tts_voice}" >
         <Parameter name="assistant" value ="${assistant?.assistant_name}"/>
       </ConversationRelay>
     </Connect>
@@ -182,7 +280,6 @@ app.ws("/conversation-relay", (ws, req) => {
           const assistant = await assistantService.getAssistant(
             message.customParameters?.assistant
           );
-          console.log("Assistant definition", assistant);
 
           if (!assistant) {
             console.error("Error fetching assistant");

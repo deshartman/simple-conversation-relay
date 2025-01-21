@@ -16,3 +16,4 @@ serverless/.nvmrc
 serverless/package-lock.json
 serverless/pnpm-lock.yaml
 
+**/server/build
