@@ -202,8 +202,7 @@ app.post("/twiml", async (req, res) => {
   let twiml = `
   <Response>
     <Connect>
-      <ConversationRelay url="wss://${process.env.CRELAY_SERVER_DOMAIN}/conversation-relay" language="${assistant?.language_code}">
-        <Language code="${assistant?.language_code}" ttsProvider="${assistant?.tts_provider}" voice="${assistant?.tts_voice}" />
+      <ConversationRelay url="wss://${process.env.CRELAY_SERVER_DOMAIN}/conversation-relay" ttsLanguage="${assistant?.language_code}" voice="${assistant?.tts_voice}" >
         <Parameter name="assistant" value ="${assistant?.assistant_name}"/>
       </ConversationRelay>
     </Connect>
