@@ -35,10 +35,7 @@ export class AssistantService extends EventEmitter {
       return undefined;
 
     const match = this.assistants.find((a) => a.assistant_name === target_name);
-    console.log(
-      `Looking for an assistant named ${target_name}, matched:`,
-      match
-    );
+    console.log(`Looking for an assistant named ${target_name}, matched`);
     return match;
   }
 
