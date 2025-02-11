@@ -184,6 +184,9 @@ app.post("/add-participant", (req, res) => {
 app.post("/twiml", async (req, res) => {
   console.log(`Incoming request url`, req.url);
 
+  const sourceIp = req.headers["x-forwarded-for"] || req.socket.remoteAddress;
+  console.log(`Source IP: ${sourceIp}`);
+
   // Get assistants from cache
   assistantService.getAssistants().then((assistants) => {
     console.log(`Fetched ${assistants?.length} assistants`);
@@ -202,7 +205,13 @@ app.post("/twiml", async (req, res) => {
   let twiml = `
   <Response>
     <Connect>
-      <ConversationRelay url="wss://${process.env.CRELAY_SERVER_DOMAIN}/conversation-relay" ttsLanguage="${assistant?.language_code}" voice="${assistant?.tts_voice}" >
+      <ConversationRelay url="wss://${process.env.CRELAY_SERVER_DOMAIN}/conversation-relay" 
+          ttsProvider="${assistant?.tts_provider}" 
+          ttsLanguage="${assistant?.language_code}" 
+          voice="${assistant?.tts_voice}"
+          transcriptionProvider="${assistant?.stt_provider}"
+          speechModel="${assistant?.stt_model}"
+          >
         <Parameter name="assistant" value ="${assistant?.assistant_name}"/>
       </ConversationRelay>
     </Connect>
@@ -223,6 +232,9 @@ app.post("/twiml", async (req, res) => {
  *********************/
 app.ws("/conversation-relay", (ws, req) => {
   console.log("New Conversation Relay websocket established");
+  const sourceIp = req.headers["x-forwarded-for"] || req.socket.remoteAddress;
+  console.log(`WebSocket connection from IP: ${sourceIp}`);
+
   let llmService: ILargeLanguageModelService | undefined = undefined;
   let toolService: ToolsService | undefined = undefined;
   let silenceHandler: SilenceHandler | undefined = undefined;
