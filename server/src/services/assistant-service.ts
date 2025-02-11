@@ -67,6 +67,8 @@ export class AssistantService extends EventEmitter {
               tts_voice:
                 (record.get("TTS Voice") as string) || "en-US-Journey-O",
               language_code: (record.get("Language Code") as string) || "en-US",
+              stt_provider: (record.get("STT Provider") as string) || "google",
+              stt_model: (record.get("STT Model") as string) || "telephony",
             });
           });
 

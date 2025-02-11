@@ -10,4 +10,6 @@ export type AssistantDefinition = {
   tts_provider: string;
   tts_voice: string;
   language_code: string;
+  stt_provider: string;
+  stt_model: string;
 };
