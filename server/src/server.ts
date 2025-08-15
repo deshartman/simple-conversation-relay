@@ -119,7 +119,7 @@ app.ws("/conversation-relay", (ws: any, req: express.Request) => {
   let sessionData: SessionData = {
     parameterData: {},
     setupData: {
-      CallSid: "",
+      callSid: "",
     },
   };
 
