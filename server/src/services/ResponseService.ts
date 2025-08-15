@@ -65,6 +65,7 @@ import type {
 } from "openai/resources/responses/responses.mjs";
 
 import { logOut, logError } from "../utils/logger.js";
+import { APIUserAbortError } from "openai";
 
 dotenv.config();
 
@@ -461,13 +462,19 @@ class ResponseService extends EventEmitter {
                   `Tool execution returned null result`
                 );
               }
-            } catch (error) {
-              logError(
-                "ResponseService",
-                `Error executing tool ${currentToolCall.name}: ${
-                  error instanceof Error ? error.message : String(error)
-                }`
-              );
+            } catch (error: any) {
+              if (error instanceof APIUserAbortError) {
+                logOut("ResponseService", "Stream aborted due to interruption");
+                // Handle interruption gracefully
+              } else {
+                // Handle other errors
+                logError(
+                  "ResponseService",
+                  `Error executing tool ${currentToolCall.name}: ${
+                    error instanceof Error ? error.message : String(error)
+                  }`
+                );
+              }
             }
 
             currentToolCall = null;
@@ -589,7 +596,7 @@ class ResponseService extends EventEmitter {
 
       // Process the stream using the helper method
       await this.processStream(stream);
-    } catch (error) {
+    } catch (error: any) {
       this.emit("responseService.error", error);
       throw error;
     }
