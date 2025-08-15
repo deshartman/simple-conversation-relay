@@ -7,7 +7,7 @@
   "scripts": {
     "build": "tsc",
     "start": "node dist/server.js",
-    "dev": "ts-node-dev --respawn --transpile-only --esm src/server.ts"
+    "dev": "tsx watch src/server.ts"
   },
   "keywords": [],
   "author": "Des Hartman",
@@ -19,7 +19,7 @@
     "express": "^4.21.1",
     "express-ws": "^5.0.2",
     "fs": "0.0.1-security",
-    "openai": "^4.20.1",
+    "openai": "^5.12.2",
     "path": "^0.12.7",
     "twilio": "^5.4.4"
   },
@@ -30,6 +30,7 @@
     "@types/node": "^22.15.19",
     "nodemon": "^3.0.2",
     "ts-node-dev": "^2.0.0",
+    "tsx": "^4.7.1",
     "typescript": "^5.0.0"
   }
 }
