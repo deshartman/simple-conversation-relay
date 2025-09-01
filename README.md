@@ -1,5 +1,9 @@
 # Simple Conversation Relay
 
+> ⚠️ **Maintenance Mode Notice**: This main repo which is based on the v3 branch will enter maintenance mode by the end of September 2025. For new projects, please use the [v4 branch](../../tree/v4.0) which includes the latest features, improved architecture, and ongoing development support. We will be switching the v4 branch into main from 1st October 2025.
+
+-------------------------------------------------
+
 This is a reference implementation aimed at introducing the key concepts of Conversation Relay. The key here is to ensure it is a workable environment that can be used to understand the basic concepts of Conversation Relay. It is intentionally simple and only the minimum has been done to ensure the understanding is focussed on the core concepts. As an overview here is how the project is put together:
 
 ## Release v3.3
