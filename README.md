@@ -1,6 +1,49 @@
 # Simple Conversation Relay
 
-> ⚠️ **Maintenance Mode Notice**: This main repo which is based on the v3 branch will enter maintenance mode by the end of September 2025. For new projects, please use the [v4 branch](../../tree/v4.0) which includes the latest features, improved architecture, and ongoing development support. We will be switching the v4 branch into main from 1st October 2025.
+---
+> ## 🚀 **Version Guide: Choose Your Implementation**
+>
+> ### 📚 **v3.0 - Proof of Concept Version (This Repository)**
+>
+> **Purpose**: Concept demonstration and learning platform - **NOT for production use**
+>
+> **✅ Perfect for:**
+> - Learning Conversation Relay concepts
+> - Testing and experimentation
+> - Understanding core architecture patterns
+> - Educational and tutorial purposes
+>
+> **⚠️ Key Limitations:**
+> - **Manual Configuration**: CRelay parameters hardcoded directly in `TwilioService.ts`
+> - **Event Emitter Architecture**: Looser coupling with event-driven patterns
+> - **Incomplete TypeScript Typing**: Basic type coverage throughout codebase
+> - **Tighter Service Coupling**: Services more interdependent
+> - **File-based Configuration Only**: No centralized cloud configuration
+> - **Basic Error Handling**: Limited recovery and resilience features
+> - **Simple Tool Implementations**: Minimal tool functionality and validation
+>
+> ---
+>
+> ### 🏭 **v4.0 - Production-Ready Version** → **[v4.0 Branch](../../tree/v4.0)**
+>
+> **Purpose**: Extended implementation for production deployments
+>
+> **🎯 Production Features:**
+> - **Dependency Injection Architecture**: Clean service separation with proper DI patterns
+> - **Handler-Based Design**: Structured handlers replace event emitter patterns
+> - **Complete TypeScript Interfaces**: Full type safety and comprehensive typing
+> - **Flexible Asset Loading**: Choose file-based OR Twilio Sync-based configuration
+> - **Automatic Sync Infrastructure**: Creates Twilio Sync services automatically from config
+> - **Centralized Configuration Management**: Cloud-based config via Twilio Sync Maps
+> - **Advanced Features**: Listen mode, configurable silence detection, dynamic language switching
+> - **Runtime Configuration Updates**: Change settings without server restarts
+> - **Enhanced Tool System**: Robust implementations with comprehensive error handling
+> - **Performance Optimizations**: In-memory caching and efficient processing
+> - **Deployment Ready**: Includes utilities, guides, and production configurations
+>
+> **💡 Recommendation**: Use v3.0 for learning → Upgrade to v4.0 for production deployments
+>
+---
 
 -------------------------------------------------
 
