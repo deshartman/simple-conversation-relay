@@ -102,6 +102,7 @@ class ConversationRelayService extends EventEmitter {
     private silenceHandler: SilenceHandler | null;
     private logMessage: string | null;
     private accumulatedTokens: string;
+    private pendingTerminalMessage: any | null = null;
 
     /**
      * Creates a new ConversationRelayService instance.
@@ -133,6 +134,13 @@ class ConversationRelayService extends EventEmitter {
 
                 // Reset accumulated tokens for next response
                 this.accumulatedTokens = '';
+
+                // Check if we have a pending terminal message to send after response completion
+                if (this.pendingTerminalMessage) {
+                    logOut(`Conversation Relay`, `Sending delayed terminal message: ${JSON.stringify(this.pendingTerminalMessage)}`);
+                    this.emit('conversationRelay.outgoingMessage', this.pendingTerminalMessage);
+                    this.pendingTerminalMessage = null;
+                }
             }
             this.emit('conversationRelay.outgoingMessage', response);
         });
@@ -142,8 +150,40 @@ class ConversationRelayService extends EventEmitter {
             logOut(`Conversation Relay`, `Tool result received: ${JSON.stringify(toolResult)}`);
             // Check if the tool result is for the conversation relay
             if (toolResult.toolType === "crelay") {
-                // Send the tool result to the WS server
-                this.emit('conversationRelay.outgoingMessage', toolResult.toolData);
+                const toolData = toolResult.toolData;
+
+                // Route based on message type to ensure proper timing
+                if (toolData && toolData.type) {
+                    switch (toolData.type) {
+                        case "end":
+                            // Terminal messages: Store to send after OpenAI response completion
+                            this.pendingTerminalMessage = toolData;
+                            logOut(`Conversation Relay`, `Storing terminal message for later: ${JSON.stringify(toolData)}`);
+                            break;
+
+                        case "sendDigits":
+                            // Immediate action: Send DTMF digits right away
+                            this.emit('conversationRelay.outgoingMessage', toolData);
+                            logOut(`Conversation Relay`, `Sending DTMF digits immediately: ${JSON.stringify(toolData)}`);
+                            break;
+
+                        case "play":
+                        case "language":
+                            // Other immediate action messages: Send right away
+                            this.emit('conversationRelay.outgoingMessage', toolData);
+                            logOut(`Conversation Relay`, `Sending immediate message: ${JSON.stringify(toolData)}`);
+                            break;
+
+                        default:
+                            // Other message types: Send immediately (current behavior)
+                            this.emit('conversationRelay.outgoingMessage', toolData);
+                            logOut(`Conversation Relay`, `Sending message immediately: ${JSON.stringify(toolData)}`);
+                            break;
+                    }
+                } else {
+                    // No type specified: Send immediately (current behavior)
+                    this.emit('conversationRelay.outgoingMessage', toolData);
+                }
             }
         });
         logOut(`Conversation Relay`, `Service constructed`);

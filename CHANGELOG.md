@@ -1,5 +1,26 @@
 # Changelog
 
+## Release v3.3.3
+
+### Bug Fixes
+
+#### Fixed OpenAI Message Timing for Tool Calls
+- **Issue**: Tool results (especially terminal actions like end-call) were being sent to cCRelay before OpenAI finished streaming its response, causing callers to hear tool responses instead of the intended OpenAI message
+- **Root Cause**: In the event-driven architecture, `toolEvent.emit('crelay', data)` sent messages immediately to WebSocket without waiting for OpenAI response completion
+- **Solution**: Added message classification in `ConversationRelayService` to delay terminal messages (`type: 'end'`) until OpenAI response completes (`response.last === true`)
+- **Impact**: Callers now properly hear OpenAI messages first, then terminal tool actions execute, ensuring correct conversation flow
+
+#### Technical Details
+- Added `pendingTerminalMessage` property to store terminal messages temporarily
+- Enhanced `responseService.toolResult` event handler to classify messages by type:
+  - Terminal messages (`type: "end"`) → stored for delayed execution
+  - Immediate messages (`type: "sendDigits"`, `"play"`, `"language"`) → sent immediately
+- Enhanced `responseService.content` event handler to send pending messages when `response.last === true`
+- Maintains complete event-driven architecture with no changes to tools or ResponseService
+- Backward compatible with existing behavior for all non-terminal messages
+
+This fix ensures proper message sequencing while preserving v3.0's event architecture: OpenAI response streams to caller → then terminal actions execute.
+
 ## Release v3.3.2
 
 ### Bug Fixes
