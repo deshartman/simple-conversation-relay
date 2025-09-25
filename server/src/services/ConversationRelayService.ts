@@ -72,29 +72,9 @@ import { EventEmitter } from 'events';
 import { SilenceHandler } from './SilenceHandler.js';
 import { logOut, logError } from '../utils/logger.js';
 import { ResponseService } from './ResponseService.js';
+import type { IncomingMessage, SessionData } from '../interfaces/ConversationRelay.js';
 
-/**
- * Interface for session data
- */
-interface SessionData {
-    parameterData: Record<string, any>;
-    setupData: {
-        callSid: string;
-        [key: string]: any;
-    };
-}
 
-/**
- * Interface for incoming message
- */
-interface IncomingMessage {
-    type: 'setup' | 'prompt' | 'dtmf' | 'interrupt' | 'info' | 'error';
-    voicePrompt?: string;
-    utteranceUntilInterrupt?: string;
-    digit?: string;
-    description?: string;
-    [key: string]: any;
-}
 
 class ConversationRelayService extends EventEmitter {
     private responseService: ResponseService;

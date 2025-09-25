@@ -63,6 +63,7 @@ import { dirname } from 'path';
 import type { ResponseInput, ResponseStreamEvent } from 'openai/resources/responses/responses.mjs';
 
 import { logOut, logError } from '../utils/logger.js';
+import type { ToolEvent, ToolResult } from '../interfaces/ConversationRelay.js';
 
 dotenv.config();
 
@@ -75,21 +76,6 @@ interface ContentResponse {
     last: boolean;
 }
 
-// ToolEvent interface for tool execution context. This is used by tools to emit events
-interface ToolEvent {
-    emit: (eventType: string, data: any) => void;
-    log: (message: string) => void;
-    logError: (message: string) => void;
-}
-
-/**
- * Interface for tool result
- */
-interface ToolResult {
-    success: boolean;
-    message: string;
-    [key: string]: any; // Allows additional properties like digits, recipient, summary, etc.
-}
 
 /**
  * Type for loaded tool function
@@ -140,6 +126,9 @@ class ResponseService extends EventEmitter {
         // Which Context, Tool Manifest to use for this call (or the default)
         const contextFile = process.env.LLM_CONTEXT || 'defaultContext.md';
         const toolManifestFile = process.env.LLM_MANIFEST || 'defaultToolManifest.json';
+
+        logOut('ResponseService', `Initializing with context file: ${contextFile}`);
+        logOut('ResponseService', `Initializing with tool manifest file: ${toolManifestFile}`);
 
         // Initialize context and tools using updateContext
         this.updateContextAndManifest(contextFile, toolManifestFile);
@@ -284,9 +273,14 @@ class ResponseService extends EventEmitter {
         try {
             // Load new context and tool manifest from provided file paths
             const assetsDir = path.join(__dirname, '..', '..', 'assets');
-            const context = fs.readFileSync(path.join(assetsDir, contextFile), 'utf8');
+            const contextPath = path.join(assetsDir, contextFile);
             const toolManifestPath = path.join(assetsDir, toolManifestFile);
+
+            const context = fs.readFileSync(contextPath, 'utf8');
             const toolManifest = JSON.parse(fs.readFileSync(toolManifestPath, 'utf8')) as { tools: any[] };
+
+            logOut('ResponseService', `Successfully loaded context file: ${contextFile} (${context.length} characters)`);
+            logOut('ResponseService', `Successfully loaded tool manifest: ${toolManifestFile} (${toolManifest.tools.length} tools defined)`);
 
             // Update instructions and reset conversation
             this.instructions = context;

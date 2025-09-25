@@ -1,5 +1,31 @@
 # Changelog
 
+## Release v3.4.0
+
+### Features
+
+#### Centralized Type Definitions
+- **Added**: Centralized type definitions in `server/src/interfaces/ConversationRelay.d.ts`
+- **Consolidated**: `IncomingMessage` interface from 2 duplicate definitions across files
+- **Added**: `OutgoingMessage` union type with proper TypeScript typing (replaces `any`)
+- **Consolidated**: `SessionData` interface from 2 duplicate definitions
+- **Consolidated**: `ToolEvent` interface from 5+ duplicate definitions across tool files
+- **Consolidated**: `ToolResult` interface centralized from ResponseService
+- **Impact**: Eliminates interface duplication, improves type safety, enables better IDE support
+
+#### Enhanced File Loading Visibility
+- **Added**: Comprehensive logging for context and manifest file loading
+- **Shows**: Which context and tool manifest files are loaded on session initialization
+- **Shows**: File statistics (character count for context, tool count for manifests)
+- **Shows**: Both initial loading and dynamic file updates
+- **Impact**: Full visibility into configuration file loading for debugging and monitoring
+
+### Technical Improvements
+- **Updated**: All 8 affected files to use centralized type definitions
+- **Enhanced**: Import statements use `import type` for better build optimization
+- **Maintained**: Full backward compatibility with existing functionality
+- **Verified**: All TypeScript compilation passes without errors
+
 ## Release v3.3.3
 
 ### Bug Fixes

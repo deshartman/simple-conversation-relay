@@ -49,7 +49,7 @@
 
 This is a reference implementation aimed at introducing the key concepts of Conversation Relay. The key here is to ensure it is a workable environment that can be used to understand the basic concepts of Conversation Relay. It is intentionally simple and only the minimum has been done to ensure the understanding is focussed on the core concepts. As an overview here is how the project is put together:
 
-## Release v3.3.3
+## Release v3.4.0
 
 This release fixes a critical timing issue where OpenAI messages were not played before terminal tool actions (like end-call) were executed. The fix ensures proper message sequencing while maintaining v3.0's event-driven architecture. See the [CHANGELOG.md](./CHANGELOG.md) for detailed release history.
 

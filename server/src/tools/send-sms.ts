@@ -15,14 +15,7 @@ interface SendSMSFunctionArguments {
     [key: string]: any;
 }
 
-/**
- * Interface for the tool event (passed by ResponseService)
- */
-interface ToolEvent {
-    emit: (eventType: string, data: any) => void;
-    log: (message: string) => void;
-    logError: (message: string) => void;
-}
+import type { ToolEvent } from '../interfaces/ConversationRelay.js';
 
 /**
  * Interface for the response object - simplified

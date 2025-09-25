@@ -16,36 +16,9 @@ import { ConversationRelayService } from './services/ConversationRelayService.js
 import { OpenAIService } from './services/OpenAIService.js';
 import { DeepSeekService } from './services/DeepSeekService.js';
 import { TwilioService } from './services/TwilioService.js';
+import type { IncomingMessage, OutgoingMessage, SessionData } from './interfaces/ConversationRelay.js';
 
-// Define interfaces for session data
-interface SessionData {
-    parameterData: Record<string, any>;
-    setupData: {
-        callSid: string;
-        customParameters?: {
-            callReference?: string;
-            contextFile?: string;
-            toolManifestFile?: string;
-        };
-        [key: string]: any;
-    };
-}
 
-// Define interface for incoming message
-interface IncomingMessage {
-    type: 'setup' | 'prompt' | 'dtmf' | 'interrupt' | 'info' | 'error';
-    callSid?: string;
-    customParameters?: {
-        callReference?: string;
-        contextFile?: string;
-        toolManifestFile?: string;
-    };
-    voicePrompt?: string;
-    utteranceUntilInterrupt?: string;
-    digit?: string;
-    description?: string;
-    [key: string]: any;
-}
 
 // Define interface for WebSocket session
 interface WSSession {
@@ -166,7 +139,7 @@ app.ws('/conversation-relay', (ws: any, req: express.Request) => {
                 sessionConversationRelay = new ConversationRelayService(sessionResponseService, sessionData);
 
                 // Attach the Event listener to send event messages from the Conversation Relay back to the WS client
-                sessionConversationRelay.on('conversationRelay.outgoingMessage', (outgoingMessage: any) => {
+                sessionConversationRelay.on('conversationRelay.outgoingMessage', (outgoingMessage: OutgoingMessage) => {
                     // logOut('WS', `Sending message out: ${JSON.stringify(outgoingMessage)}`);
                     ws.send(JSON.stringify(outgoingMessage));
                 });
