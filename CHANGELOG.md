@@ -1,5 +1,214 @@
 # Changelog
 
+## Release v4.10.0
+
+### Centralized Configuration Management (Phase 0 IoC Refactoring)
+
+This release introduces centralized configuration management as the foundation for future Inversion of Control (IoC) refactoring. This phase establishes configuration best practices while maintaining full backwards compatibility with existing code.
+
+#### 🎯 Key Features
+
+**ServerConfig Class:**
+- Centralized configuration management with `ServerConfig` class
+- `fromEnv()` static factory method for environment-based configuration
+- `forTesting()` static factory method for test scenarios with safe defaults
+- Environment-specific file loading (.env.dev, .env.prod) based on NODE_ENV
+- Fail-fast validation of required environment variables at startup
+- Type-safe configuration access throughout the codebase
+
+**Service Integration:**
+- Updated `TwilioService` to accept optional `ServerConfig` parameter
+- Updated `OpenAIResponseService` to accept optional `ServerConfig` parameter
+- Updated `CachedAssetsService` to accept optional `ServerConfig` parameter
+- Backwards-compatible migration: services fallback to `process.env` if config not provided
+- Gradual adoption pattern allows incremental migration
+
+**Comprehensive Test Suite:**
+- Vitest testing framework integration
+- 41 passing tests covering ServerConfig, services, and integration
+- Unit tests for configuration validation and loading
+- Service integration tests with dependency injection
+- Test fixtures for different environment configurations
+- Fast execution (<400ms for full test suite)
+
+#### 🔧 Technical Implementation
+
+**Configuration Structure:**
+```typescript
+export class ServerConfig {
+    // Server configuration
+    public readonly port: number;
+    public readonly serverBaseUrl: string;
+    public readonly nodeEnv: string;
+
+    // OpenAI configuration
+    public readonly openaiApiKey: string;
+    public readonly openaiModel: string;
+
+    // Twilio configuration
+    public readonly twilioAccountSid: string;
+    public readonly twilioAuthToken: string;
+    public readonly twilioFromNumber: string;
+    public readonly twilioEdge?: string;
+    public readonly twilioRegion?: string;
+
+    // Asset loader configuration
+    public readonly assetLoaderType: string;
+
+    static fromEnv(): ServerConfig { /* ... */ }
+    static forTesting(overrides?: Partial<ServerConfig>): ServerConfig { /* ... */ }
+}
+```
+
+**Server Startup Flow:**
+```typescript
+// 1. Load and validate configuration first
+serverConfig = ServerConfig.fromEnv();
+
+// 2. Initialize services with configuration
+cachedAssetsService = new CachedAssetsService(serverConfig);
+twilioService = new TwilioService(serverConfig);
+
+// 3. Pass config to response services
+const responseService = new OpenAIResponseService(
+    context, manifest, loadedTools, listenMode, serverConfig
+);
+```
+
+**Testing Support:**
+```typescript
+// Easy test configuration with overrides
+const testConfig = ServerConfig.forTesting({
+    port: 4000,
+    openaiModel: 'gpt-4-turbo'
+});
+
+const service = new TwilioService(testConfig);
+```
+
+#### ✅ Benefits
+
+**Immediate Benefits:**
+- **Fail-Fast Validation**: Missing configuration detected at startup, not at runtime
+- **Type Safety**: `config.openaiModel` instead of `process.env.OPENAI_MODEL || "default"`
+- **Single Source of Truth**: All configuration access centralized
+- **Testability**: `ServerConfig.forTesting()` eliminates test environment setup
+- **Clear Dependencies**: Constructor signatures show what configuration is needed
+
+**Future-Ready Architecture:**
+- Foundation for Phase 1 IoC: External client injection
+- Foundation for Phase 2: Service factory patterns
+- Foundation for Phase 3: Tool factory patterns
+- Easy to add Zod validation later
+- Supports alternative configuration sources
+
+**Developer Experience:**
+- Clear documentation of required configuration
+- IDE autocomplete for configuration properties
+- Compile-time type checking for configuration usage
+- Simple test setup with sensible defaults
+
+#### 📁 New Files
+
+```
+server/
+├── src/
+│   └── config/
+│       └── ServerConfig.ts          # Centralized configuration class
+└── tests/
+    ├── setup.ts                     # Global test setup
+    ├── vitest.config.ts             # Vitest configuration
+    ├── README.md                    # Test suite documentation
+    ├── TEST_SUMMARY.md              # Test results summary
+    ├── fixtures/                    # Test environment fixtures
+    │   ├── .env.test-complete
+    │   ├── .env.test-minimal
+    │   └── .env.test-incomplete
+    ├── unit/
+    │   ├── config/
+    │   │   └── ServerConfig.test.ts       # 20 tests
+    │   └── services/
+    │       ├── TwilioService.test.ts      # 8 tests
+    │       └── OpenAIResponseService.test.ts  # 8 tests
+    └── integration/
+        └── server-initialization.test.ts  # 8 tests
+```
+
+#### 📝 Modified Files
+
+- `server/src/services/TwilioService.ts` - Added optional config parameter
+- `server/src/services/OpenAIResponseService.ts` - Added optional config parameter
+- `server/src/services/CachedAssetsService.ts` - Added optional config parameter
+- `server/src/server.ts` - Create config at startup, pass to services
+- `server/package.json` - Added test scripts and Vitest dependency
+
+#### 🧪 Test Coverage
+
+**Test Suite Results:**
+```
+ Test Files  4 passed (4)
+      Tests  41 passed | 3 skipped (44)
+   Duration  367ms
+```
+
+**Coverage by Area:**
+- ServerConfig: 20 tests (17 passing, 3 skipped)
+- TwilioService: 8 tests (all passing)
+- OpenAIResponseService: 8 tests (all passing)
+- Integration: 8 tests (7 passing, 1 skipped)
+
+**Test Commands:**
+- `npm test` - Run all tests
+- `npm run test:watch` - Watch mode
+- `npm run test:ui` - Interactive UI
+- `npm run test:coverage` - Coverage report
+
+#### 🚀 Migration Guide
+
+**For Existing Code:**
+No changes required! Services continue to work with existing `process.env` access. The optional `config` parameter enables gradual adoption.
+
+**For New Code:**
+```typescript
+// Create config once at startup
+const serverConfig = ServerConfig.fromEnv();
+
+// Pass to services
+const twilioService = new TwilioService(serverConfig);
+const responseService = new OpenAIResponseService(
+    context, manifest, tools, listenMode, serverConfig
+);
+```
+
+**For Tests:**
+```typescript
+// Create test config with overrides
+const testConfig = ServerConfig.forTesting({
+    twilioAccountSid: 'test-specific-sid'
+});
+
+const service = new TwilioService(testConfig);
+```
+
+#### 📚 Documentation
+
+- Comprehensive test suite documentation in `tests/README.md`
+- Test results summary in `tests/TEST_SUMMARY.md`
+- IoC refactoring plan updated with Phase 0 completion
+- Updated README with v4.10.0 references
+
+#### 🔄 What's Next
+
+This release lays the foundation for the full IoC refactoring:
+- **Phase 1**: Create IoC container and SessionManager
+- **Phase 2**: Inject external clients (OpenAI, Twilio)
+- **Phase 3**: Implement tool factory pattern
+- **Phase 4**: Complete IoC container with full dependency injection
+
+Each phase builds incrementally on this foundation while maintaining backwards compatibility.
+
+---
+
 ## Release v4.9.8
 
 ### Environment-Specific Configuration Loading

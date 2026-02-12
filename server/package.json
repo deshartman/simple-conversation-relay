@@ -1,6 +1,6 @@
 {
   "name": "simple-conversation-relay-server",
-  "version": "4.9.8",
+  "version": "4.10.0",
   "description": "WebSocket server for Twilio Conversation Relay",
   "main": "dist/server.js",
   "type": "module",
@@ -8,7 +8,11 @@
     "build": "tsc",
     "start": "node dist/server.js",
     "start:prod": "NODE_ENV=prod node dist/server.js",
-    "dev": "NODE_ENV=dev tsx watch src/server.ts"
+    "dev": "NODE_ENV=dev tsx watch src/server.ts",
+    "test": "vitest run",
+    "test:watch": "vitest",
+    "test:ui": "vitest --ui",
+    "test:coverage": "vitest run --coverage"
   },
   "keywords": [],
   "author": "Des Hartman",
@@ -29,9 +33,11 @@
     "@types/express": "^5.0.2",
     "@types/express-ws": "^3.0.5",
     "@types/node": "^22.15.19",
+    "@vitest/ui": "^4.0.18",
     "nodemon": "^3.0.2",
     "ts-node-dev": "^2.0.0",
     "tsx": "^4.7.1",
-    "typescript": "^5.0.0"
+    "typescript": "^5.0.0",
+    "vitest": "^4.0.18"
   }
 }

@@ -4,6 +4,7 @@ import { logOut, logError } from '../utils/logger.js';
 import VoiceResponse from 'twilio/lib/twiml/VoiceResponse.js';
 import { CachedAssetsService } from './CachedAssetsService.js';
 import { ConversationRelayConfig } from '../interfaces/ConversationRelay.js';
+import { ServerConfig } from '../config/ServerConfig.js';
 
 /**
  * Interface for status callback object
@@ -40,31 +41,25 @@ class TwilioService extends EventEmitter {
     private fromNumber: string;
     private twilioClient: twilio.Twilio;
 
-    constructor() {
+    constructor(config?: ServerConfig) {
         super();
-        this.accountSid = process.env.ACCOUNT_SID || '';
-        this.authToken = process.env.AUTH_TOKEN || '';
-        this.fromNumber = process.env.FROM_NUMBER || '';
+
+        // Use config if provided, fallback to env for gradual migration
+        this.accountSid = config?.twilioAccountSid || process.env.ACCOUNT_SID || '';
+        this.authToken = config?.twilioAuthToken || process.env.AUTH_TOKEN || '';
+        this.fromNumber = config?.twilioFromNumber || process.env.FROM_NUMBER || '';
+
+        const edge = config?.twilioEdge || process.env.TWILIO_EDGE;
+        const region = config?.twilioRegion || process.env.TWILIO_REGION;
 
         // Initialize Twilio client with optional edge location configuration
-        if (process.env.TWILIO_EDGE && process.env.TWILIO_REGION) {
-            logOut('TwilioService', `Initializing with Edge: ${process.env.TWILIO_EDGE}, Region: ${process.env.TWILIO_REGION}`);
-            this.twilioClient = twilio(
-                process.env.ACCOUNT_SID || '',
-                process.env.AUTH_TOKEN || '',
-                {
-                    edge: process.env.TWILIO_EDGE,
-                    region: process.env.TWILIO_REGION
-                }
-            );
+        if (edge && region) {
+            logOut('TwilioService', `Initializing with Edge: ${edge}, Region: ${region}`);
+            this.twilioClient = twilio(this.accountSid, this.authToken, { edge, region });
         } else {
             logOut('TwilioService', 'Initializing with default Twilio routing (no edge/region specified)');
-            this.twilioClient = twilio(
-                process.env.ACCOUNT_SID || '',
-                process.env.AUTH_TOKEN || ''
-            );
+            this.twilioClient = twilio(this.accountSid, this.authToken);
         }
-        // this.twilioClient = twilio(process.env.API_KEY, process.env.API_SECRET, { process.env.ACCOUNT_SID });    // Some issue here with the API key and secret
     }
 
     /**

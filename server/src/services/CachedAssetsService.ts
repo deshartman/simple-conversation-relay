@@ -29,11 +29,12 @@ import { promises as fs } from 'fs';
 import { join, dirname } from 'path';
 import { fileURLToPath } from 'url';
 import { logOut, logError } from '../utils/logger.js';
-import type { AssetLoader, ServerConfig, AssetLoaderConfig } from '../interfaces/AssetLoader.js';
+import type { AssetLoader, ServerConfig as AssetServerConfig, AssetLoaderConfig } from '../interfaces/AssetLoader.js';
 import type { SilenceDetectionConfig } from './SilenceHandler.js';
 import { SyncAssetLoader } from './SyncAssetLoader.js';
 import { FileAssetLoader } from './FileAssetLoader.js';
 import type { ToolFunction, CachedAssets, ActiveAssets, CacheStats } from '../interfaces/CachedAssetsService.js';
+import { ServerConfig } from '../config/ServerConfig.js';
 
 class CachedAssetsService {
     private cache: CachedAssets | null = null;
@@ -41,7 +42,10 @@ class CachedAssetsService {
 
     private assetLoader: AssetLoader | null = null;
 
-    constructor() { }
+    constructor(config?: ServerConfig) {
+        // Config provided for future use but not currently needed
+        // assetLoaderType comes from serverConfig.json, not environment variables
+    }
 
     /**
      * Initializes the cache by reading configuration and loading assets from the appropriate loader

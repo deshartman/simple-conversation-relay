@@ -2,21 +2,28 @@
 
 This is a reference implementation aimed at introducing the key concepts of Conversation Relay. The key here is to ensure it is a workable environment that can be used to understand the basic concepts of Conversation Relay. It is intentionally simple and only the minimum has been done to ensure the understanding is focussed on the core concepts.
 
-## Release v4.9.8 - Environment-Specific Configuration
+## Release v4.10.0 - Centralized Configuration Management
 
-This release implements environment-specific `.env` file loading with NODE_ENV-based selection for clean separation between development and production configurations.
+This release introduces centralized configuration management with the `ServerConfig` class as Phase 0 of the IoC refactoring plan. This establishes a solid foundation for future architectural improvements while maintaining full backwards compatibility.
 
 **🔧 Key Features:**
-- **Environment Files**: Separate `.env.dev` and `.env.prod` files for different environments
-- **NODE_ENV Selection**: Automatic file loading based on NODE_ENV (dev/prod/fallback)
-- **Validation**: Startup validation ensures all required environment variables are present
-- **Updated Scripts**: Development and production scripts automatically load correct env files
+- **ServerConfig Class**: Centralized configuration with `fromEnv()` and `forTesting()` factory methods
+- **Service Integration**: Updated services accept optional `ServerConfig` parameter (TwilioService, OpenAIResponseService, CachedAssetsService)
+- **Environment Loading**: Automatic `.env.dev`/`.env.prod` file selection based on NODE_ENV
+- **Fail-Fast Validation**: Required environment variables validated at startup
+- **Comprehensive Tests**: 41 passing tests with Vitest framework (<400ms execution)
 
 **✅ Benefits:**
-- No manual env file swapping between environments
-- Clear separation of dev/prod configurations
-- Reduced risk of using wrong credentials
-- Fast failure with clear error messages for missing variables
+- Type-safe configuration access throughout codebase
+- Easy test setup with `ServerConfig.forTesting()`
+- Clear documentation of required configuration
+- Foundation for future IoC phases
+- Backwards compatible migration path
+
+**🧪 Testing:**
+- `npm test` - Run full test suite
+- `npm run test:watch` - Watch mode
+- `npm run test:ui` - Interactive UI
 
 See the [CHANGELOG.md](./CHANGELOG.md) for detailed release history.
 

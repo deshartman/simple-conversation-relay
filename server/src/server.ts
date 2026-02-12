@@ -19,6 +19,7 @@ import { ConversationRelayService } from './services/ConversationRelayService.js
 import { OpenAIResponseService } from './services/OpenAIResponseService.js';
 import { TwilioService } from './services/TwilioService.js';
 import { CachedAssetsService } from './services/CachedAssetsService.js';
+import { ServerConfig } from './config/ServerConfig.js';
 import type { IncomingMessage, OutgoingMessage, SessionData } from './interfaces/ConversationRelay.js';
 
 // ES module equivalent of __dirname
@@ -107,13 +108,11 @@ function validateRequiredEnvVars(): void {
     logOut('Server', 'All required environment variables validated');
 }
 
-// Load environment configuration
-loadEnvironmentConfig();
-validateRequiredEnvVars();
+// Note: Environment loading and validation now handled by ServerConfig.fromEnv() in startup
+// The loadEnvironmentConfig() and validateRequiredEnvVars() functions are kept for reference
+// but are no longer called at module load time
 
 const app = express() as unknown as ExpressWSApplication;
-const PORT = process.env.PORT || 3000;
-let serverBaseUrl = process.env.SERVER_BASE_URL || "localhost"; // Store server URL
 
 // Initialize express-ws (adds app.ws() method and modifies app.listen())
 const wsInstance = expressWs(app);
@@ -132,6 +131,7 @@ let parameterDataMap = new Map<string, { requestData: any }>();
 let conversationSessionMap = new Map<string, OpenAIResponseService>();
 let twilioService: TwilioService;
 let cachedAssetsService: CachedAssetsService | null = null;
+let serverConfig: ServerConfig;
 
 /**
  * Initialize all required services before starting the server.
@@ -140,14 +140,16 @@ let cachedAssetsService: CachedAssetsService | null = null;
 async function initializeServices(): Promise<void> {
     try {
         // Initialize CachedAssetsService first (self-contained, no dependencies)
-        cachedAssetsService = new CachedAssetsService();
+        cachedAssetsService = new CachedAssetsService(serverConfig);
         await cachedAssetsService.initialize();
         logOut('Server', 'CachedAssetsService initialized successfully');
 
         // Initialize TwilioService (no dependencies)
-        twilioService = new TwilioService();
+        twilioService = new TwilioService(serverConfig);
         await twilioService.initialize();
         logOut('Server', 'TwilioService initialized successfully');
+
+        logOut('Server', 'All services initialized with configuration');
     } catch (error) {
         logError('Server', `Failed to initialize services: ${error instanceof Error ? error.message : String(error)}`);
         throw error;
@@ -231,7 +233,8 @@ app.ws('/conversation-relay', (ws: any, req: express.Request) => {
                     activeAssets.context,
                     activeAssets.manifest,
                     activeAssets.loadedTools,
-                    activeAssets.listenMode.enabled
+                    activeAssets.listenMode.enabled,
+                    serverConfig
                 );
 
                 // Create ConversationRelayService - it will handle ResponseService setup internally
@@ -362,7 +365,7 @@ app.post('/outboundCall', async (req: express.Request, res: express.Response) =>
         }
 
         const response = await twilioService.makeOutboundCall(
-            serverBaseUrl,
+            serverConfig.serverBaseUrl,
             phoneNumber,
             cachedAssetsService!,
             parameters
@@ -393,7 +396,7 @@ app.post('/connectConversationRelay', async (req: express.Request, res: express.
     // Accept optional parameters from request body
     const parameters = req.body.parameters || {};
 
-    const voiceResponse = await twilioService.connectConversationRelay(serverBaseUrl, cachedAssetsService!, parameters);
+    const voiceResponse = await twilioService.connectConversationRelay(serverConfig.serverBaseUrl, cachedAssetsService!, parameters);
     if (voiceResponse) {
         res.send(voiceResponse.toString());
     } else {
@@ -482,7 +485,8 @@ app.post('/conversation', async (req: express.Request, res: express.Response) =>
                 activeAssets.context,
                 activeAssets.manifest,
                 activeAssets.loadedTools,
-                activeAssets.listenMode.enabled
+                activeAssets.listenMode.enabled,
+                serverConfig
             );
 
             conversationSessionMap.set(currentSessionId, responseService);
@@ -642,12 +646,15 @@ const startServer = (port: number): void => {
 
 (async () => {
     try {
-        // Initialize services first
+        // Load and validate configuration first
+        serverConfig = ServerConfig.fromEnv();
+        logOut('Server', `Configuration loaded for ${serverConfig.nodeEnv} environment`);
+
+        // Initialize services with configuration
         await initializeServices();
 
-        // Then start the server with port retry logic
-        const currentPort = Number(PORT);
-        startServer(currentPort);
+        // Start the server with configured port
+        startServer(serverConfig.port);
     } catch (error) {
         logError('Server', `Fatal error during startup: ${error instanceof Error ? error.message : String(error)}`);
         process.exit(1);
