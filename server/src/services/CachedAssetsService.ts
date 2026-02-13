@@ -41,10 +41,11 @@ class CachedAssetsService {
     private isInitialized: boolean = false;
 
     private assetLoader: AssetLoader | null = null;
+    private config: ServerConfig;
 
-    constructor(config?: ServerConfig) {
-        // Config provided for future use but not currently needed
-        // assetLoaderType comes from serverConfig.json, not environment variables
+    constructor(config: ServerConfig) {
+        // Store config for tool factories
+        this.config = config;
     }
 
     /**
@@ -288,6 +289,7 @@ class CachedAssetsService {
     /**
      * Loads all tools from manifest files
      * Reads tool files from disk and stores them in memory
+     * Calls factory functions with dependencies for tools that need them
      */
     private async loadTools(manifests: Map<string, object>): Promise<Record<string, ToolFunction>> {
         const loadedTools: Record<string, ToolFunction> = {};
@@ -319,8 +321,21 @@ class CachedAssetsService {
             for (const toolName of allToolNames) {
                 try {
                     const toolModule = await import(join(toolsDir, `${toolName}.js`));
-                    loadedTools[toolName] = toolModule.default;
-                    logOut('CachedAssetsService', `Loaded tool: ${toolName}`);
+
+                    // Call factory functions with dependencies
+                    if (toolName === 'change-context') {
+                        // change-context needs CachedAssetsService for context access
+                        loadedTools[toolName] = toolModule.createChangeContextTool(this);
+                        logOut('CachedAssetsService', `Loaded tool (factory): ${toolName}`);
+                    } else if (toolName === 'send-sms') {
+                        // send-sms needs ServerConfig for Twilio credentials
+                        loadedTools[toolName] = toolModule.createSendSMSTool(this.config);
+                        logOut('CachedAssetsService', `Loaded tool (factory): ${toolName}`);
+                    } else {
+                        // Other tools don't need factories (self-contained)
+                        loadedTools[toolName] = toolModule.default;
+                        logOut('CachedAssetsService', `Loaded tool: ${toolName}`);
+                    }
                 } catch (error) {
                     logError('CachedAssetsService', `Failed to load tool ${toolName}: ${error instanceof Error ? error.message : String(error)}`);
                 }

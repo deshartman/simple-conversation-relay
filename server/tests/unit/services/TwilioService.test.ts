@@ -87,37 +87,7 @@ describe('TwilioService', () => {
         });
     });
 
-    describe('Constructor without ServerConfig (backwards compatibility)', () => {
-        it('should fallback to environment variables', () => {
-            process.env.ACCOUNT_SID = 'AC-env-sid';
-            process.env.AUTH_TOKEN = 'env-token';
-            process.env.FROM_NUMBER = '+15559999999';
-
-            const service = new TwilioService();
-
-            expect(service).toBeDefined();
-        });
-
-        it('should handle missing environment variables gracefully', () => {
-            // No env vars set, no config provided
-            const service = new TwilioService();
-
-            // Should initialize with empty strings (backwards compatible behavior)
-            expect(service).toBeDefined();
-        });
-
-        it('should handle edge/region from environment', () => {
-            process.env.ACCOUNT_SID = 'AC-test';
-            process.env.AUTH_TOKEN = 'test-token';
-            process.env.FROM_NUMBER = '+15555555555';
-            process.env.TWILIO_EDGE = 'dublin';
-            process.env.TWILIO_REGION = 'ireland1';
-
-            const service = new TwilioService();
-
-            expect(service).toBeDefined();
-        });
-    });
+    // Backwards compatibility tests removed - ServerConfig is now required
 
     describe('Service initialization', () => {
         it('should initialize successfully with valid config', async () => {

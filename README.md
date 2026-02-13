@@ -2,28 +2,36 @@
 
 This is a reference implementation aimed at introducing the key concepts of Conversation Relay. The key here is to ensure it is a workable environment that can be used to understand the basic concepts of Conversation Relay. It is intentionally simple and only the minimum has been done to ensure the understanding is focussed on the core concepts.
 
-## Release v4.10.0 - Centralized Configuration Management
+## Release v4.11.0 - Tool Factory Pattern & Anti-Pattern Elimination
 
-This release introduces centralized configuration management with the `ServerConfig` class as Phase 0 of the IoC refactoring plan. This establishes a solid foundation for future architectural improvements while maintaining full backwards compatibility.
+This release completes Phase 1 of the IoC refactoring plan by eliminating anti-patterns in the tool system and implementing the factory pattern for tools with dependencies.
 
 **🔧 Key Features:**
-- **ServerConfig Class**: Centralized configuration with `fromEnv()` and `forTesting()` factory methods
-- **Service Integration**: Updated services accept optional `ServerConfig` parameter (TwilioService, OpenAIResponseService, CachedAssetsService)
-- **Environment Loading**: Automatic `.env.dev`/`.env.prod` file selection based on NODE_ENV
-- **Fail-Fast Validation**: Required environment variables validated at startup
-- **Comprehensive Tests**: 41 passing tests with Vitest framework (<400ms execution)
+- **Tool Factory Pattern**: Converted `change-context` and `send-sms` tools to factory pattern
+- **Anti-Pattern Elimination**: Removed `_service` parameter anti-pattern from tools
+- **ServerConfig Integration**: All tools now use `ServerConfig` instead of direct `process.env` access
+- **Type-Safe Dependencies**: Compile-time dependency validation through factory function signatures
+- **Comprehensive Test Coverage**: 32 new tests added (63 total tests passing)
 
 **✅ Benefits:**
-- Type-safe configuration access throughout codebase
-- Easy test setup with `ServerConfig.forTesting()`
-- Clear documentation of required configuration
-- Foundation for future IoC phases
-- Backwards compatible migration path
+- No hidden dependencies or runtime checking needed
+- Clear dependency contracts via factory function parameters
+- Tools remain self-contained while accessing proper configuration
+- Foundation for future service refactoring phases
+- Enhanced testability with full unit test coverage
+
+**🏗️ Architecture Changes:**
+- `change-context`: Factory pattern with `createChangeContextTool(cachedAssetsService)`
+- `send-sms`: Factory pattern with `createSendSMSTool(config)`
+- `TwilioService`: Required config parameter, no fallbacks
+- `OpenAIResponseService`: Required config parameter, consistent tool calling
+- `CachedAssetsService`: Calls tool factories during initialization
 
 **🧪 Testing:**
-- `npm test` - Run full test suite
+- `npm test` - Run full test suite (63 tests)
 - `npm run test:watch` - Watch mode
 - `npm run test:ui` - Interactive UI
+- `npm run test:coverage` - Coverage report
 
 See the [CHANGELOG.md](./CHANGELOG.md) for detailed release history.
 

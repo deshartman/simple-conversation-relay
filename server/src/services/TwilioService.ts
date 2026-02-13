@@ -41,16 +41,17 @@ class TwilioService extends EventEmitter {
     private fromNumber: string;
     private twilioClient: twilio.Twilio;
 
-    constructor(config?: ServerConfig) {
+    constructor(config: ServerConfig) {
         super();
 
-        // Use config if provided, fallback to env for gradual migration
-        this.accountSid = config?.twilioAccountSid || process.env.ACCOUNT_SID || '';
-        this.authToken = config?.twilioAuthToken || process.env.AUTH_TOKEN || '';
-        this.fromNumber = config?.twilioFromNumber || process.env.FROM_NUMBER || '';
+        // Config is required - no fallbacks
+        // ServerConfig.fromEnv() already validated these exist
+        this.accountSid = config.twilioAccountSid;
+        this.authToken = config.twilioAuthToken;
+        this.fromNumber = config.twilioFromNumber;
 
-        const edge = config?.twilioEdge || process.env.TWILIO_EDGE;
-        const region = config?.twilioRegion || process.env.TWILIO_REGION;
+        const edge = config.twilioEdge;
+        const region = config.twilioRegion;
 
         // Initialize Twilio client with optional edge location configuration
         if (edge && region) {

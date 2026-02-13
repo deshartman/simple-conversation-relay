@@ -9,8 +9,9 @@ import type { ToolResult } from './ResponseService.js';
 
 /**
  * Type for loaded tool function
+ * Tools may optionally accept a responseService as a second parameter
  */
-export type ToolFunction = (args: any) => Promise<ToolResult> | ToolResult;
+export type ToolFunction = (args: any, responseService?: any) => Promise<ToolResult> | ToolResult;
 
 /**
  * Internal cache structure for storing all loaded assets

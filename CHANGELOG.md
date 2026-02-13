@@ -1,5 +1,154 @@
 # Changelog
 
+## Release v4.11.0
+
+### Tool Factory Pattern & Anti-Pattern Elimination (Phase 1 IoC Refactoring)
+
+This release completes Phase 1 of the IoC refactoring plan by eliminating anti-patterns in the tool system and implementing the factory pattern for tools with dependencies. This phase focuses specifically on fixing the 2 problematic tools identified during architecture analysis while leaving the other 7 clean tools unchanged.
+
+#### 🎯 Key Features
+
+**Tool Factory Pattern:**
+- **change-context Tool**: Converted to factory pattern with `createChangeContextTool(cachedAssetsService)`
+  - Eliminated `_openaiService` and `_contextCacheService` anti-pattern from function arguments
+  - Dependencies now captured in closure (CachedAssetsService) and passed as parameters (OpenAIResponseService)
+  - Type-safe signature: `(args: ChangeContextArgs, responseService: OpenAIResponseService) => Promise<ChangeContextResponse>`
+
+- **send-sms Tool**: Converted to factory pattern with `createSendSMSTool(config)`
+  - Uses ServerConfig instead of direct `process.env` access
+  - Maintains self-contained design (creates own Twilio client as intended for LLM tools)
+  - Type-safe signature: `(args: SendSMSArgs, _responseService?: any) => Promise<SendSMSResponse>`
+
+**Anti-Pattern Elimination:**
+- Removed `_service` parameter anti-pattern from change-context tool
+- Eliminated all direct `process.env` access from tools and services
+- Removed backwards-compatibility fallbacks from TwilioService
+- Eliminated special-case handling for change-context in OpenAIResponseService
+
+**Service Improvements:**
+- **TwilioService**: Config parameter now required (not optional), all `process.env` fallbacks removed
+- **OpenAIResponseService**: Config parameter now required, consistent tool calling pattern for all tools
+- **CachedAssetsService**: Calls tool factories during initialization, passes appropriate dependencies
+
+#### 🔧 Technical Implementation
+
+**Factory Pattern Example (change-context):**
+```typescript
+export function createChangeContextTool(
+    cachedAssetsService: CachedAssetsService
+) {
+    return async (
+        args: ChangeContextArgs,
+        responseService: OpenAIResponseService
+    ): Promise<ChangeContextResponse> => {
+        // cachedAssetsService from closure
+        const assets = cachedAssetsService.getAssetsForContextSwitch(args.newContext);
+
+        // responseService from parameter
+        await responseService.insertMessage('system', args.handoffSummary);
+        await responseService.updateContext(assets.context);
+        await responseService.updateTools(assets.manifest);
+
+        return { success: true, ... };
+    };
+}
+```
+
+**Tool Loading with Factories:**
+```typescript
+// In CachedAssetsService.loadTools()
+if (toolName === 'change-context') {
+    loadedTools[toolName] = toolModule.createChangeContextTool(this);
+} else if (toolName === 'send-sms') {
+    loadedTools[toolName] = toolModule.createSendSMSTool(this.config);
+} else {
+    loadedTools[toolName] = toolModule.default;
+}
+```
+
+**Tool Function Type:**
+```typescript
+// Updated signature in CachedAssetsService.d.ts
+export type ToolFunction = (
+    args: any,
+    responseService?: any
+) => Promise<ToolResult> | ToolResult;
+```
+
+#### ✅ Benefits
+
+**Code Quality:**
+- ✅ No hidden dependencies or runtime checking needed
+- ✅ Clear dependency contracts via factory function parameters
+- ✅ Compile-time dependency validation through TypeScript
+- ✅ Tools remain self-contained (send-sms creates own Twilio client)
+- ✅ Consistent pattern across all factory-created tools
+
+**Testability:**
+- ✅ 32 new comprehensive unit tests added
+- ✅ 63 total tests passing (3 skipped)
+- ✅ Factory pattern enables easy mocking of dependencies
+- ✅ Test coverage for parameter validation, error handling, and execution flow
+
+**Architecture:**
+- ✅ Foundation for future IoC phases established
+- ✅ Services already have good abstractions (no changes needed)
+- ✅ Global Maps remain acceptable for WebSocket pattern
+- ✅ Tool system now follows consistent dependency injection pattern
+
+#### 🧪 Test Coverage Added
+
+**change-context.test.ts (16 tests):**
+- Factory pattern verification
+- Parameter validation (newContext, handoffSummary)
+- Context switching workflow
+- Error handling (missing context, API failures)
+- Dependency injection via closure and parameters
+
+**send-sms.test.ts (11 tests):**
+- Factory pattern with ServerConfig
+- Verification of no `process.env` access
+- SMS sending functionality
+- Error handling (Twilio API errors, network failures)
+- Self-containment verification (creates own client)
+
+**CachedAssetsService.test.ts (5 tests):**
+- Config storage for tool factories
+- Integration points for tool loading
+- Configuration handling with different environments
+
+#### 📋 Files Modified
+
+**Tools:**
+- `src/tools/change-context.ts` - Converted to factory pattern, removed anti-pattern
+- `src/tools/send-sms.ts` - Converted to factory pattern, uses ServerConfig
+
+**Services:**
+- `src/services/TwilioService.ts` - Removed process.env fallbacks, required config
+- `src/services/OpenAIResponseService.ts` - Removed special cases, required config
+- `src/services/CachedAssetsService.ts` - Calls tool factories
+
+**Type Definitions:**
+- `src/interfaces/CachedAssetsService.d.ts` - Updated ToolFunction type signature
+
+**Tests:**
+- `tests/unit/tools/change-context.test.ts` - New comprehensive test suite
+- `tests/unit/tools/send-sms.test.ts` - New comprehensive test suite
+- `tests/unit/services/CachedAssetsService.test.ts` - New test suite
+- `tests/unit/services/TwilioService.test.ts` - Removed backwards compatibility tests
+- `tests/unit/services/OpenAIResponseService.test.ts` - Removed backwards compatibility tests
+
+#### 🚀 What's Next
+
+**Phase 2 (Optional): Minimal Container Pattern**
+- Introduce lightweight container for service creation
+- Centralize dependency management
+- Further improve testability
+
+See `.claude/plans/ioc-refactoring-plan.md` for the complete phased approach.
+
+---
+
 ## Release v4.10.0
 
 ### Centralized Configuration Management (Phase 0 IoC Refactoring)

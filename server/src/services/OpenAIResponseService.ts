@@ -67,8 +67,9 @@ dotenv.config();
 
 /**
  * Type for loaded tool function
+ * Tools may optionally accept a responseService as a second parameter
  */
-type ToolFunction = (args: any) => Promise<ToolResult> | ToolResult;
+type ToolFunction = (args: any, responseService?: any) => Promise<ToolResult> | ToolResult;
 
 /**
  * Interface for tool call from streaming events
@@ -112,11 +113,12 @@ class OpenAIResponseService implements ResponseService {
         manifest: object,
         loadedTools: Record<string, ToolFunction>,
         listenMode: boolean = false,
-        config?: ServerConfig
+        config: ServerConfig
     ) {
         this.openai = new OpenAI();
-        // Use config if provided, fallback to env for gradual migration
-        this.model = config?.openaiModel || process.env.OPENAI_MODEL || "gpt-4o";
+        // Config is required - no fallbacks
+        // ServerConfig.fromEnv() already validated these exist
+        this.model = config.openaiModel;
         this.currentResponseId = null;
         this.instructions = context;
         this.isInterrupted = false;
@@ -143,7 +145,7 @@ class OpenAIResponseService implements ResponseService {
 
     /**
     * Executes a tool call with proper type safety
-    * 
+    *
     * @param {ResponsesAPIToolCall} tool - Tool call object
     * @returns {Promise<ToolResult|null>} Tool execution result or null if execution fails
     */
@@ -152,15 +154,9 @@ class OpenAIResponseService implements ResponseService {
             const calledTool: ToolFunction = this.loadedTools[tool.name];
             const calledToolArgs = JSON.parse(tool.arguments);
 
-            // Special handling for change-context tool: Add service reference to enable self-contained context switching
-            // This approach keeps the tool interface clean for all other tools while allowing change-context
-            // to access the service it needs to update context directly within the tool execution
-            if (tool.name === 'change-context') {
-                calledToolArgs._openaiService = this;
-            }
-
-            // Call the tool with arguments
-            const toolResponse: ToolResult = await calledTool(calledToolArgs);
+            // No special cases needed!
+            // All tools follow same pattern: (args, responseService?) => Promise<Result>
+            const toolResponse: ToolResult = await calledTool(calledToolArgs, this);
 
             // Always pass tool results to higher-level service for processing
             if (toolResponse) {

@@ -110,35 +110,7 @@ describe('OpenAIResponseService', () => {
         });
     });
 
-    describe('Constructor without ServerConfig (backwards compatibility)', () => {
-        it('should fallback to environment variables', () => {
-            process.env.OPENAI_MODEL = 'gpt-4o';
-
-            const service = new OpenAIResponseService(
-                mockContext,
-                mockManifest,
-                mockLoadedTools,
-                false
-            );
-
-            expect(service).toBeDefined();
-        });
-
-        it('should use default model when env var not set', () => {
-            // No OPENAI_MODEL env var
-            delete process.env.OPENAI_MODEL;
-
-            const service = new OpenAIResponseService(
-                mockContext,
-                mockManifest,
-                mockLoadedTools,
-                false
-            );
-
-            // Should use default model "gpt-4o"
-            expect(service).toBeDefined();
-        });
-    });
+    // Backwards compatibility tests removed - ServerConfig is now required
 
     describe('Service with different configurations', () => {
         it('should create multiple services with different configs', () => {
