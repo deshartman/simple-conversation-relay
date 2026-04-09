@@ -1134,6 +1134,137 @@ The `/conversation` endpoint shares the same underlying architecture as the `/co
 
 This unified architecture enables developers to build conversational AI applications that work seamlessly across voice and messaging channels using a single backend service.
 
+### Twilio Function for SMS Integration
+
+To handle incoming SMS messages and forward them to the `/conversation` endpoint, you can create a Twilio Function that acts as a bridge between Twilio's SMS service and your conversation relay server.
+
+**📱 Key Features:**
+- **Automatic SMS Routing**: Forwards incoming SMS to the conversation endpoint
+- **Session Management**: Uses phone number as session ID for stateful conversations
+- **Error Handling**: Graceful fallback messages if server is unavailable
+- **Long Message Support**: Handles SMS responses over 1600 characters
+
+#### Twilio Function Code
+
+```javascript
+exports.handler = async function(context, event, callback) {
+  const twiml = new Twilio.twiml.MessagingResponse();
+
+  try {
+    // Extract SMS details
+    const fromNumber = event.From;
+    const messageBody = event.Body;
+
+    // Use phone number as session ID for stateful conversations
+    const sessionId = fromNumber.replace(/[^0-9]/g, ''); // Remove non-numeric chars
+
+    // Your conversation relay server URL
+    const serverUrl = context.SERVER_URL || 'https://your-server.com';
+    const conversationEndpoint = `${serverUrl}/conversation`;
+
+    // Prepare request payload
+    const payload = {
+      message: messageBody,
+      sessionId: sessionId,
+      role: 'user'
+    };
+
+    // Make request to conversation endpoint
+    const response = await fetch(conversationEndpoint, {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json'
+      },
+      body: JSON.stringify(payload)
+    });
+
+    if (!response.ok) {
+      throw new Error(`Server returned ${response.status}: ${response.statusText}`);
+    }
+
+    const data = await response.json();
+
+    if (data.success && data.response) {
+      // Handle long messages by splitting into 1600 char segments
+      const maxLength = 1600;
+      const responseText = data.response;
+
+      if (responseText.length > maxLength) {
+        // Split into multiple messages
+        for (let i = 0; i < responseText.length; i += maxLength) {
+          twiml.message(responseText.substring(i, i + maxLength));
+        }
+      } else {
+        twiml.message(responseText);
+      }
+    } else {
+      twiml.message('Sorry, I encountered an error processing your message.');
+    }
+
+  } catch (error) {
+    console.error('Error:', error);
+    twiml.message('Sorry, I\'m temporarily unavailable. Please try again later.');
+  }
+
+  return callback(null, twiml);
+};
+```
+
+#### Configuration Steps
+
+1. **Create the Function:**
+   - Navigate to Twilio Console → Functions & Assets → Services
+   - Create a new Service (e.g., "SMS Conversation Handler")
+   - Add a new Function with the code above
+   - Set the Function path (e.g., `/sms-handler`)
+
+2. **Add Environment Variables:**
+   ```
+   SERVER_URL = https://your-server.com
+   ```
+   Replace with your actual conversation relay server URL.
+
+3. **Deploy the Function:**
+   - Click "Deploy All" to make the Function live
+   - Copy the Function URL (e.g., `https://your-service-1234.twil.io/sms-handler`)
+
+4. **Configure Your SMS Phone Number:**
+   - Go to Phone Numbers → Active Numbers
+   - Select your phone number
+   - Under "Messaging Configuration"
+   - Set "A Message Comes In" to your Function URL
+   - Method: HTTP POST
+
+#### How It Works
+
+1. **SMS Received**: User sends SMS to your Twilio phone number
+2. **Function Triggered**: Twilio invokes your Function with SMS data
+3. **Forward to Server**: Function sends message to `/conversation` endpoint
+4. **Session Continuity**: Phone number is used as session ID to maintain conversation context
+5. **AI Response**: Server generates response using OpenAI
+6. **Reply via SMS**: Function sends AI response back to user via SMS
+
+#### Benefits
+
+- **Unified AI Logic**: Same conversation context and tools work across SMS and voice
+- **Stateful Conversations**: Each phone number maintains its own conversation history
+- **Automatic Message Splitting**: Long responses are automatically split into multiple SMS
+- **Error Resilience**: Graceful handling of server errors with user-friendly messages
+
+#### Testing
+
+Send an SMS to your configured Twilio phone number:
+
+```
+User: Hello, what can you help me with?
+AI: [Response from your conversation endpoint]
+
+User: Tell me more
+AI: [Contextual response based on conversation history]
+```
+
+The system maintains conversation context per phone number, enabling natural multi-turn conversations over SMS.
+
 ## Outbound Calling
 
 The system supports initiating outbound calls via an API endpoint:
