@@ -3,7 +3,8 @@ server/pnpm-lock.yaml
 server/node_modules/.modules.yaml
 server/package-lock.json
 server/node_modules
-server/.env
+server/.env*
+!server/.env.example
 server/dist
 
 mcp-server/pnpm-lock.yaml
