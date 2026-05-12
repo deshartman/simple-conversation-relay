@@ -2,33 +2,24 @@
 
 This is a reference implementation aimed at introducing the key concepts of Conversation Relay. The key here is to ensure it is a workable environment that can be used to understand the basic concepts of Conversation Relay. It is intentionally simple and only the minimum has been done to ensure the understanding is focussed on the core concepts.
 
-## Release v4.11.0 - Tool Factory Pattern & Anti-Pattern Elimination
+## Release v4.12.0 - ConversationRelay Session Model + In-Code Tool Registry
 
-This release completes Phase 1 of the IoC refactoring plan by eliminating anti-patterns in the tool system and implementing the factory pattern for tools with dependencies.
+Ports CRelay patterns from the upcoming `@twilio/tac-conversationrelay` package. The WebSocket wire protocol is unchanged — this is an internal architecture refresh.
 
-**🔧 Key Features:**
-- **Tool Factory Pattern**: Converted `change-context` and `send-sms` tools to factory pattern
-- **Anti-Pattern Elimination**: Removed `_service` parameter anti-pattern from tools
-- **ServerConfig Integration**: All tools now use `ServerConfig` instead of direct `process.env` access
-- **Type-Safe Dependencies**: Compile-time dependency validation through factory function signatures
-- **Comprehensive Test Coverage**: 32 new tests added (63 total tests passing)
+**🎯 Key Changes:**
+- **Per-WebSocket session class** (`ConversationRelaySession`) owns all per-call state and is the sole writer to the WebSocket.
+- **In-code tool registry**: tools are defined in their `server/src/tools/*.ts` file via `defineTool({...})` and registered once at startup via a `ToolRegistry`. `defaultToolManifest.json` is gone — schema and handler are now co-located.
+- **Zod-validated wire frames** with compile-time SDK drift guards pinned to the Twilio SDK types.
+- **Progressive-timeout `SilenceHandler`** — same wire behaviour, cheaper timer, no per-second wakeups.
+- **Terminal-frame deferral + in-flight tool tracking** so a tool-dispatched `end` frame can't race ahead of the LLM's streamed farewell.
+- **All tools now exposed**: `play-media` and `set-listen-mode` were present in `server/src/tools/` but absent from v4.11's JSON manifest; they now register with the rest.
 
-**✅ Benefits:**
-- No hidden dependencies or runtime checking needed
-- Clear dependency contracts via factory function parameters
-- Tools remain self-contained while accessing proper configuration
-- Foundation for future service refactoring phases
-- Enhanced testability with full unit test coverage
+**⚠️ Breaking (internal):** `ConversationRelayService` removed (use `ConversationRelaySession`). `SetSilenceDetectionMessage` type removed — tools return `silenceEnabled: boolean`. Per-leg tool subsets no longer supported (all-tools-all-legs).
 
-**🏗️ Architecture Changes:**
-- `change-context`: Factory pattern with `createChangeContextTool(cachedAssetsService)`
-- `send-sms`: Factory pattern with `createSendSMSTool(config)`
-- `TwilioService`: Required config parameter, no fallbacks
-- `OpenAIResponseService`: Required config parameter, consistent tool calling
-- `CachedAssetsService`: Calls tool factories during initialization
+**📦 Dependency bumps:** `twilio` 5→6, `express` 4→5, `openai` 5→6, `zod` 3→4, `typescript` 5→6, `@types/node` 22→25, `dotenv` 16→17.
 
 **🧪 Testing:**
-- `npm test` - Run full test suite (63 tests)
+- `npm test` - Run full test suite (61 tests)
 - `npm run test:watch` - Watch mode
 - `npm run test:ui` - Interactive UI
 - `npm run test:coverage` - Coverage report
@@ -37,10 +28,10 @@ See the [CHANGELOG.md](./CHANGELOG.md) for detailed release history.
 
 ## Prerequisites
 
-- Node.js v18
-- pnpm
+- Node.js ≥ v20 (required by `twilio` v6)
+- pnpm (or npm)
 - ngrok
-- TypeScript
+- TypeScript (installed as a dev dependency; no global install needed)
 
 ## Server
 
@@ -52,31 +43,44 @@ See the [CHANGELOG.md](./CHANGELOG.md) for detailed release history.
 │   ├── .env.example      # Example environment configuration
 │   ├── package.json      # Server dependencies and scripts
 │   ├── tsconfig.json     # TypeScript configuration
-│   ├── assets/           # Configuration assets
-│   │   ├── defaultContext.md    # Default GPT conversation context
-│   │   ├── defaultToolManifest.json # Default available tools configuration
-│   │   ├── MyContext.md        # Specific context
-│   │   └── MyToolManifest.json # Specific tools
-│   ├── src/              # Source code directory
-│   │   ├── server.ts     # Main server implementation
-│   │   ├── interfaces/   # TypeScript interface definitions
-│   │   │   ├── ResponseService.d.ts # ResponseService interface with DI handlers
-│   │   │   └── ConversationRelay.d.ts # Conversation Relay interfaces with Twilio message types
-│   │   ├── services/     # Core service implementations
-│   │   │   ├── ConversationRelayService.ts # Implements DI pattern
-│   │   │   ├── OpenAIResponseService.ts # Implements ResponseService interface with DI
-│   │   │   ├── FlowiseResponseService.ts # Alternative ResponseService implementation
-│   │   │   ├── SilenceHandler.ts
-│   │   │   └── TwilioService.ts
-│   │   ├── tools/        # Tool implementations
-│   │   │   ├── end-call.ts
-│   │   │   ├── live-agent-handoff.ts
-│   │   │   ├── send-dtmf.ts
-│   │   │   ├── send-sms.ts
-│   │   │   ├── switch-language.ts
-│   │   │   └── play-media.ts
-│   │   └── utils/        # Utility functions
-│   │       └── logger.ts
+│   ├── assets/
+│   │   ├── defaultContext.md    # Default LLM system prompt (markdown)
+│   │   ├── serverConfig.json    # TwiML config, silence detection, active context key
+│   │   └── legs/                # Optional per-leg context.md overrides
+│   └── src/
+│       ├── server.ts                    # Express + WebSocket entrypoint
+│       ├── config/
+│       │   └── ServerConfig.ts          # Centralised env + config (v4.10)
+│       ├── interfaces/                  # Type definitions (.d.ts)
+│       │   ├── ConversationRelay.d.ts   # Re-exports + TwiML types + SessionData
+│       │   ├── ResponseService.d.ts     # ResponseService + ResponseHandler interfaces
+│       │   ├── AssetLoader.d.ts
+│       │   └── CachedAssetsService.d.ts
+│       ├── services/
+│       │   ├── ConversationRelaySession.ts  # Per-WebSocket session (v4.12)
+│       │   ├── OpenAIResponseService.ts     # OpenAI Responses API + ToolRegistry
+│       │   ├── CachedAssetsService.ts       # Context cache + server config (v4.12 slim)
+│       │   ├── FileAssetLoader.ts           # Load assets from disk
+│       │   ├── SyncAssetLoader.ts           # Load assets from Twilio Sync
+│       │   ├── SilenceHandler.ts            # Progressive-timeout silence detection (v4.12)
+│       │   └── TwilioService.ts             # TwiML + outbound + status callback
+│       ├── tools/                       # CR tools (v4.12: defineTool + ToolRegistry)
+│       │   ├── define-tool.ts           # defineTool() factory
+│       │   ├── tool-registry.ts         # ToolRegistry class
+│       │   ├── index.ts                 # buildDefaultRegistry() — startup wiring
+│       │   ├── end-call.ts
+│       │   ├── live-agent-handoff.ts
+│       │   ├── send-dtmf.ts
+│       │   ├── send-sms.ts              # Factory: createSendSMSTool(config)
+│       │   ├── play-media.ts
+│       │   ├── switch-language.ts
+│       │   ├── set-listen-mode.ts
+│       │   ├── set-silence-detection.ts
+│       │   └── change-context.ts        # Factory: createChangeContextTool(cache)
+│       ├── types/
+│       │   └── crelay.ts                # Zod schemas for CR wire frames + SDK drift guards
+│       └── utils/
+│           └── logger.ts
 ```
 
 The server handles WebSocket connections and manages conversation relay functionality. It includes GPT service integration for natural language processing and Twilio integration for voice call handling.
@@ -117,13 +121,13 @@ npm run build
 npm start
 ```
 
-4. Ensure the server is running on port 3001 (or configured port in `.env`).
+4. Ensure the server is running on port 3007 (or configured port in `.env`).
 
 **Note:** If the configured port is already in use, the server will automatically retry on the next available port (e.g., 3002, 3003, etc.). This allows running multiple server instances simultaneously for testing and development.
 
 5. Optionally, expose the server using ngrok:
 ```bash
-ngrok http --domain server-yourdomain.ngrok.dev 3001
+ngrok http --domain server-yourdomain.ngrok.dev 3007
 ```
 
 ### How It Works
@@ -135,12 +139,12 @@ ngrok http --domain server-yourdomain.ngrok.dev 3001
    - Info-type messages are intentionally ignored to prevent false resets
    - Valid messages (prompt, interrupt, dtmf) reset both the timer and retry counter
 
-3. **Response Sequence**:
-   - After 5 seconds of silence: Sends a reminder message ("I'm sorry, I didn't catch that...")
-   - Each reminder increments a retry counter
-   - After 3 unsuccessful attempts: Ends the call with an "unresponsive" reason code
+3. **Response Sequence** (configured in `serverConfig.json` under `ConversationRelay.SilenceDetection`):
+   - After `secondsThreshold` seconds of silence (default 20): sends the next reminder from the `messages` array (e.g. "Still there?")
+   - After all reminders have fired and silence persists: ends the call with `reasonCode: 'unresponsive'`
+   - v4.12: the handler uses a progressive `setTimeout` chain (not per-second polling), so it's idle between breaches
 
-4. **Cleanup**: The system properly cleans up monitoring resources when the call ends or disconnects.
+4. **Cleanup**: The session stops its silence handler and clears all per-call state when the WebSocket closes.
 
 ## Twilio Configuration
 
@@ -258,17 +262,32 @@ Context documents are stored as **string content** in Sync Maps with unique keys
 3. **Response Guidelines** - Specify formatting and delivery requirements
 4. **Instructions** - Detail specific process steps and workflows
 
-### Tool Manifests
+### Tools (v4.12: in-code registry)
 
-Tool manifests are stored as **JSON objects** in Sync Maps defining available tools:
+Tools are defined in code under `server/src/tools/` using the `defineTool({ name, description, parameters, handler })` factory. The `defaultToolManifest.json` / `legs/*/toolManifest.json` files have been removed — schema (what OpenAI sees) and handler (what runs) are now co-located in each tool file. `buildDefaultRegistry(config, cache)` in `server/src/tools/index.ts` registers all tools once at startup, and the same `ToolRegistry` is handed to every `ConversationRelaySession`.
 
-**Available Tools:**
-1. `end-call` - Gracefully terminates the current call
-2. `live-agent-handoff` - Transfers the call to a human agent
-3. `send-dtmf` - Sends DTMF tones during the call
-4. `send-sms` - Sends SMS messages during the call
-5. `switch-language` - Changes TTS and/or transcription languages
-6. `play-media` - Plays audio media from URLs
+**Available Tools (9 total, all registered by default):**
+1. `end-call` — Gracefully terminates the current call
+2. `live-agent-handoff` — Transfers the call to a human agent
+3. `send-dtmf` — Sends DTMF tones during the call
+4. `send-sms` — Sends SMS messages during the call (factory: captures `ServerConfig`)
+5. `switch-language` — Changes TTS and/or transcription languages
+6. `play-media` — Plays audio media from URLs
+7. `set-listen-mode` — Toggles outbound text/play/language suppression for listen-only mode
+8. `set-silence-detection` — Enables/disables the silence reminder timer mid-call
+9. `change-context` — Switches the LLM's system prompt mid-call (factory: captures `CachedAssetsService`)
+
+**Adding a new tool:**
+1. Create `server/src/tools/my-tool.ts` that exports a `defineTool({...})` record (or a factory returning one, if it needs DI).
+2. Add one `.register(myTool)` line in `server/src/tools/index.ts`.
+
+No JSON editing, no filename/manifest-name coupling. Type parameters on `defineTool<TArgs, TResult>` tie the handler's args type to the declared schema — a mismatch fails at compile time.
+
+**Tool-result side-effect conventions:** handlers can return any combination of:
+- `outgoingMessage: { type: 'end' | 'sendDigits' | 'play' | 'language' | 'text', ... }` — Zod-validated and shipped to Twilio (or deferred for terminal `end` frames).
+- `listenMode: boolean` — toggles session listen-mode suppression.
+- `silenceEnabled: boolean` — toggles session silence detection.
+- Any other fields — passed back to the LLM as the function-call output.
 
 ### Language Switching Example
 
@@ -313,22 +332,22 @@ or do you want a general walk-through?"
 {
   "type": "setup",
   "customParameters": {
-    "contextKey": "customerServiceContext",
-    "manifestKey": "limitedToolSet"
+    "contextKey": "customerServiceContext"
   }
 }
 ```
 
 **Runtime Configuration Updates:**
 ```bash
-# Update active call configuration
+# Swap the system prompt for an active call
 curl -X POST '/updateResponseService' \
   --data '{
     "callSid": "CA1234...",
-    "contextKey": "escalationContext",
-    "manifestKey": "managerTools"
+    "contextKey": "escalationContext"
   }'
 ```
+
+> Note: `manifestKey` is accepted by `/updateResponseService` for backward compatibility but is ignored. Tools in v4.12 are registered once in code (all-tools-all-legs); the registry is not swapped mid-call.
 
 ### Quick Start Configuration Examples
 
@@ -341,48 +360,18 @@ npm run dev
 # No additional setup required!
 ```
 
-**Adding a Custom Customer Service Configuration:**
-```bash
-# 1. Upload customer service context
-curl -X POST 'https://your-server/api/sync/context' \
-  --header 'Content-Type: application/json' \
-  --data-raw '{
-    "customerServiceContext": "You are a helpful customer service representative..."
-  }'
+**Adding a Custom Context:**
 
-# 2. Upload restricted tools for customer service
-curl -X POST 'https://your-server/api/sync/toolmanifest' \
-  --header 'Content-Type: application/json' \
-  --data-raw '{
-    "customerServiceTools": {
-      "tools": [
-        {"type": "function", "function": {"name": "send-sms", ...}},
-        {"type": "function", "function": {"name": "live-agent-handoff", ...}}
-      ]
-    }
-  }'
-
-# 3. Set as system default
-curl -X POST 'https://your-server/api/sync/usedconfig' \
-  --data-raw '{
-    "context": "customerServiceContext",
-    "manifest": "customerServiceTools"
-  }'
-```
+1. Drop a new `.md` file into `server/assets/` (or `server/assets/legs/`). Contexts are discovered at startup by the `FileAssetLoader`.
+2. Either set it as the default by editing `serverConfig.json`'s `AssetLoader.activeContextKey`, or switch to it at runtime via `POST /updateResponseService` with `contextKey`.
 
 **Configuration Examples by Use Case:**
 
 **Context Keys:**
-- `defaultContext` - General purpose conversation (auto-created)
+- `defaultContext` - General purpose conversation (shipped)
 - `customerServiceContext` - Customer support scenarios
 - `salesContext` - Sales and lead qualification
 - `technicalSupportContext` - Technical troubleshooting
-
-**Tool Manifest Keys:**
-- `defaultToolManifest` - Standard tool set (auto-created)
-- `limitedTools` - Restricted tools for basic scenarios
-- `managerTools` - Extended tools for escalated calls
-- `adminTools` - Full administrative tool access
 
 ## Environment Configuration
 
@@ -425,7 +414,7 @@ Create environment files (`.env.dev`, `.env.prod`, or `.env`) in the server dire
 
 ```bash
 # Server Configuration
-PORT=3001                                    # Server port number
+PORT=3007                                    # Server port number
 SERVER_BASE_URL=your_server_url              # Base URL for your server (e.g., ngrok URL)
 
 # OpenAI Configuration
@@ -1024,7 +1013,7 @@ SERVER_BASE_URL=XXXXXX.fly.dev
 3. Ensure your `fly.toml` file has the correct port configuration, aligned with your .env PORT variable:
 ```toml
 [http]
-  internal_port = 3001
+  internal_port = 3007
 ```
 
 4. Add the volume mount configuration:

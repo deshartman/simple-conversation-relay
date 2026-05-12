@@ -1,58 +1,65 @@
 import { logOut } from '../utils/logger.js';
-import { SwitchLanguageMessage } from '../interfaces/ConversationRelay.js';
+import { defineTool } from './define-tool.js';
+import type { LanguageFrame } from '../types/crelay.js';
 
-/**
- * Interface for the function arguments
- */
-interface SwitchLanguageFunctionArguments {
+interface SwitchLanguageArgs {
     ttsLanguage?: string;
     transcriptionLanguage?: string;
-    [key: string]: any;
 }
 
-/**
- * Interface for the response object - simple response for conversation
- */
-interface SwitchLanguageResponse {
+interface SwitchLanguageResult {
     success: boolean;
     message: string;
     ttsLanguage?: string;
     transcriptionLanguage?: string;
-    outgoingMessage?: SwitchLanguageMessage;
+    outgoingMessage?: LanguageFrame;
+    [key: string]: unknown;
 }
 
-/**
- * Switches TTS and/or transcription language via WebSocket
- * 
- * @param functionArguments - The arguments for the switch language function
- * @returns Simple response for conversation context with outgoing message for WebSocket routing
- */
-export default function (functionArguments: SwitchLanguageFunctionArguments): SwitchLanguageResponse {
-    logOut('SwitchLanguage', `Switch language function called with arguments: ${JSON.stringify(functionArguments)}`);
+export const switchLanguageTool = defineTool<SwitchLanguageArgs, SwitchLanguageResult>({
+    name: 'switch-language',
+    description:
+        'Switches the TTS and/or transcription language for the conversation. At least one of ttsLanguage or transcriptionLanguage must be provided.',
+    parameters: {
+        type: 'object',
+        properties: {
+            ttsLanguage: {
+                type: 'string',
+                description: "Language code for text-to-speech (e.g., 'en-GB', 'en-US')",
+            },
+            transcriptionLanguage: {
+                type: 'string',
+                description: "Language code for speech-to-text (e.g., 'en-GB', 'en-US')",
+            },
+        },
+        required: [],
+        additionalProperties: false,
+    },
+    handler: args => {
+        logOut('SwitchLanguage', `Called with: ${JSON.stringify(args)}`);
 
-    // Validate that at least one language parameter is provided
-    if (!functionArguments.ttsLanguage && !functionArguments.transcriptionLanguage) {
-        const errorResponse: SwitchLanguageResponse = {
-            success: false,
-            message: 'At least one language parameter (ttsLanguage or transcriptionLanguage) must be provided'
-        };
-        logOut('SwitchLanguage', `Switch language validation failed: ${JSON.stringify(errorResponse)}`);
-        return errorResponse;
-    }
-
-    // Return response with both conversation context and outgoing message
-    const response: SwitchLanguageResponse = {
-        success: true,
-        message: `Language switched successfully`,
-        ttsLanguage: functionArguments.ttsLanguage,
-        transcriptionLanguage: functionArguments.transcriptionLanguage,
-        outgoingMessage: {
-            type: "language",
-            ttsLanguage: functionArguments.ttsLanguage,
-            transcriptionLanguage: functionArguments.transcriptionLanguage
+        if (!args.ttsLanguage && !args.transcriptionLanguage) {
+            // Pre-validation guard: an empty `language` frame is not useful
+            // and would fail Zod refinement on the outgoing path. Return a
+            // loud failure to the LLM instead of shipping nothing.
+            return {
+                success: false,
+                message:
+                    'At least one language parameter (ttsLanguage or transcriptionLanguage) must be provided',
+            };
         }
-    };
 
-    logOut('SwitchLanguage', `Switch language response: ${JSON.stringify(response)}`);
-    return response;
-}
+        const frame: LanguageFrame = { type: 'language' };
+        if (args.ttsLanguage) frame.ttsLanguage = args.ttsLanguage;
+        if (args.transcriptionLanguage) frame.transcriptionLanguage = args.transcriptionLanguage;
+
+        const result: SwitchLanguageResult = {
+            success: true,
+            message: 'Language switched successfully',
+            outgoingMessage: frame,
+        };
+        if (args.ttsLanguage) result.ttsLanguage = args.ttsLanguage;
+        if (args.transcriptionLanguage) result.transcriptionLanguage = args.transcriptionLanguage;
+        return result;
+    },
+});

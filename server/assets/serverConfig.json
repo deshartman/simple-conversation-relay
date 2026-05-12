@@ -55,7 +55,6 @@
     },
     "AssetLoader": {
         "activeContextKey": "defaultContext",
-        "activeManifestKey": "defaultToolManifest",
         "assetLoaderType": "file"
     },
     "Server": {

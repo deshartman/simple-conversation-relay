@@ -1,48 +1,47 @@
 import { logOut } from '../utils/logger.js';
-import { EndSessionMessage } from '../interfaces/ConversationRelay.js';
+import { defineTool } from './define-tool.js';
+import type { EndFrame } from '../types/crelay.js';
 
-/**
- * Interface for the function arguments
- */
-interface EndCallFunctionArguments {
-    summary: string;
-    [key: string]: any;
+interface EndCallArgs {
+    conversationSummary: string;
 }
 
-/**
- * Interface for the response object - simple response for conversation
- */
-interface EndCallResponse {
+interface EndCallResult {
     success: boolean;
     message: string;
     summary: string;
-    outgoingMessage?: EndSessionMessage;
+    outgoingMessage: EndFrame;
+    [key: string]: unknown;
 }
 
-/**
- * Ends the call with a summary and triggers call termination via WebSocket
- * 
- * @param functionArguments - The arguments for the end call function
- * @returns Simple response for conversation context with outgoing message for WebSocket routing
- */
-export default function (functionArguments: EndCallFunctionArguments): EndCallResponse {
-    logOut('EndCall', `End call function called with arguments: ${JSON.stringify(functionArguments)}`);
+export const endCallTool = defineTool<EndCallArgs, EndCallResult>({
+    name: 'end-call',
+    description: 'end this call now',
+    parameters: {
+        type: 'object',
+        properties: {
+            conversationSummary: {
+                type: 'string',
+                description: 'A summary of the call',
+            },
+        },
+        required: ['conversationSummary'],
+    },
+    handler: args => {
+        logOut('EndCall', `End call function called with arguments: ${JSON.stringify(args)}`);
 
-    // Return response with both conversation context and outgoing message
-    const response: EndCallResponse = {
-        success: true,
-        message: `Call ended successfully`,
-        summary: functionArguments.summary,
-        outgoingMessage: {
-            type: "end",
-            handoffData: JSON.stringify({
-                reasonCode: "end-call",
-                reason: "Ending the call",
-                conversationSummary: functionArguments.summary,
-            })
-        }
-    };
-
-    logOut('EndCall', `End call response: ${JSON.stringify(response)}`);
-    return response;
-}
+        return {
+            success: true,
+            message: 'Call ended successfully',
+            summary: args.conversationSummary,
+            outgoingMessage: {
+                type: 'end',
+                handoffData: JSON.stringify({
+                    reasonCode: 'end-call',
+                    reason: 'Ending the call',
+                    conversationSummary: args.conversationSummary,
+                }),
+            },
+        };
+    },
+});
