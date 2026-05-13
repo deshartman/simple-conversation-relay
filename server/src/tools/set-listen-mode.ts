@@ -1,61 +1,51 @@
-import { logOut, logError } from '../utils/logger.js';
+import { logOut } from '../utils/logger.js';
+import { defineTool } from './define-tool.js';
 
-/**
- * Interface for the function arguments
- */
-interface SetListenModeArguments {
+interface SetListenModeArgs {
     enabled: boolean;
-    [key: string]: any;
 }
 
-/**
- * Interface for the response object
- */
-interface SetListenModeResponse {
+interface SetListenModeResult {
     success: boolean;
     message: string;
     listenMode: boolean;
+    [key: string]: unknown;
 }
 
-/**
- * Sets the listen mode configuration dynamically during conversation.
- * When enabled, CRelay listens but suppresses text responses (tool execution continues).
- * When disabled, normal text responses are enabled.
- *
- * @param functionArguments - The arguments for the set listen mode function
- * @returns Response indicating success/failure of mode change
- */
-export default async function (functionArguments: SetListenModeArguments): Promise<SetListenModeResponse> {
-    console.log('🎧 SetListenModeTool: Function called with arguments:', JSON.stringify(functionArguments, null, 2));
-    logOut('SetListenModeTool', `Set listen mode function called with arguments: ${JSON.stringify(functionArguments)}`);
+export const setListenModeTool = defineTool<SetListenModeArgs, SetListenModeResult>({
+    name: 'set-listen-mode',
+    description:
+        'Enables or disables listen mode. When enabled, the agent listens but suppresses outgoing text/play/language frames (DTMF and end still ship). When disabled, normal outbound behavior resumes.',
+    parameters: {
+        type: 'object',
+        properties: {
+            enabled: {
+                type: 'boolean',
+                description: 'Set to true to enable listen-only mode, false to resume normal mode',
+            },
+        },
+        required: ['enabled'],
+        additionalProperties: false,
+    },
+    handler: args => {
+        logOut('SetListenMode', `Called with: ${JSON.stringify(args)}`);
 
-    try {
-        // Validate required parameters
-        if (typeof functionArguments.enabled !== 'boolean') {
-            throw new Error('enabled parameter is required and must be boolean');
+        if (typeof args.enabled !== 'boolean') {
+            return {
+                success: false,
+                message: 'enabled parameter is required and must be boolean',
+                listenMode: false,
+            };
         }
 
-        const modeDescription = functionArguments.enabled ? 'listen-only mode (text responses suppressed)' : 'normal mode (text responses enabled)';
+        const modeDescription = args.enabled
+            ? 'listen-only mode (text responses suppressed)'
+            : 'normal mode (text responses enabled)';
 
-        const response: SetListenModeResponse = {
+        return {
             success: true,
-            message: `Listen mode set to ${functionArguments.enabled ? 'enabled' : 'disabled'}. ${modeDescription}`,
-            listenMode: functionArguments.enabled
+            message: `Listen mode set to ${args.enabled ? 'enabled' : 'disabled'}. ${modeDescription}`,
+            listenMode: args.enabled,
         };
-
-        console.log('✅ SetListenModeTool: Success! Response:', JSON.stringify(response, null, 2));
-        logOut('SetListenModeTool', `Set listen mode response: ${JSON.stringify(response)}`);
-        return response;
-
-    } catch (error) {
-        const errorResponse: SetListenModeResponse = {
-            success: false,
-            message: `Failed to set listen mode: ${error instanceof Error ? error.message : String(error)}`,
-            listenMode: false
-        };
-        console.error('❌ SetListenModeTool: Error occurred:', error);
-        console.error('💥 SetListenModeTool: Error response:', JSON.stringify(errorResponse, null, 2));
-        logError('SetListenModeTool', `Set listen mode error: ${JSON.stringify(errorResponse)}`);
-        return errorResponse;
-    }
-}
+    },
+});

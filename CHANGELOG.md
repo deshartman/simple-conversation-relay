@@ -1,5 +1,99 @@
 # Changelog
 
+## Release v4.12.0
+
+### ConversationRelay Session Model + In-Code Tool Registry
+
+Ports CRelay patterns from the upcoming `@twilio/tac-conversationrelay` package (see [twilio-innovation/twilio-agent-connect-typescript PR #54](https://github.com/twilio-innovation/twilio-agent-connect-typescript/pull/54)) into this reference implementation. The WebSocket wire protocol is unchanged — this is an internal architecture refresh.
+
+#### 🎯 Key Features
+
+**Per-WebSocket session class (`ConversationRelaySession`):**
+- Replaces `ConversationRelayService`. One session per WebSocket, owning every scrap of per-call state (callSid, listen mode, silence handler, pending terminal frame, in-flight tool promises).
+- Sole writer to the WebSocket — `ws.send` is injected as a constructor callback so nothing else in the codebase can bypass listen-mode gating or frame validation.
+- First-class outgoing methods: `sendText`, `sendDigits`, `sendPlay`, `switchLanguage`, `endCall`.
+
+**In-code tool registry (`defineTool` + `ToolRegistry`):**
+- Tool schema and handler now co-located in each `server/src/tools/*.ts` file via `defineTool({...})`.
+- `ToolRegistry` built once at server startup via `buildDefaultRegistry(config, cachedAssetsService)`.
+- `defaultToolManifest.json` and `legs/*/toolManifest.json` deleted — the manifest was a split source-of-truth that nothing enforced at compile time.
+- Handler signature is now `(args, session) => Promise<Result>`. Per-call state lives on `session`; handlers are stateless, so the process-wide registry is safe across concurrent sessions.
+- Incidental fix: `play-media` and `set-listen-mode` were present in `server/src/tools/` but absent from v4.11's manifest — they are now actually exposed to the LLM.
+
+**Zod-validated wire frames:**
+- New `server/src/types/crelay.ts` with discriminated-union schemas for every incoming and outgoing frame.
+- Incoming frames use `.passthrough()` so unknown future Twilio fields don't hard-fail.
+- Compile-time SDK drift guards pinned to `twilio/lib/twiml/VoiceResponse.LanguageAttributes` — a breaking Twilio SDK type change will fail `tsc`.
+
+**Progressive-timeout SilenceHandler:**
+- Switched from `setInterval` polling to a progressive `setTimeout` chain. Identical behaviour on the wire (same reminders, same terminal `end` frame with `reasonCode: 'unresponsive'`), but no per-second wakeups and accurate threshold timing.
+- Legacy `startMonitoring(onMessage)` API preserved for back-compat.
+
+**Terminal-frame deferral + `inFlightToolCalls`:**
+- When a tool returns an `end` frame mid-turn, the session stashes it as `pendingTerminalFrame` and flushes only after the final text token.
+- `sendText(last: true)` awaits `inFlightToolCalls` before the terminal flush — closes a race where the LLM's streamed farewell could outrun a tool-dispatched terminal.
+
+#### 🔧 Technical Implementation
+
+**Tool definition (`defineTool`):**
+```typescript
+export const endCallTool = defineTool<EndCallArgs, EndCallResult>({
+    name: 'end-call',
+    description: 'end this call now',
+    parameters: {
+        type: 'object',
+        properties: { conversationSummary: { type: 'string', ... } },
+        required: ['conversationSummary'],
+    },
+    handler: args => ({
+        success: true,
+        message: 'Call ended successfully',
+        summary: args.conversationSummary,
+        outgoingMessage: { type: 'end', handoffData: JSON.stringify({...}) },
+    }),
+});
+```
+
+**Registry composition (startup):**
+```typescript
+new ToolRegistry()
+    .register(endCallTool)
+    .register(liveAgentHandoffTool)
+    .register(sendDtmfTool)
+    .register(playMediaTool)
+    .register(switchLanguageTool)
+    .register(setListenModeTool)
+    .register(setSilenceDetectionTool)
+    .register(createSendSMSTool(serverConfig))
+    .register(createChangeContextTool(cachedAssetsService));
+```
+
+**Tool-result side-effect conventions:**
+- `silenceEnabled: boolean` → session toggles silence handler (replaces the old `outgoingMessage: { type: 'setSilenceDetection' }` pseudo-frame).
+- `listenMode: boolean` → session toggles listen-mode gating.
+- `outgoingMessage: OutgoingFrame` → validated via Zod, shipped to Twilio (or deferred for terminal `end` frames).
+
+#### ⚠️ Breaking Changes (internal)
+
+- `ConversationRelayService` class removed. Use `ConversationRelaySession`.
+- `SetSilenceDetectionMessage` type removed. Tools now return `silenceEnabled: boolean` instead of `outgoingMessage: { type: 'setSilenceDetection', enabled }`.
+- `defaultToolManifest.json` and `legs/*/toolManifest.json` removed. Tool schema lives in each tool file via `defineTool`. Per-leg tool subsets are no longer supported — every registered tool is exposed on every call (all-tools-all-legs).
+- `OpenAIResponseService` constructor signature changed: takes a `ToolRegistry` instead of `(manifest, loadedTools)`.
+- `ResponseHandler` gained an optional `toolCallStart?(promise)` method for in-flight tool tracking.
+- WebSocket wire protocol is unchanged — external Twilio consumers are unaffected.
+
+#### 📦 Dependency Updates (all to latest)
+
+Major bumps: `twilio` 5→**6.0.2**, `express` 4→**5.2.1**, `openai` 5→**6.37**, `zod` 3→**4.4.3**, `typescript` 5→**6.0.3**, `@types/node` 22→**25**, `dotenv` 16→**17**. Only runtime change required was `zod` renaming `.error.errors` to `.error.issues` (three call sites).
+
+#### ✅ Verification
+
+- Build: `npm run build` — zero TS errors
+- Tests: `npm test` — 61 passed, 3 skipped
+- Runtime: inbound call smoke-tested end-to-end (greeting, streaming response, tool calls, interrupt)
+
+---
+
 ## Release v4.11.0
 
 ### Tool Factory Pattern & Anti-Pattern Elimination (Phase 1 IoC Refactoring)

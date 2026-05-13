@@ -1,7 +1,9 @@
 /**
  * send-sms Tool Tests
  *
- * Tests for the send-sms tool factory and execution
+ * Tests for the send-sms tool factory and execution.
+ * v4.12: factory returns a `ConversationRelayTool` record; tests call
+ * `tool.handler(args, session)` instead of `tool(args, responseService)`.
  */
 
 import { describe, it, expect, beforeEach, vi } from 'vitest';
@@ -20,18 +22,19 @@ vi.mock('twilio', () => {
     };
 });
 
-// Import twilio after mocking
 import twilio from 'twilio';
+
+// A minimal session stand-in. send-sms doesn't touch the session, so an empty
+// object satisfies the handler signature at runtime.
+const stubSession = {} as any;
 
 describe('send-sms Tool', () => {
     let testConfig: ServerConfig;
 
     beforeEach(() => {
-        // Reset mocks
         vi.clearAllMocks();
         mockCreate.mockReset();
 
-        // Create test config
         testConfig = ServerConfig.forTesting({
             twilioAccountSid: 'AC-test-sid',
             twilioAuthToken: 'test-token',
@@ -40,12 +43,14 @@ describe('send-sms Tool', () => {
     });
 
     describe('Factory Pattern', () => {
-        it('should create a tool function with proper signature', () => {
+        it('should create a tool record with handler and schema', () => {
             const tool = createSendSMSTool(testConfig);
 
             expect(tool).toBeDefined();
-            expect(typeof tool).toBe('function');
-            expect(tool.length).toBe(2); // Should accept 2 parameters: args, responseService (optional)
+            expect(tool.name).toBe('send-sms');
+            expect(typeof tool.handler).toBe('function');
+            expect(tool.parameters).toBeDefined();
+            expect(typeof tool.toOpenAIFormat).toBe('function');
         });
 
         it('should capture config in closure', async () => {
@@ -53,14 +58,12 @@ describe('send-sms Tool', () => {
 
             const tool = createSendSMSTool(testConfig);
 
-            await tool({ to: '+15559999999', message: 'Test SMS' });
+            await tool.handler({ to: '+15559999999', message: 'Test SMS' }, stubSession);
 
-            // Verify twilio was initialized with config credentials (not process.env)
             expect(twilio).toHaveBeenCalledWith('AC-test-sid', 'test-token');
         });
 
         it('should not access process.env', async () => {
-            // Set env vars that should NOT be used
             process.env.ACCOUNT_SID = 'AC-env-sid';
             process.env.AUTH_TOKEN = 'env-token';
             process.env.FROM_NUMBER = '+15550000000';
@@ -69,17 +72,15 @@ describe('send-sms Tool', () => {
 
             const tool = createSendSMSTool(testConfig);
 
-            await tool({ to: '+15559999999', message: 'Test SMS' });
+            await tool.handler({ to: '+15559999999', message: 'Test SMS' }, stubSession);
 
-            // Should use config, not env vars
             expect(twilio).toHaveBeenCalledWith('AC-test-sid', 'test-token');
             expect(mockCreate).toHaveBeenCalledWith({
                 body: 'Test SMS',
-                from: '+15551234567', // From config, not env
+                from: '+15551234567',
                 to: '+15559999999'
             });
 
-            // Clean up
             delete process.env.ACCOUNT_SID;
             delete process.env.AUTH_TOKEN;
             delete process.env.FROM_NUMBER;
@@ -92,10 +93,10 @@ describe('send-sms Tool', () => {
 
             const tool = createSendSMSTool(testConfig);
 
-            const result = await tool({
-                to: '+15559999999',
-                message: 'Hello from test'
-            });
+            const result = await tool.handler(
+                { to: '+15559999999', message: 'Hello from test' },
+                stubSession
+            );
 
             expect(mockCreate).toHaveBeenCalledWith({
                 body: 'Hello from test',
@@ -110,43 +111,20 @@ describe('send-sms Tool', () => {
             });
         });
 
-        it('should accept optional responseService parameter', async () => {
-            mockCreate.mockResolvedValue({ sid: 'SM123456' });
-
-            const tool = createSendSMSTool(testConfig);
-            const mockResponseService = { someMethod: vi.fn() };
-
-            // Should not throw when responseService is passed
-            const result = await tool(
-                { to: '+15559999999', message: 'Test' },
-                mockResponseService
-            );
-
-            expect(result.success).toBe(true);
-        });
-
-        it('should work without responseService parameter', async () => {
-            mockCreate.mockResolvedValue({ sid: 'SM123456' });
-
-            const tool = createSendSMSTool(testConfig);
-
-            // Should work without responseService
-            const result = await tool({ to: '+15559999999', message: 'Test' });
-
-            expect(result.success).toBe(true);
-        });
-
         it('should accept extra properties from LLM', async () => {
             mockCreate.mockResolvedValue({ sid: 'SM123456' });
 
             const tool = createSendSMSTool(testConfig);
 
-            const result = await tool({
-                to: '+15559999999',
-                message: 'Test',
-                extraProperty: 'should be ignored',
-                anotherExtra: 123
-            });
+            const result = await tool.handler(
+                {
+                    to: '+15559999999',
+                    message: 'Test',
+                    extraProperty: 'should be ignored',
+                    anotherExtra: 123
+                } as any,
+                stubSession
+            );
 
             expect(result.success).toBe(true);
         });
@@ -158,10 +136,7 @@ describe('send-sms Tool', () => {
 
             const tool = createSendSMSTool(testConfig);
 
-            const result = await tool({
-                to: 'invalid',
-                message: 'Test'
-            });
+            const result = await tool.handler({ to: 'invalid', message: 'Test' }, stubSession);
 
             expect(result).toEqual({
                 success: false,
@@ -174,10 +149,10 @@ describe('send-sms Tool', () => {
 
             const tool = createSendSMSTool(testConfig);
 
-            const result = await tool({
-                to: '+15559999999',
-                message: 'Test'
-            });
+            const result = await tool.handler(
+                { to: '+15559999999', message: 'Test' },
+                stubSession
+            );
 
             expect(result.success).toBe(false);
             expect(result.message).toContain('SMS send failed: String error');
@@ -188,10 +163,10 @@ describe('send-sms Tool', () => {
 
             const tool = createSendSMSTool(testConfig);
 
-            const result = await tool({
-                to: '+15559999999',
-                message: 'Test'
-            });
+            const result = await tool.handler(
+                { to: '+15559999999', message: 'Test' },
+                stubSession
+            );
 
             expect(result).toEqual({
                 success: false,
@@ -206,11 +181,9 @@ describe('send-sms Tool', () => {
 
             const tool = createSendSMSTool(testConfig);
 
-            // Call tool twice
-            await tool({ to: '+15559999999', message: 'First' });
-            await tool({ to: '+15558888888', message: 'Second' });
+            await tool.handler({ to: '+15559999999', message: 'First' }, stubSession);
+            await tool.handler({ to: '+15558888888', message: 'Second' }, stubSession);
 
-            // Twilio should be called twice (creates new client each time)
             expect(twilio).toHaveBeenCalledTimes(2);
         });
     });

@@ -1,6 +1,6 @@
 {
   "name": "simple-conversation-relay-server",
-  "version": "4.11.0",
+  "version": "4.12.0",
   "description": "WebSocket server for Twilio Conversation Relay",
   "main": "dist/server.js",
   "type": "module",
@@ -18,26 +18,27 @@
   "author": "Des Hartman",
   "license": "MIT",
   "dependencies": {
-    "@modelcontextprotocol/sdk": "^1.12.0",
-    "dotenv": "^16.3.1",
+    "@modelcontextprotocol/sdk": "^1.29.0",
+    "dotenv": "^17.4.2",
     "events": "^3.3.0",
-    "express": "^4.21.1",
+    "express": "^5.2.1",
     "express-ws": "^5.0.2",
     "fs": "0.0.1-security",
-    "openai": "^5.12.2",
+    "openai": "^6.37.0",
     "path": "^0.12.7",
-    "twilio": "^5.10.6"
+    "twilio": "^6.0.2",
+    "zod": "^4.4.3"
   },
   "devDependencies": {
     "@flydotio/dockerfile": "^0.7.10",
-    "@types/express": "^5.0.2",
-    "@types/express-ws": "^3.0.5",
-    "@types/node": "^22.15.19",
-    "@vitest/ui": "^4.0.18",
-    "nodemon": "^3.0.2",
+    "@types/express": "^5.0.6",
+    "@types/express-ws": "^3.0.6",
+    "@types/node": "^25.7.0",
+    "@vitest/ui": "^4.1.6",
+    "nodemon": "^3.1.14",
     "ts-node-dev": "^2.0.0",
-    "tsx": "^4.7.1",
-    "typescript": "^5.0.0",
-    "vitest": "^4.0.18"
+    "tsx": "^4.21.0",
+    "typescript": "^6.0.3",
+    "vitest": "^4.1.6"
   }
 }

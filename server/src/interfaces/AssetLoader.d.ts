@@ -21,7 +21,8 @@ export interface ServerConfig {
     };
     AssetLoader: {
         activeContextKey: string;
-        activeManifestKey: string;
+        /** @deprecated v4.12: tools are registered in code; this field is ignored. */
+        activeManifestKey?: string;
         assetLoaderType: AssetLoaderConfig;
     };
     Server: {
@@ -55,10 +56,10 @@ export interface AssetLoader {
     loadContexts(keys: string[]): Promise<Map<string, string>>;
 
     /**
-     * Loads specific manifests by keys
-     * @param keys Array of manifest keys to load
-     * @returns Promise resolving to a Map of manifest keys to manifest objects
+     * @deprecated v4.12: tools are now registered in code, not via JSON
+     * manifests. Kept in the interface (optional) for back-compat with
+     * existing `FileAssetLoader` / `SyncAssetLoader` implementations.
      */
-    loadManifests(keys: string[]): Promise<Map<string, object>>;
+    loadManifests?(keys: string[]): Promise<Map<string, object>>;
 
 }

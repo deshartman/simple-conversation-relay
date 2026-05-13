@@ -1,67 +1,54 @@
-import { logOut, logError } from '../utils/logger.js';
+import { logOut } from '../utils/logger.js';
+import { defineTool } from './define-tool.js';
 
-/**
- * Interface for the function arguments
- */
-interface SetSilenceDetectionArguments {
+interface SetSilenceDetectionArgs {
     enabled: boolean;
-    [key: string]: any;
 }
 
-/**
- * Interface for the response object
- */
-interface SetSilenceDetectionResponse {
+interface SetSilenceDetectionResult {
     success: boolean;
     message: string;
-    silenceDetectionEnabled: boolean;
-    outgoingMessage?: {
-        type: string;
-        enabled: boolean;
-    };
+    silenceEnabled: boolean;
+    [key: string]: unknown;
 }
 
-/**
- * Enables or disables silence detection monitoring during the call.
- * When enabled, the system monitors for periods of silence and sends reminder messages.
- * When disabled, no silence monitoring occurs.
- *
- * @param functionArguments - The arguments for the set silence detection function
- * @returns Response indicating success/failure with outgoingMessage to trigger the change
- */
-export default async function (functionArguments: SetSilenceDetectionArguments): Promise<SetSilenceDetectionResponse> {
-    logOut('SetSilenceDetection', `Function called with arguments: ${JSON.stringify(functionArguments)}`);
+export const setSilenceDetectionTool = defineTool<
+    SetSilenceDetectionArgs,
+    SetSilenceDetectionResult
+>({
+    name: 'set-silence-detection',
+    description:
+        'Enables or disables silence detection monitoring during the call. When enabled, the system monitors for periods of silence and sends reminder messages. When disabled, no silence monitoring occurs. Use this to temporarily disable silence detection during activities where the caller may not speak for extended periods (e.g., entering payment information, looking up documents).',
+    parameters: {
+        type: 'object',
+        properties: {
+            enabled: {
+                type: 'boolean',
+                description: 'Set to true to enable silence detection, false to disable it',
+            },
+        },
+        required: ['enabled'],
+        additionalProperties: false,
+    },
+    handler: args => {
+        logOut('SetSilenceDetection', `Called with: ${JSON.stringify(args)}`);
 
-    try {
-        // Validate required parameters
-        if (typeof functionArguments.enabled !== 'boolean') {
-            throw new Error('enabled parameter is required and must be boolean');
+        if (typeof args.enabled !== 'boolean') {
+            return {
+                success: false,
+                message: 'enabled parameter is required and must be boolean',
+                silenceEnabled: false,
+            };
         }
 
-        const modeDescription = functionArguments.enabled
+        const modeDescription = args.enabled
             ? 'enabled (will monitor for silence and send reminders)'
             : 'disabled (no silence monitoring)';
 
-        const response: SetSilenceDetectionResponse = {
+        return {
             success: true,
             message: `Silence detection ${modeDescription}`,
-            silenceDetectionEnabled: functionArguments.enabled,
-            outgoingMessage: {
-                type: 'setSilenceDetection',
-                enabled: functionArguments.enabled
-            }
+            silenceEnabled: args.enabled,
         };
-
-        logOut('SetSilenceDetection', `Response: ${JSON.stringify(response)}`);
-        return response;
-
-    } catch (error) {
-        const errorResponse: SetSilenceDetectionResponse = {
-            success: false,
-            message: `Failed to set silence detection: ${error instanceof Error ? error.message : String(error)}`,
-            silenceDetectionEnabled: false
-        };
-        logError('SetSilenceDetection', `Error: ${JSON.stringify(errorResponse)}`);
-        return errorResponse;
-    }
-}
+    },
+});

@@ -146,7 +146,9 @@ class TwilioService extends EventEmitter {
 
             // Generate the TwiML with dynamic configuration
             const response: VoiceResponse = new twilio.twiml.VoiceResponse();
-            const connect: VoiceResponse.Connect = response.connect();
+            const connect: VoiceResponse.Connect = response.connect({
+                action: `https://${serverBaseUrl}/handoff`,
+            });
             const filteredConfig = this.filterUnsetValues(config);
 
             // Extract languages and parameters before spreading config

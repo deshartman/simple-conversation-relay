@@ -26,6 +26,13 @@ export interface ResponseHandler {
     toolResult(toolResult: ToolResultEvent): void;
     error(error: Error): void;
     callSid(callSid: string, responseMessage: any): void;
+    /**
+     * Optional. Called when a tool call begins execution — before the
+     * handler promise resolves. Lets the caller (typically a
+     * `ConversationRelaySession`) track in-flight tool promises so
+     * terminal-text flushing can await them.
+     */
+    toolCallStart?(promise: Promise<unknown>): void;
 }
 
 /**
@@ -98,12 +105,12 @@ export interface ResponseService {
         updateContext(context: string): Promise<void>;
 
         /**
-         * Updates the tool manifest for the response service
-         * 
-         * @param toolManifest - New tool manifest object
-         * @returns Promise that resolves when update is complete
+         * Updates the tool registry for the response service.
+         * v4.12: replaced the `object` (JSON manifest) arg with a
+         * `ToolRegistry`. Typed as `any` in this declaration file to avoid a
+         * cross-layer import; implementations narrow it.
          */
-        updateTools(toolManifest: object): Promise<void>;
+        updateTools(registry: any): void;
 
         /**
          * Performs cleanup of service resources
