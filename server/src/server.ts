@@ -11,6 +11,7 @@
 import dotenv from 'dotenv';
 import express from 'express';
 import expressWs, { Application as ExpressWSApplication } from 'express-ws';
+import twilio from 'twilio';
 import { logOut, logError } from './utils/logger.js';
 import { fileURLToPath } from 'url';
 import { existsSync } from 'fs';
@@ -313,6 +314,26 @@ app.post('/connectConversationRelay', async (req: express.Request, res: express.
     } else {
         res.status(500).send('Failed to generate voice response to connect Conversation Relay');
     }
+});
+
+app.post('/handoff', (req: express.Request, res: express.Response) => {
+    const handoffData = req.body.HandoffData;
+    logOut('Server', `/handoff: Conversation Relay ended. HandoffData=${handoffData}`);
+
+    const twiml = new twilio.twiml.VoiceResponse();
+
+    let reasonCode: string | undefined;
+    try {
+        reasonCode = handoffData ? JSON.parse(handoffData).reasonCode : undefined;
+    } catch {
+        // Malformed HandoffData — fall through to empty TwiML (clean hangup).
+    }
+
+    if (reasonCode === 'live-agent-handoff') {
+        twiml.play({ loop: 3 }, 'https://demo.twilio.com/docs/classic.mp3');
+    }
+
+    res.type('text/xml').send(twiml.toString());
 });
 
 app.post('/twilioStatusCallback', async (req: express.Request, res: express.Response) => {
