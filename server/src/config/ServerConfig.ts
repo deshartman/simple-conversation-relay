@@ -37,6 +37,16 @@ export class ServerConfig {
      */
     public readonly validateTwilioWebhooks: boolean;
 
+    /**
+     * Bearer token required by `POST /outboundCall`. Twilio never calls that
+     * endpoint, so signature validation cannot protect it. Unset means the
+     * route refuses service (503) rather than running unauthenticated.
+     */
+    public readonly outboundApiKey?: string;
+
+    /** Rolling-minute cap on outbound calls. Bounds spend if the token leaks. */
+    public readonly outboundRateLimitPerMinute: number;
+
     constructor(data: {
         port: number;
         serverBaseUrl: string;
@@ -50,6 +60,8 @@ export class ServerConfig {
         twilioRegion?: string;
         assetLoaderType: string;
         validateTwilioWebhooks: boolean;
+        outboundApiKey?: string;
+        outboundRateLimitPerMinute: number;
     }) {
         this.port = data.port;
         this.serverBaseUrl = data.serverBaseUrl;
@@ -63,6 +75,8 @@ export class ServerConfig {
         this.twilioRegion = data.twilioRegion;
         this.assetLoaderType = data.assetLoaderType;
         this.validateTwilioWebhooks = data.validateTwilioWebhooks;
+        this.outboundApiKey = data.outboundApiKey;
+        this.outboundRateLimitPerMinute = data.outboundRateLimitPerMinute;
     }
 
     /**
@@ -112,7 +126,14 @@ export class ServerConfig {
             twilioRegion: process.env.TWILIO_REGION,
             assetLoaderType: process.env.ASSET_LOADER_TYPE || 'file',
             // Opt-out rather than opt-in: signature checking should be the default.
-            validateTwilioWebhooks: process.env.TWILIO_VALIDATE_WEBHOOKS !== 'false'
+            validateTwilioWebhooks: process.env.TWILIO_VALIDATE_WEBHOOKS !== 'false',
+            // Deliberately no default: an absent key must disable the route,
+            // not fall back to something guessable.
+            outboundApiKey: process.env.OUTBOUND_API_KEY,
+            outboundRateLimitPerMinute: parseInt(
+                process.env.OUTBOUND_RATE_LIMIT_PER_MINUTE || '30',
+                10
+            )
         });
     }
 
@@ -132,6 +153,7 @@ export class ServerConfig {
             twilioFromNumber: '+15555555555',
             assetLoaderType: 'file',
             validateTwilioWebhooks: false,
+            outboundRateLimitPerMinute: 30,
             ...overrides as any
         });
     }
