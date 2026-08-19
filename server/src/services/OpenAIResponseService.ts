@@ -52,6 +52,14 @@ class OpenAIResponseService implements ResponseService {
     protected isInterrupted: boolean;
     protected registry: ToolRegistry;
     protected inputMessages: ResponseInput;
+    /**
+     * Monotonic id for the current generation. Each `generateResponse()` claims
+     * the next value; a stream whose generation is no longer current stops
+     * emitting. Two prompts arriving close together would otherwise start two
+     * independent streams that both feed the same handler, interleaving their
+     * tokens mid-sentence on the wire.
+     */
+    protected generation = 0;
     /** Set by `setSession()` — required before `generateResponse()` is called via a session. */
     protected session: ConversationRelaySession | null = null;
 
@@ -203,12 +211,22 @@ class OpenAIResponseService implements ResponseService {
         // Handler cleanup is managed by the caller (session).
     }
 
-    private async processStream(stream: any): Promise<void> {
+    private async processStream(stream: any, generation: number): Promise<void> {
         let currentToolCall: ResponsesAPIToolCall | null = null;
 
         // @ts-ignore — OpenAI stream's async-iterator typing lags behind.
         for await (const event of stream) {
             if (this.isInterrupted) break;
+
+            // A newer prompt has arrived; this stream's output is stale and
+            // must not reach the wire alongside the newer response.
+            if (generation !== this.generation) {
+                logOut(
+                    'OpenAIResponseService',
+                    `Abandoning superseded stream (generation ${generation}, current ${this.generation})`
+                );
+                break;
+            }
 
             const eventData = event as ResponseStreamEvent;
 
@@ -262,15 +280,38 @@ class OpenAIResponseService implements ResponseService {
                                     output: JSON.stringify(toolResult),
                                 });
 
-                                const tools = this.registry.listForOpenAI();
-                                const followUpStream = await this.openai.responses.create({
-                                    model: this.model,
-                                    input: this.inputMessages,
-                                    tools: tools.length > 0 ? (tools as unknown as any) : undefined,
-                                    stream: true,
-                                    instructions: this.instructions,
-                                });
-                                await this.processStream(followUpStream);
+                                // A tool that ends the call is terminal: there
+                                // is nothing left to say. Generating a follow-up
+                                // makes the model deliver a second farewell on
+                                // top of the one it already spoke, and the
+                                // caller hears the goodbye twice.
+                                //
+                                // We deliberately do NOT stop reading this
+                                // stream — `response.completed` must still fire
+                                // its `last: true` token, because the session
+                                // defers the terminal frame until the final text
+                                // token. Skip that and the call never hangs up.
+                                const isTerminal =
+                                    (toolResult as { outgoingMessage?: { type?: string } })
+                                        .outgoingMessage?.type === 'end';
+
+                                if (isTerminal) {
+                                    logOut(
+                                        'OpenAIResponseService',
+                                        `Tool '${currentToolCall.name}' is terminal — skipping follow-up generation`
+                                    );
+                                } else {
+                                    const tools = this.registry.listForOpenAI();
+                                    const followUpStream = await this.openai.responses.create({
+                                        model: this.model,
+                                        input: this.inputMessages,
+                                        tools:
+                                            tools.length > 0 ? (tools as unknown as any) : undefined,
+                                        stream: true,
+                                        instructions: this.instructions,
+                                    });
+                                    await this.processStream(followUpStream, generation);
+                                }
                             } else {
                                 logError('OpenAIResponseService', 'Tool execution returned null');
                             }
@@ -311,6 +352,9 @@ class OpenAIResponseService implements ResponseService {
     }
 
     async generateResponse(role: 'user' | 'system' = 'user', prompt: string): Promise<void> {
+        // Cancel-previous: a newer prompt supersedes whatever is in flight.
+        // Claiming the next generation is what stops the older stream.
+        const generation = ++this.generation;
         this.isInterrupted = false;
 
         try {
@@ -328,7 +372,7 @@ class OpenAIResponseService implements ResponseService {
                 instructions: this.instructions,
             });
 
-            await this.processStream(stream);
+            await this.processStream(stream, generation);
         } catch (error) {
             this.responseHandler.error(error as Error);
             throw error;
