@@ -119,6 +119,12 @@ class TwilioService extends EventEmitter {
                 from: this.fromNumber,
                 twiml: conversationRelay,
                 record: true,
+                // Without these there is no visibility into an outbound call
+                // that rings out, is busy, or fails — the only signal would be
+                // a WebSocket that never opens.
+                statusCallback: `https://${serverBaseUrl}/twilioStatusCallback`,
+                statusCallbackMethod: 'POST',
+                statusCallbackEvent: ['initiated', 'ringing', 'answered', 'completed'],
             });
 
             logOut('TwilioService', `Made a call from: ${this.fromNumber} to: ${toNumber}`);

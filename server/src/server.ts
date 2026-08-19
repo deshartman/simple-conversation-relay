@@ -117,6 +117,28 @@ let cachedAssetsService: CachedAssetsService | null = null;
 let serverConfig: ServerConfig;
 let toolRegistry: ToolRegistry;
 
+/**
+ * Verify `X-Twilio-Signature` on the endpoints Twilio actually calls.
+ *
+ * Host and protocol are pinned to SERVER_BASE_URL rather than inferred from the
+ * request, because behind a tunnel Express sees `http://localhost:3007` while
+ * Twilio signed `https://<public-host>` — inferring would fail every time.
+ *
+ * NOTE: this does not protect `/outboundCall`. That endpoint is called by your
+ * own code, not by Twilio, so there is no Twilio signature on it. It still
+ * needs its own authentication.
+ */
+const validateTwilioSignature: express.RequestHandler = (req, res, next) => {
+    if (!serverConfig.validateTwilioWebhooks) return next();
+
+    return twilio.webhook({
+        validate: true,
+        authToken: serverConfig.twilioAuthToken,
+        protocol: 'https',
+        host: serverConfig.serverBaseUrl,
+    })(req, res, next);
+};
+
 async function initializeServices(): Promise<void> {
     try {
         cachedAssetsService = new CachedAssetsService(serverConfig);
@@ -228,8 +250,27 @@ app.ws('/conversation-relay', (ws: any, _req: express.Request) => {
                     `Initial listen mode: ${initialListenMode} (parameter=${listenModeParam ?? '(none)'}, config=${activeAssets.listenMode.enabled})`
                 );
 
+                // Per-call context selection. Without this the active context is
+                // global, so an outbound campaign prompt would also be served to
+                // inbound callers. `contextKey` was previously honoured only by
+                // POST /updateResponseService, i.e. after the call had started.
+                let context = activeAssets.context;
+                const contextKeyParam = message.customParameters?.contextKey;
+                if (contextKeyParam) {
+                    const override = cachedAssetsService.getContext(contextKeyParam);
+                    if (override) {
+                        context = override;
+                        logOut('WS', `Using context '${contextKeyParam}' for this call`);
+                    } else {
+                        logError(
+                            'WS',
+                            `contextKey '${contextKeyParam}' not found — falling back to the active context`
+                        );
+                    }
+                }
+
                 const responseService = new OpenAIResponseService(
-                    activeAssets.context,
+                    context,
                     toolRegistry,
                     serverConfig
                 );
@@ -249,6 +290,11 @@ app.ws('/conversation-relay', (ws: any, _req: express.Request) => {
                 }
 
                 await session.setup();
+
+                // The setup frame is fully consumed above. Passing it to
+                // handleIncoming() as well only logged "Duplicate setup
+                // ignored" on every single call.
+                return;
             }
 
             await session.handleIncoming(message as any);
@@ -341,7 +387,7 @@ app.post('/outboundCall', async (req: express.Request, res: express.Response) =>
     }
 });
 
-app.post('/connectConversationRelay', async (req: express.Request, res: express.Response) => {
+app.post('/connectConversationRelay', validateTwilioSignature, async (req: express.Request, res: express.Response) => {
     logOut('Server', `Received request to connect to Conversation Relay`);
     const parameters = req.body.parameters || {};
     const voiceResponse = await twilioService.connectConversationRelay(
@@ -356,7 +402,7 @@ app.post('/connectConversationRelay', async (req: express.Request, res: express.
     }
 });
 
-app.post('/handoff', (req: express.Request, res: express.Response) => {
+app.post('/handoff', validateTwilioSignature, (req: express.Request, res: express.Response) => {
     const handoffData = req.body.HandoffData;
     logOut('Server', `/handoff: Conversation Relay ended. HandoffData=${handoffData}`);
 
@@ -376,7 +422,7 @@ app.post('/handoff', (req: express.Request, res: express.Response) => {
     res.type('text/xml').send(twiml.toString());
 });
 
-app.post('/twilioStatusCallback', async (req: express.Request, res: express.Response) => {
+app.post('/twilioStatusCallback', validateTwilioSignature, async (req: express.Request, res: express.Response) => {
     const statusCallBack = req.body;
     const callSid = statusCallBack.CallSid;
     logOut(
