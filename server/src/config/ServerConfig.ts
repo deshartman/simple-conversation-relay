@@ -29,6 +29,14 @@ export class ServerConfig {
     // Asset Loader
     public readonly assetLoaderType: string;
 
+    /**
+     * Whether to verify the X-Twilio-Signature header on endpoints Twilio calls
+     * (`/handoff`, `/twilioStatusCallback`, `/connectConversationRelay`).
+     * Defaults to on. Set TWILIO_VALIDATE_WEBHOOKS=false to disable — useful if
+     * a tunnel rewrites the URL in a way that breaks signature matching.
+     */
+    public readonly validateTwilioWebhooks: boolean;
+
     constructor(data: {
         port: number;
         serverBaseUrl: string;
@@ -41,6 +49,7 @@ export class ServerConfig {
         twilioEdge?: string;
         twilioRegion?: string;
         assetLoaderType: string;
+        validateTwilioWebhooks: boolean;
     }) {
         this.port = data.port;
         this.serverBaseUrl = data.serverBaseUrl;
@@ -53,6 +62,7 @@ export class ServerConfig {
         this.twilioEdge = data.twilioEdge;
         this.twilioRegion = data.twilioRegion;
         this.assetLoaderType = data.assetLoaderType;
+        this.validateTwilioWebhooks = data.validateTwilioWebhooks;
     }
 
     /**
@@ -100,7 +110,9 @@ export class ServerConfig {
             twilioFromNumber: process.env.FROM_NUMBER!,
             twilioEdge: process.env.TWILIO_EDGE,
             twilioRegion: process.env.TWILIO_REGION,
-            assetLoaderType: process.env.ASSET_LOADER_TYPE || 'file'
+            assetLoaderType: process.env.ASSET_LOADER_TYPE || 'file',
+            // Opt-out rather than opt-in: signature checking should be the default.
+            validateTwilioWebhooks: process.env.TWILIO_VALIDATE_WEBHOOKS !== 'false'
         });
     }
 
@@ -119,6 +131,7 @@ export class ServerConfig {
             twilioAuthToken: 'test-twilio-token',
             twilioFromNumber: '+15555555555',
             assetLoaderType: 'file',
+            validateTwilioWebhooks: false,
             ...overrides as any
         });
     }

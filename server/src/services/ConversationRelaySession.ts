@@ -113,7 +113,9 @@ export class ConversationRelaySession {
 
         logOut(
             'Session',
-            `${this.logPrefix} constructed (listenMode=${this.listenMode}, silence=${opts.silenceConfig.enabled})`
+            `${this.logPrefix} constructed (listenMode=${this.listenMode}, silence=${
+                this.silenceHandler?.isEnabled() ?? false
+            })`
         );
     }
 
