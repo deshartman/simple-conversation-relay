@@ -212,6 +212,22 @@ app.ws('/conversation-relay', (ws: any, _req: express.Request) => {
 
                 const activeAssets = cachedAssetsService.getActiveAssets();
 
+                // Listen mode is per-call, not global: outbound calls start
+                // silent while inbound callers must be greeted, which a single
+                // config flag cannot express. The `listenMode` <Parameter> set
+                // at dial time wins; otherwise fall back to server config.
+                const listenModeParam = message.customParameters?.listenMode;
+                const initialListenMode =
+                    listenModeParam === 'true'
+                        ? true
+                        : listenModeParam === 'false'
+                          ? false
+                          : activeAssets.listenMode.enabled;
+                logOut(
+                    'WS',
+                    `Initial listen mode: ${initialListenMode} (parameter=${listenModeParam ?? '(none)'}, config=${activeAssets.listenMode.enabled})`
+                );
+
                 const responseService = new OpenAIResponseService(
                     activeAssets.context,
                     toolRegistry,
@@ -222,7 +238,7 @@ app.ws('/conversation-relay', (ws: any, _req: express.Request) => {
                     responseService,
                     sessionData,
                     silenceConfig: activeAssets.silenceDetection,
-                    initialListenMode: activeAssets.listenMode.enabled,
+                    initialListenMode,
                     registry: toolRegistry,
                     send,
                 });

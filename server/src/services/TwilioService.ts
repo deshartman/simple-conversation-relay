@@ -99,7 +99,16 @@ class TwilioService extends EventEmitter {
      */
     async makeOutboundCall(serverBaseUrl: string, toNumber: string, cachedAssetsService: CachedAssetsService, parameters?: Record<string, string>): Promise<any> {
         try {
-            const conversationRelay = await this.connectConversationRelay(serverBaseUrl, cachedAssetsService, parameters);
+            // Outbound calls start in listen mode: the agent stays silent so
+            // the LLM can work out whether it reached a human, an IVR tree or
+            // voicemail before it says anything. An explicit caller-supplied
+            // `listenMode` wins, so a campaign can opt out per call.
+            const callParameters: Record<string, string> = {
+                listenMode: 'true',
+                ...parameters,
+            };
+
+            const conversationRelay = await this.connectConversationRelay(serverBaseUrl, cachedAssetsService, callParameters);
 
             if (!conversationRelay) {
                 throw new Error('Failed to generate TwiML for conversation relay');
@@ -136,12 +145,34 @@ class TwilioService extends EventEmitter {
             logOut('TwilioService', `Generating TwiML for call with parameters: ${JSON.stringify(parameters || {})}`);
 
             // Get configuration from CachedAssetsService
-            const config = cachedAssetsService.getConversationRelayConfig();
+            const cachedConfig = cachedAssetsService.getConversationRelayConfig();
             const languages = cachedAssetsService.getLanguages();
 
-            if (!config) {
+            if (!cachedConfig) {
                 logError('TwilioService', 'No ConversationRelay configuration found');
                 return null;
+            }
+
+            // Shallow-clone: getConversationRelayConfig() returns the cached
+            // object by reference, so mutating it here would corrupt the
+            // config for every subsequent call, inbound ones included.
+            const config = { ...cachedConfig };
+
+            // `welcomeGreeting` is spoken by Twilio TTS before our WebSocket
+            // receives anything, so listen mode cannot suppress it — an agent
+            // that is meant to start silent must have no greeting at all.
+            // Otherwise Twilio talks over the IVR menu we are trying to hear.
+            //
+            // Decided here, from the same `listenMode` parameter that is
+            // emitted as a <Parameter> below, so the TwiML-time greeting
+            // decision and the setup-time session state cannot drift apart.
+            if (parameters?.listenMode === 'true') {
+                config.welcomeGreeting = '';
+                config.welcomeGreetingInterruptible = '';
+                logOut(
+                    'TwilioService',
+                    'Listen mode requested — suppressing welcomeGreeting so the agent starts silent'
+                );
             }
 
             // Generate the TwiML with dynamic configuration
