@@ -17,6 +17,7 @@ mcp-server/build
 server/.dockerignore
 server/Dockerfile
 server/fly.toml
+server/assets/legs
 
 # Ignore all files in server/assets/ except defaults
 server/assets/*

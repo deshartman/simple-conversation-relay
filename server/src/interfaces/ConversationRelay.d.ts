@@ -1,109 +1,66 @@
 /**
- * ConversationRelay Type Definitions
- * Centralized type definitions for IncomingMessage and OutgoingMessage interfaces
+ * Legacy CR type surface.
+ *
+ * v4.12: The wire-frame types live in `src/types/crelay.ts` (Zod-inferred).
+ * This file now re-exports those for back-compat with existing imports, and
+ * retains:
+ *
+ *   - The Twilio SDK-backed TwiML configuration types (`ConversationRelay`
+ *     etc.) used by the TwiML builder in `TwilioService`.
+ *   - `SessionData`, consumed by the server WS handler and session class.
+ *   - `ConversationRelayConfig`, the extended TwiML config shape used in
+ *     `serverConfig.json`.
  */
 
-/**
- * Interface for incoming messages from clients
- * Combines all fields from both server.ts and ConversationRelayService.ts definitions
- */
-export interface IncomingMessage {
-    type: 'setup' | 'prompt' | 'dtmf' | 'interrupt' | 'info' | 'error';
-    callSid?: string;
-    customParameters?: {
-        callReference?: string;
-        contextFile?: string;
-        toolManifestFile?: string;
-    };
-    voicePrompt?: string;
-    utteranceUntilInterrupt?: string;
-    digit?: string;
-    description?: string;
-    [key: string]: any;
+import type { VoiceResponse } from 'twilio/lib/twiml/VoiceResponse.js';
+
+// -- TwiML types (unchanged) -------------------------------------------------
+
+export type ConversationRelay = VoiceResponse.ConversationRelayAttributes;
+export type ConversationRelayLanguage = VoiceResponse.LanguageAttributes;
+export type ConversationRelayParameter = VoiceResponse.ParameterAttributes;
+
+export interface ConversationRelayConfig extends ConversationRelay {
+    languages?: ConversationRelayLanguage[];
+    parameters?: ConversationRelayParameter[];
 }
 
-/**
- * Text tokens message for streaming text responses
- */
-export interface TextTokensMessage {
-    type: 'text-tokens';
-    text: string;
-    [key: string]: any;
-}
+// -- Session data ------------------------------------------------------------
 
-/**
- * Play media message for audio content
- */
-export interface PlayMediaMessage {
-    type: 'play-media';
-    mediaUrl: string;
-    [key: string]: any;
-}
-
-/**
- * Send digits message for DTMF tones
- */
-export interface SendDigitsMessage {
-    type: 'send-digits';
-    digits: string;
-    [key: string]: any;
-}
-
-/**
- * Switch language message for changing conversation language
- */
-export interface SwitchLanguageMessage {
-    type: 'switch-language';
-    language: string;
-    [key: string]: any;
-}
-
-/**
- * End session message for terminating the conversation
- */
-export interface EndSessionMessage {
-    type: 'end-session';
-    reason?: string;
-    [key: string]: any;
-}
-
-/**
- * Union type for all outgoing message types
- */
-export type OutgoingMessage = TextTokensMessage | PlayMediaMessage | SendDigitsMessage | SwitchLanguageMessage | EndSessionMessage;
-
-/**
- * Interface for session data
- * Combines fields from both server.ts and ConversationRelayService.ts definitions
- */
 export interface SessionData {
     parameterData: Record<string, any>;
     setupData: {
         callSid: string;
-        customParameters?: {
-            callReference?: string;
-            contextFile?: string;
-            toolManifestFile?: string;
-        };
         [key: string]: any;
     };
 }
 
-/**
- * Interface for tool execution context
- * Used by tools to emit events and log messages
- */
-export interface ToolEvent {
-    emit: (eventType: string, data: any) => void;
-    log: (message: string) => void;
-    logError: (message: string) => void;
-}
+// -- Re-exports from the Zod source-of-truth --------------------------------
+
+export type {
+    SetupFrame as SetupMessage,
+    PromptFrame as PromptMessage,
+    DtmfFrame as DTMFMessage,
+    InterruptFrame as InterruptMessage,
+    InfoFrame as InfoMessage,
+    ErrorFrame as ErrorMessage,
+    IncomingFrame as IncomingMessage,
+    TextFrame as TextTokensMessage,
+    PlayFrame as PlayMediaMessage,
+    SendDigitsFrame as SendDigitsMessage,
+    LanguageFrame as SwitchLanguageMessage,
+    EndFrame as EndSessionMessage,
+    OutgoingFrame as OutgoingMessage,
+} from '../types/crelay.js';
+
+// -- Handler interface -------------------------------------------------------
 
 /**
- * Interface for tool execution results
+ * Kept for callers that still construct a plain handler object (e.g. the
+ * `/conversation` HTTP endpoint). The session class provides a richer
+ * internal interface.
  */
-export interface ToolResult {
-    success: boolean;
-    message: string;
-    [key: string]: any; // Allows additional properties like digits, recipient, summary, etc.
+export interface ConversationRelayHandler {
+    outgoingMessage(message: unknown): void;
+    callSid(callSid: string, responseMessage: any): void;
 }

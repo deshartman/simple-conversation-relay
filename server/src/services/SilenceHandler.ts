@@ -1,206 +1,211 @@
 /**
- * @class SilenceHandler
- * @description Manages silence detection and automated responses during voice conversations.
- * This class implements a sophisticated silence monitoring system that:
- * 
- * 1. Continuously monitors the duration of silence (periods without messages)
- * 2. Implements a progressive response system:
- *    - First reminder: "Still there?" after initial silence threshold
- *    - Second reminder: "Just checking you are still there?" after continued silence
- *    - Call termination: After exceeding maximum retry attempts
- * 3. Automatically resets monitoring when valid messages are received
- * 4. Provides proper cleanup of resources when monitoring ends
- * 
- * The handler uses an interval-based timer that checks every second for silence duration,
- * comparing it against configurable thresholds. When thresholds are exceeded, it triggers
- * either reminder messages or call termination through a callback system.
- * 
- * @property {number} silenceSecondsThreshold - Seconds of silence before triggering response (default: 20)
- * @property {number} silenceRetryThreshold - Maximum reminder attempts before ending call (default: 3)
- * @property {number} lastMessageTime - Timestamp of the last received message
- * @property {NodeJS.Timeout} silenceTimer - Interval timer for silence monitoring
- * @property {number} silenceRetryCount - Current count of silence reminder attempts
- * @property {Function} messageCallback - Callback function for handling silence responses
- * 
- * @example
- * // Initialize and start silence monitoring
- * const silenceHandler = new SilenceHandler();
- * 
- * silenceHandler.startMonitoring((message) => {
- *   switch(message.type) {
- *     case 'end':
- *       // Handle call termination due to silence
- *       console.log('Call ended:', message.handoffData);
- *       break;
- *     case 'text':
- *       // Handle silence reminder message
- *       console.log('Silence reminder:', message.token);
- *       break;
- *   }
- * });
- * 
- * // Reset timer when valid messages are received
- * silenceHandler.resetTimer();
- * 
- * // Cleanup resources when done
- * silenceHandler.cleanup();
- * 
- * @see Message Types:
- * - 'text': Reminder messages with progressive content
- * - 'end': Call termination message with reason data
- * - 'info': System messages (ignored for silence detection)
- * - 'prompt': Interactive prompts (resets silence timer)
+ * SilenceHandler — progressive reminder system for silent callers.
+ *
+ * Uses a `setTimeout` chain rather than a `setInterval` poll: at each
+ * scheduled fire-time the next reminder is sent and the next timeout is
+ * scheduled. When all reminders have been spoken, the next breach fires
+ * `onTerminate` (typically ending the call).
+ *
+ * One handler per `ConversationRelaySession`. Stateful only via scalars
+ * that live and die with the session.
+ *
+ * == Public API ==
+ * Two APIs are supported for constructing/wiring the handler:
+ *
+ * 1. **Legacy** (`startMonitoring(onMessage)`): kept for back-compat with
+ *    callers (e.g. the /conversation HTTP endpoint) that weren't rewritten
+ *    to the session model. The callback receives either a text
+ *    (`{type:'text',...}`) or end (`{type:'end',...}`) message — semantics
+ *    match v4.11 on the wire.
+ *
+ * 2. **Session-native** (`{ onReminder, onTerminate }` in config): preferred
+ *    for `ConversationRelaySession`. The session wires `onReminder` to
+ *    `session.sendText(reminder, true)` and `onTerminate` to
+ *    `session.endCall(...)` — both of which go through session state
+ *    (listen-mode gating, etc.) and observe the proper wire ordering.
  */
 
-import { logOut, logError } from '../utils/logger.js';
+import { logOut } from '../utils/logger.js';
 
-/**
- * Interface for silence breaker text message
- */
+interface SilenceDetectionConfig {
+    enabled: boolean;
+    secondsThreshold: number;
+    messages: string[];
+    /** Optional: called when a reminder is due. If omitted, reminders flow through the legacy `startMonitoring(onMessage)` callback. */
+    onReminder?: (reminder: string) => void;
+    /** Optional: called after reminders are exhausted. If omitted, terminal flows through the legacy `startMonitoring(onMessage)` callback. */
+    onTerminate?: () => void;
+}
+
 interface SilenceBreakerTextMessage {
     type: 'text';
     token: string;
     last: boolean;
 }
 
-/**
- * Interface for end call message
- */
 interface EndCallMessage {
     type: 'end';
     handoffData: string;
 }
 
-/**
- * Union type for all message types that can be sent by the silence handler
- */
 type SilenceHandlerMessage = SilenceBreakerTextMessage | EndCallMessage;
-
-/**
- * Type for the message callback function
- */
 type MessageCallback = (message: SilenceHandlerMessage) => void;
 
 class SilenceHandler {
-    private silenceSecondsThreshold: number;
-    private silenceRetryThreshold: number;
-    private lastMessageTime: number | null;
-    private silenceTimer: NodeJS.Timeout | null;
-    private silenceRetryCount: number;
-    private messageCallback: MessageCallback | null;
+    private readonly config: SilenceDetectionConfig;
+    private timer: NodeJS.Timeout | null = null;
+    private reminderIndex = 0;
+    private enabled = true;
+    private legacyCallback: MessageCallback | null = null;
 
-    /**
-     * Creates a new SilenceHandler instance.
-     */
-    constructor() {
-        this.silenceSecondsThreshold = Number(process.env.SILENCE_SECONDS_THRESHOLD) || 20;
-        this.silenceRetryThreshold = Number(process.env.SILENCE_RETRY_THRESHOLD) || 3;
-        this.lastMessageTime = null;
-        this.silenceTimer = null;
-        this.silenceRetryCount = 0;
-        this.messageCallback = null;
+    constructor(config: SilenceDetectionConfig) {
+        this.config = config;
     }
 
-    /**
-     * Creates the message to end the call due to silence.
-     * 
-     * @returns {EndCallMessage} Message object with end type and handoff data
-     */
-    createEndCallMessage(): EndCallMessage {
-        return {
-            type: "end",
-            handoffData: JSON.stringify({
-                reasonCode: "unresponsive",
-                reason: "The caller was not speaking"
-            })
-        };
-    }
+    // =========================================================================
+    // Legacy API — preserved for back-compat with v4.11 call sites
+    // =========================================================================
 
     /**
-     * Creates a silence breaker reminder message.
-     * 
-     * @returns {SilenceBreakerTextMessage} Message object with text type and reminder content
-     */
-    createSilenceBreakerMessage(): SilenceBreakerTextMessage {
-        // Select a different silence breaker message depending how many times you have asked
-        if (this.silenceRetryCount === 1) {
-            return {
-                type: 'text',
-                token: "Still there?",
-                last: true
-            };
-        } else {
-            return {
-                type: 'text',
-                token: "Just checking you are still there?",
-                last: true
-            };
-        }
-    }
-
-    /**
-     * Starts monitoring for silence.
-     * 
-     * @param {MessageCallback} onMessage - Callback function to handle messages
+     * Legacy API. Starts monitoring and routes reminders/terminal events to
+     * `onMessage` as v4.11-shaped messages. If the config provided
+     * `onReminder` / `onTerminate`, those take precedence and this callback
+     * is ignored.
      */
     startMonitoring(onMessage: MessageCallback): void {
-        this.lastMessageTime = Date.now();
-        this.messageCallback = onMessage;
-
-        this.silenceTimer = setInterval(() => {
-            if (this.lastMessageTime === null) return;
-
-            const silenceTime = (Date.now() - this.lastMessageTime) / 1000; // Convert to seconds
-            if (silenceTime >= this.silenceSecondsThreshold) {
-                this.silenceRetryCount++;
-                logOut('Silence', `SILENCE BREAKER - No messages for ${this.silenceSecondsThreshold}+ seconds (Retry count: ${this.silenceRetryCount}/${this.silenceRetryThreshold})`);
-
-                if (this.silenceRetryCount >= this.silenceRetryThreshold) {
-                    // End the call if we've exceeded the retry threshold
-                    if (this.silenceTimer) {
-                        clearInterval(this.silenceTimer);
-                    }
-                    // logOut('Silence', 'Ending call due to exceeding silence retry threshold');
-                    if (this.messageCallback) {
-                        this.messageCallback(this.createEndCallMessage());
-                    }
-                } else {
-                    // Send silence breaker message
-                    if (this.messageCallback) {
-                        this.messageCallback(this.createSilenceBreakerMessage());
-                    }
-                }
-                // Reset the timer after sending the message or ending the call
-                this.lastMessageTime = Date.now();
-            }
-        }, 1000);
+        this.legacyCallback = onMessage;
+        this.start();
     }
 
-    /**
-     * Resets the silence timer when a valid message is received.
-     */
+    /** Legacy API. Resets the timer and reminder index. */
     resetTimer(): void {
-        if (this.lastMessageTime !== null) {
-            this.lastMessageTime = Date.now();
-            // Reset the retry count when we get a valid message
-            this.silenceRetryCount = 0;
-            // logOut('Silence', 'Timer and retry count reset');
-        } else {
-            // logOut('Silence', 'Message received but monitoring not yet started');
+        this.reset();
+    }
+
+    /** Legacy API. Enable/disable monitoring. */
+    set(enabled: boolean): void {
+        this.setEnabled(enabled);
+    }
+
+    /** Legacy API. Stop monitoring and clear callbacks. */
+    cleanup(): void {
+        this.clearTimer();
+        this.legacyCallback = null;
+        this.reminderIndex = 0;
+        logOut('Silence', 'Cleaning up silence monitor');
+    }
+
+    isEnabled(): boolean {
+        return this.enabled;
+    }
+
+    // =========================================================================
+    // Session-native API
+    // =========================================================================
+
+    /** Start (or restart) the timer. No-op if disabled. */
+    start(): void {
+        this.clearTimer();
+        this.reminderIndex = 0;
+        if (this.enabled) {
+            this.scheduleNext();
+        }
+        logOut('Silence', `Silence monitor started (enabled=${this.enabled})`);
+    }
+
+    /** Reset the timer on signal-of-life. Also resets reminder index. */
+    reset(): void {
+        this.clearTimer();
+        this.reminderIndex = 0;
+        if (this.enabled) {
+            this.scheduleNext();
         }
     }
 
     /**
-     * Cleans up resources by clearing the silence timer.
+     * Enable/disable. Disabling clears the pending timeout. Enabling does
+     * NOT auto-start — the caller decides when the clock restarts (typically
+     * on the next signal-of-life via `reset()`).
      */
-    cleanup(): void {
-        if (this.silenceTimer) {
-            logOut('Silence', 'Cleaning up silence monitor');
-            clearInterval(this.silenceTimer);
-            this.silenceTimer = null;
-            this.messageCallback = null;
+    setEnabled(enabled: boolean): void {
+        if (this.enabled === enabled) return;
+        this.enabled = enabled;
+        if (!enabled) {
+            this.clearTimer();
+        }
+        logOut('Silence', `Silence detection ${enabled ? 'enabled' : 'disabled'}`);
+    }
+
+    /** Stop monitoring. Use on session end. */
+    stop(): void {
+        this.clearTimer();
+        this.reminderIndex = 0;
+    }
+
+    // =========================================================================
+    // Internal
+    // =========================================================================
+
+    private scheduleNext(): void {
+        this.timer = setTimeout(() => {
+            this.timer = null;
+            if (!this.enabled) return;
+
+            const reminder = this.config.messages[this.reminderIndex];
+            if (reminder !== undefined) {
+                logOut(
+                    'Silence',
+                    `Reminder ${this.reminderIndex + 1}/${this.config.messages.length}: "${reminder}"`
+                );
+                this.fireReminder(reminder);
+                this.reminderIndex += 1;
+                // Schedule the next breach only if we're still enabled (the
+                // reminder callback may have toggled state).
+                if (this.enabled && this.timer === null) {
+                    this.scheduleNext();
+                }
+                return;
+            }
+
+            // Reminders exhausted + one more breach → terminate.
+            logOut('Silence', 'Silence terminal — reminders exhausted');
+            this.fireTerminate();
+            this.stop();
+        }, this.config.secondsThreshold * 1000);
+    }
+
+    private fireReminder(reminder: string): void {
+        if (this.config.onReminder) {
+            this.config.onReminder(reminder);
+            return;
+        }
+        if (this.legacyCallback) {
+            this.legacyCallback({ type: 'text', token: reminder, last: true });
+        }
+    }
+
+    private fireTerminate(): void {
+        if (this.config.onTerminate) {
+            this.config.onTerminate();
+            return;
+        }
+        if (this.legacyCallback) {
+            this.legacyCallback({
+                type: 'end',
+                handoffData: JSON.stringify({
+                    reasonCode: 'unresponsive',
+                    reason: 'The caller was not speaking',
+                }),
+            });
+        }
+    }
+
+    private clearTimer(): void {
+        if (this.timer) {
+            clearTimeout(this.timer);
+            this.timer = null;
         }
     }
 }
 
-export { SilenceHandler };
+export { SilenceHandler, SilenceDetectionConfig };

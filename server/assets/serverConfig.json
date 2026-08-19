@@ -1,0 +1,65 @@
+{
+    "ConversationRelay": {
+        "Configuration": {
+            "welcomeGreeting": "Hello there! How can I assist you with Conversation Relay today?",
+            "welcomeGreetingInterruptible": "any",
+            "language": "en-AU",
+            "hints": "",
+            "interruptible": "any",
+            "interruptSensitivity": "medium",
+            "dtmfDetection": true,
+            "partialPrompts": false,
+            "profanityFilter": false,
+            "reportInputDuringAgentSpeech": false,
+            "preemptible": false,
+            "debug": "",
+            "elevenlabsTextNormalization": "",
+            "intelligenceService": "",
+            "transcriptionLanguage": "en-AU",
+            "transcriptionProvider": "Deepgram",
+            "ttsLanguage": "en-AU",
+            "ttsProvider": "ElevenLabs",
+            "voice": "IKne3meq5aSn9XLyUdCD",
+            "speechModel": "nova-3-general",
+            "languages": [
+                {
+                    "code": "en-AU",
+                    "ttsProvider": "ElevenLabs",
+                    "voice": "IKne3meq5aSn9XLyUdCD",
+                    "transcriptionProvider": "Deepgram",
+                    "speechModel": "nova-3-general"
+                },
+                {
+                    "code": "en-NZ",
+                    "ttsProvider": "ElevenLabs",
+                    "voice": "VEWZvLXUrFL3O7dUnBSW",
+                    "transcriptionProvider": "Deepgram",
+                    "speechModel": "nova-3-general"
+                }
+            ],
+            "parameters": [
+                {
+                    "name": "callReference",
+                    "value": ""
+                }
+            ]
+        },
+        "SilenceDetection": {
+            "enabled": true,
+            "secondsThreshold": 20,
+            "messages": [
+                "Still there?",
+                "Just checking you are still there?"
+            ]
+        }
+    },
+    "AssetLoader": {
+        "activeContextKey": "defaultContext",
+        "assetLoaderType": "file"
+    },
+    "Server": {
+        "ListenMode": {
+            "enabled": false
+        }
+    }
+}
