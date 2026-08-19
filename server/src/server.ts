@@ -25,6 +25,11 @@ import { ServerConfig } from './config/ServerConfig.js';
 import type { SessionData } from './interfaces/ConversationRelay.js';
 import { buildDefaultRegistry, ToolRegistry } from './tools/index.js';
 import { IncomingFrameSchema, type OutgoingFrame } from './types/crelay.js';
+import {
+    createOutboundAuth,
+    createDestinationValidator,
+    createRateLimiter,
+} from './middleware/outbound-guards.js';
 
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
@@ -128,6 +133,36 @@ let toolRegistry: ToolRegistry;
  * own code, not by Twilio, so there is no Twilio signature on it. It still
  * needs its own authentication.
  */
+let outboundGuards: express.RequestHandler[] | null = null;
+
+/**
+ * Build the `/outboundCall` guard chain on first use. Routes are registered at
+ * module scope but `serverConfig` is only assigned in `main()`, so the guards
+ * cannot be constructed eagerly.
+ *
+ * Order matters: authenticate first so unauthenticated traffic cannot exhaust
+ * the rate-limit quota (that would be a denial-of-service against your own
+ * campaign), then validate, so malformed requests do not consume quota either.
+ */
+const guardOutboundCall: express.RequestHandler = (req, res, next) => {
+    if (!outboundGuards) {
+        outboundGuards = [
+            createOutboundAuth(serverConfig.outboundApiKey),
+            createDestinationValidator(),
+            createRateLimiter(serverConfig.outboundRateLimitPerMinute),
+        ];
+    }
+    // Run the chain in order, short-circuiting on the first responder.
+    let i = 0;
+    const run = (err?: any): void => {
+        if (err) return next(err);
+        const guard = outboundGuards![i++];
+        if (!guard) return next();
+        guard(req, res, run);
+    };
+    run();
+};
+
 const validateTwilioSignature: express.RequestHandler = (req, res, next) => {
     if (!serverConfig.validateTwilioWebhooks) return next();
 
@@ -345,7 +380,7 @@ app.get('/', (_req: express.Request, res: express.Response) => {
     res.send('WebSocket Server Running');
 });
 
-app.post('/outboundCall', async (req: express.Request, res: express.Response) => {
+app.post('/outboundCall', guardOutboundCall, async (req: express.Request, res: express.Response) => {
     const requestData: RequestData = req.body;
 
     try {
