@@ -32,6 +32,7 @@ describe('ServerConfig', () => {
         delete process.env.TWILIO_EDGE;
         delete process.env.TWILIO_REGION;
         delete process.env.ASSET_LOADER_TYPE;
+        delete process.env.TWILIO_VALIDATE_WEBHOOKS;
     });
 
     describe('fromEnv()', () => {
@@ -138,6 +139,38 @@ describe('ServerConfig', () => {
 
             expect(config.twilioEdge).toBeUndefined();
             expect(config.twilioRegion).toBeUndefined();
+        });
+    });
+
+    describe('Twilio webhook signature validation', () => {
+        const setRequired = () => {
+            process.env.SERVER_BASE_URL = 'example.test';
+            process.env.OPENAI_API_KEY = 'k';
+            process.env.ACCOUNT_SID = 'AC1';
+            process.env.AUTH_TOKEN = 't';
+            process.env.FROM_NUMBER = '+61400000000';
+        };
+
+        it('defaults to enabled when the variable is unset', () => {
+            setRequired();
+
+            expect(ServerConfig.fromEnv().validateTwilioWebhooks).toBe(true);
+        });
+
+        it('is disabled only by the exact string "false"', () => {
+            setRequired();
+            process.env.TWILIO_VALIDATE_WEBHOOKS = 'false';
+
+            expect(ServerConfig.fromEnv().validateTwilioWebhooks).toBe(false);
+        });
+
+        it('stays enabled for any other value', () => {
+            setRequired();
+            // Guards against a typo silently disabling signature checking.
+            for (const value of ['true', 'False', '0', 'no', '']) {
+                process.env.TWILIO_VALIDATE_WEBHOOKS = value;
+                expect(ServerConfig.fromEnv().validateTwilioWebhooks).toBe(true);
+            }
         });
     });
 
