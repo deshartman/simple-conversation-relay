@@ -93,6 +93,15 @@ export class ConversationRelaySession {
               })
             : null;
 
+        // BUG-2: starting in listen mode must mirror the runtime
+        // `setListenMode()` path and disarm silence detection. Otherwise the
+        // reminders are swallowed (they are `text` frames, which listen mode
+        // gates) while the terminal `end` frame is NOT gated — so the call is
+        // hung up with `reasonCode: 'unresponsive'` and no audible warning.
+        if (this.listenMode) {
+            this.silenceHandler?.setEnabled(false);
+        }
+
         this.responseService.createResponseHandler(this.buildResponseHandler());
         // Hand ourselves to the response service so tool handlers can
         // receive the session reference. Not all ResponseService
