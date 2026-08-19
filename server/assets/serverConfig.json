@@ -54,7 +54,7 @@
         }
     },
     "AssetLoader": {
-        "activeContextKey": "defaultContext",
+        "activeContextKey": "outboundContext",
         "assetLoaderType": "file"
     },
     "Server": {
