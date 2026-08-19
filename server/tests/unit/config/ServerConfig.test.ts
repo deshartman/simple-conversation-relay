@@ -33,6 +33,8 @@ describe('ServerConfig', () => {
         delete process.env.TWILIO_REGION;
         delete process.env.ASSET_LOADER_TYPE;
         delete process.env.TWILIO_VALIDATE_WEBHOOKS;
+        delete process.env.OUTBOUND_API_KEY;
+        delete process.env.OUTBOUND_RATE_LIMIT_PER_MINUTE;
     });
 
     describe('fromEnv()', () => {
@@ -144,6 +146,7 @@ describe('ServerConfig', () => {
 
     describe('Twilio webhook signature validation', () => {
         const setRequired = () => {
+            process.env.NODE_ENV = 'test';
             process.env.SERVER_BASE_URL = 'example.test';
             process.env.OPENAI_API_KEY = 'k';
             process.env.ACCOUNT_SID = 'AC1';
@@ -171,6 +174,49 @@ describe('ServerConfig', () => {
                 process.env.TWILIO_VALIDATE_WEBHOOKS = value;
                 expect(ServerConfig.fromEnv().validateTwilioWebhooks).toBe(true);
             }
+        });
+    });
+
+    describe('Outbound call authentication', () => {
+        const setRequired = () => {
+            // NODE_ENV=test makes fromEnv() load `.env` rather than `.env.dev`.
+            // Without this these assertions read the developer's real
+            // `.env.dev`, so a populated OUTBOUND_API_KEY there would make the
+            // "unset" case pass or fail depending on whose machine runs it.
+            process.env.NODE_ENV = 'test';
+            process.env.SERVER_BASE_URL = 'example.test';
+            process.env.OPENAI_API_KEY = 'k';
+            process.env.ACCOUNT_SID = 'AC1';
+            process.env.AUTH_TOKEN = 't';
+            process.env.FROM_NUMBER = '+61400000000';
+        };
+
+        it('leaves outboundApiKey undefined when unset', () => {
+            setRequired();
+
+            // Must NOT fall back to a default — an absent key has to disable
+            // the route, not substitute something guessable.
+            expect(ServerConfig.fromEnv().outboundApiKey).toBeUndefined();
+        });
+
+        it('reads outboundApiKey from the environment', () => {
+            setRequired();
+            process.env.OUTBOUND_API_KEY = 'sk-abc';
+
+            expect(ServerConfig.fromEnv().outboundApiKey).toBe('sk-abc');
+        });
+
+        it('defaults the rate limit to 30 per minute', () => {
+            setRequired();
+
+            expect(ServerConfig.fromEnv().outboundRateLimitPerMinute).toBe(30);
+        });
+
+        it('reads the rate limit from the environment', () => {
+            setRequired();
+            process.env.OUTBOUND_RATE_LIMIT_PER_MINUTE = '5';
+
+            expect(ServerConfig.fromEnv().outboundRateLimitPerMinute).toBe(5);
         });
     });
 
