@@ -52,7 +52,6 @@ class OpenAIResponseService implements ResponseService {
     protected isInterrupted: boolean;
     protected registry: ToolRegistry;
     protected inputMessages: ResponseInput;
-    protected listenMode: boolean;
     /** Set by `setSession()` — required before `generateResponse()` is called via a session. */
     protected session: ConversationRelaySession | null = null;
 
@@ -61,7 +60,6 @@ class OpenAIResponseService implements ResponseService {
     constructor(
         context: string,
         registry: ToolRegistry,
-        listenMode: boolean,
         config: ServerConfig
     ) {
         this.openai = new OpenAI();
@@ -71,7 +69,6 @@ class OpenAIResponseService implements ResponseService {
         this.isInterrupted = false;
         this.registry = registry;
         this.inputMessages = [];
-        this.listenMode = listenMode;
     }
 
     /**
@@ -217,7 +214,6 @@ class OpenAIResponseService implements ResponseService {
 
             switch (eventData.type) {
                 case 'response.output_text.delta': {
-                    if (this.listenMode) break;
                     const content = eventData.delta || '';
                     if (content) {
                         this.responseHandler.content({

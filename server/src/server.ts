@@ -103,7 +103,14 @@ app.use(express.json());
 // ----------------------------------------------------------------------------
 
 let wsSessionsMap = new Map<string, WSSession>();
-let parameterDataMap = new Map<string, { requestData: any }>();
+let parameterDataMap = new Map<string, { requestData: any; createdAt: number }>();
+
+/**
+ * How long an unclaimed `parameterDataMap` entry survives. Entries are
+ * normally deleted when the call's WebSocket closes; this bounds the map for
+ * outbound calls that are never answered and so never open a WebSocket.
+ */
+const PARAMETER_DATA_TTL_MS = 60 * 60 * 1000;
 let conversationSessionMap = new Map<string, OpenAIResponseService>();
 let twilioService: TwilioService;
 let cachedAssetsService: CachedAssetsService | null = null;
@@ -144,6 +151,7 @@ app.ws('/conversation-relay', (ws: any, _req: express.Request) => {
         setupData: { callSid: '' },
     };
     let registeredCallSid: string | null = null;
+    let registeredCallReference: string | null = null;
 
     const send = (frame: OutgoingFrame) => ws.send(JSON.stringify(frame));
 
@@ -191,10 +199,11 @@ app.ws('/conversation-relay', (ws: any, _req: express.Request) => {
                 sessionData.setupData = message as SessionData['setupData'];
 
                 if (message.customParameters?.callReference) {
-                    sessionData.parameterData =
-                        parameterDataMap.get(message.customParameters.callReference) || {
-                            requestData: {},
-                        };
+                    registeredCallReference = message.customParameters.callReference;
+                    const entry = parameterDataMap.get(registeredCallReference);
+                    sessionData.parameterData = entry
+                        ? { requestData: entry.requestData }
+                        : { requestData: {} };
                 }
 
                 if (!cachedAssetsService) {
@@ -206,7 +215,6 @@ app.ws('/conversation-relay', (ws: any, _req: express.Request) => {
                 const responseService = new OpenAIResponseService(
                     activeAssets.context,
                     toolRegistry,
-                    activeAssets.listenMode.enabled,
                     serverConfig
                 );
 
@@ -245,6 +253,10 @@ app.ws('/conversation-relay', (ws: any, _req: express.Request) => {
         if (registeredCallSid) {
             wsSessionsMap.delete(registeredCallSid);
         }
+        if (registeredCallReference) {
+            parameterDataMap.delete(registeredCallReference);
+            registeredCallReference = null;
+        }
     });
 
     ws.on('error', (error: Error) => {
@@ -255,6 +267,10 @@ app.ws('/conversation-relay', (ws: any, _req: express.Request) => {
         }
         if (registeredCallSid) {
             wsSessionsMap.delete(registeredCallSid);
+        }
+        if (registeredCallReference) {
+            parameterDataMap.delete(registeredCallReference);
+            registeredCallReference = null;
         }
     });
 });
@@ -277,8 +293,16 @@ app.post('/outboundCall', async (req: express.Request, res: express.Response) =>
         }
         const { phoneNumber, ...parameters } = requestData.properties;
         if (parameters.callReference) {
+            // Prune entries whose call never opened a WebSocket.
+            const cutoff = Date.now() - PARAMETER_DATA_TTL_MS;
+            for (const [key, value] of parameterDataMap) {
+                if (value.createdAt < cutoff) {
+                    parameterDataMap.delete(key);
+                }
+            }
             parameterDataMap.set(parameters.callReference, {
                 requestData: requestData.properties,
+                createdAt: Date.now(),
             });
         }
         const response = await twilioService.makeOutboundCall(
@@ -287,7 +311,7 @@ app.post('/outboundCall', async (req: express.Request, res: express.Response) =>
             cachedAssetsService!,
             parameters
         );
-        logOut('Server', `/outboundCall: Call SID: ${response}`);
+        logOut('Server', `/outboundCall: Call SID: ${response.sid}`);
         res.json({ success: true, response });
     } catch (error) {
         logError(
@@ -338,7 +362,7 @@ app.post('/handoff', (req: express.Request, res: express.Response) => {
 
 app.post('/twilioStatusCallback', async (req: express.Request, res: express.Response) => {
     const statusCallBack = req.body;
-    const callSid = statusCallBack.callSid;
+    const callSid = statusCallBack.CallSid;
     logOut(
         'Server',
         `Received Twilio status callback for call SID ${callSid}: ${JSON.stringify(statusCallBack)}`
@@ -380,7 +404,6 @@ app.post('/conversation', async (req: express.Request, res: express.Response) =>
             responseService = new OpenAIResponseService(
                 activeAssets.context,
                 toolRegistry,
-                activeAssets.listenMode.enabled,
                 serverConfig
             );
             conversationSessionMap.set(currentSessionId, responseService);
