@@ -1,5 +1,26 @@
 # Simple Conversation Relay
 
+> ## 🚀 Which version should I use?
+>
+> ### 📚 **v3.0 — the simpler starting point** → **[v3.0 branch](../../tree/v3.0)**
+>
+> Start here if you are **learning** Conversation Relay. v3.0 is the proof-of-concept
+> version: fewer moving parts, an event-emitter architecture, file-based configuration,
+> and CRelay parameters set directly in `TwilioService.ts`. It is the easiest way to see
+> how the pieces fit together. **Not intended for production.**
+>
+> ### 🏭 **v4.x — the production implementation** → this branch
+>
+> Use this if you are **deploying**. It is the extended implementation: a per-WebSocket
+> `ConversationRelaySession` owning all per-call state, an in-code tool registry,
+> Zod-validated wire frames, centralised configuration, dependency injection, Twilio
+> webhook signature validation, and authenticated outbound calling.
+>
+> Moving from v3.0 to v4.x is not a drop-in upgrade — the architecture changed
+> substantially. See the [CHANGELOG](./CHANGELOG.md) for the full v4.0 → v4.12 history.
+
+---
+
 This is a reference implementation aimed at introducing the key concepts of Conversation Relay. The key here is to ensure it is a workable environment that can be used to understand the basic concepts of Conversation Relay. It is intentionally simple and only the minimum has been done to ensure the understanding is focussed on the core concepts.
 
 ## Release v4.12.0 - ConversationRelay Session Model + In-Code Tool Registry
