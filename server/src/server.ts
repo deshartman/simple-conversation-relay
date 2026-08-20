@@ -30,6 +30,7 @@ import {
     createDestinationValidator,
     createRateLimiter,
 } from './middleware/outbound-guards.js';
+import { createTwilioSignatureValidator } from './middleware/twilio-signature.js';
 
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
@@ -163,15 +164,24 @@ const guardOutboundCall: express.RequestHandler = (req, res, next) => {
     run();
 };
 
-const validateTwilioSignature: express.RequestHandler = (req, res, next) => {
-    if (!serverConfig.validateTwilioWebhooks) return next();
+let twilioSignatureGuard: express.RequestHandler | null = null;
 
-    return twilio.webhook({
-        validate: true,
-        authToken: serverConfig.twilioAuthToken,
-        protocol: 'https',
-        host: serverConfig.serverBaseUrl,
-    })(req, res, next);
+/**
+ * Built on first request: routes register at module scope but `serverConfig` is
+ * only assigned in `main()`.
+ *
+ * NOTE: this does not protect `/outboundCall`. Twilio never calls that endpoint,
+ * so there is no signature on it — see `middleware/outbound-guards.ts`.
+ */
+const validateTwilioSignature: express.RequestHandler = (req, res, next) => {
+    if (!twilioSignatureGuard) {
+        twilioSignatureGuard = createTwilioSignatureValidator({
+            validate: serverConfig.validateTwilioWebhooks,
+            authToken: serverConfig.twilioAuthToken,
+            host: serverConfig.serverBaseUrl,
+        });
+    }
+    return twilioSignatureGuard(req, res, next);
 };
 
 async function initializeServices(): Promise<void> {
