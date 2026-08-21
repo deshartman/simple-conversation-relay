@@ -105,15 +105,15 @@ describe('createOutboundAuth', () => {
 
 describe('createDestinationValidator', () => {
     const cases: Array<[string, unknown, boolean]> = [
-        ['a valid AU mobile', '+61401277115', true],
+        ['a valid AU mobile', '+61491570006', true],
         ['a valid US number', '+14155551234', true],
-        ['no plus prefix', '61401277115', false],
-        ['a leading zero after +', '+0401277115', false],
+        ['no plus prefix', '61491570006', false],
+        ['a leading zero after +', '+0491570006', false],
         ['letters', '+61abc', false],
         ['too long for E.164', '+1234567890123456', false],
         ['an empty string', '', false],
         ['a missing value', undefined, false],
-        ['a non-string', 61401277115, false],
+        ['a non-string', 61491570006, false],
     ];
 
     for (const [label, phoneNumber, shouldPass] of cases) {
