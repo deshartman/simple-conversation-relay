@@ -166,17 +166,23 @@ class TwilioService extends EventEmitter {
                 ...conversationRelayAttributes
             } as any);
 
-            // Add language configurations if available
+            // Add language configurations if available. Every attribute the
+            // config declares has to reach the TwiML: <Language> is the lookup
+            // table a `language` switch frame resolves against, so dropping
+            // transcriptionProvider/speechModel here would silently fall a
+            // switched-to language back to the parent's settings. Attributes
+            // left unset inherit from <ConversationRelay> by design, so emit
+            // whatever is present rather than requiring ttsProvider + voice.
+            const LANGUAGE_ATTRS = ['ttsProvider', 'voice', 'transcriptionProvider', 'speechModel'] as const;
             if (languages) {
                 Object.keys(languages).forEach(langCode => {
                     const langConfig = languages[langCode];
-                    if (langConfig && langConfig.ttsProvider && langConfig.voice) {
-                        conversationRelay.language({
-                            code: langCode,
-                            ttsProvider: langConfig.ttsProvider,
-                            voice: langConfig.voice,
-                        });
-                    }
+                    if (!langConfig) return;
+                    const attributes: Record<string, string> = { code: langCode };
+                    LANGUAGE_ATTRS.forEach(attr => {
+                        if (langConfig[attr]) attributes[attr] = langConfig[attr];
+                    });
+                    conversationRelay.language(attributes as any);
                 });
             }
 

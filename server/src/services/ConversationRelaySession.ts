@@ -48,6 +48,14 @@ export interface ConversationRelaySessionOptions {
     registry: ToolRegistry;
     /** Inject the ws.send wrapper. The session never touches `ws` directly. */
     send: (frame: OutgoingFrame) => void;
+    /**
+     * Language codes declared as <Language> children in the TwiML, e.g.
+     * ['en-AU', 'fr-FR']. Doubles as the allow-list for automatic TTS
+     * switching: a detected language with no declared entry is left alone.
+     */
+    declaredLanguages?: string[];
+    /** ttsLanguage the TwiML opened on, so an already-active code isn't re-sent. */
+    initialTtsLanguage?: string;
 }
 
 export class ConversationRelaySession {
@@ -57,6 +65,11 @@ export class ConversationRelaySession {
     private readonly send: (frame: OutgoingFrame) => void;
     private readonly silenceHandler: SilenceHandler | null;
     private readonly logPrefix: string;
+
+    /** Detected primary tag (`fr`) -> declared code (`fr-FR`). First declaration wins. */
+    private readonly ttsLanguageByTag: Map<string, string>;
+    private activeTtsLanguage: string | null;
+    private manualLanguageOverride = false;
 
     private listenMode: boolean;
     private suppressedCount = 0;
@@ -71,6 +84,13 @@ export class ConversationRelaySession {
         this.send = opts.send;
         this.listenMode = opts.initialListenMode;
         this.logPrefix = `Call SID: ${this.sessionData.setupData.callSid ?? 'unknown'}]`;
+
+        this.ttsLanguageByTag = new Map();
+        for (const code of opts.declaredLanguages ?? []) {
+            const tag = code.split('-')[0].toLowerCase();
+            if (!this.ttsLanguageByTag.has(tag)) this.ttsLanguageByTag.set(tag, code);
+        }
+        this.activeTtsLanguage = opts.initialTtsLanguage ?? null;
 
         this.silenceHandler = opts.silenceConfig.enabled
             ? new SilenceHandler({
@@ -170,6 +190,7 @@ export class ConversationRelaySession {
                     break;
                 case 'prompt':
                     logOut('Session', `${this.logPrefix} PROMPT: ${message.voicePrompt}`);
+                    this.autoSwitchTtsLanguage(message.lang);
                     await this.responseService.generateResponse('user', message.voicePrompt || '');
                     break;
                 case 'dtmf':
@@ -286,7 +307,36 @@ export class ConversationRelaySession {
         this.sendResponse(frame);
     }
 
+    /**
+     * ConversationRelay reports the detected language on every prompt when
+     * transcriptionLanguage is `multi`, but never acts on it — detection is a
+     * read, not a write. This closes that loop: map the detected primary tag
+     * (`fr`) onto a declared <Language> code (`fr-FR`) and switch TTS so the
+     * reply is spoken with that language's configured voice.
+     *
+     * transcriptionLanguage is deliberately left on `multi`. Pinning STT to the
+     * detected language would end detection for the rest of the call, so a
+     * caller who switched back would be transcribed by the wrong model with
+     * nothing to signal it.
+     */
+    private autoSwitchTtsLanguage(detected?: string): void {
+        if (this.manualLanguageOverride || !detected) return;
+        const code = this.ttsLanguageByTag.get(detected.split('-')[0].toLowerCase());
+        if (!code || code === this.activeTtsLanguage) return;
+        logOut(
+            'Session',
+            `${this.logPrefix} Detected '${detected}' — switching ttsLanguage to ${code}`
+        );
+        this.activeTtsLanguage = code;
+        this.sendResponse({ type: 'language', ttsLanguage: code } as OutgoingFrame);
+    }
+
     switchLanguage(opts: { ttsLanguage?: string; transcriptionLanguage?: string }): void {
+        // An explicit switch (the switch-language tool — i.e. the caller asked)
+        // wins for the rest of the call. Without this latch, automatic
+        // detection would flip TTS straight back on the next prompt.
+        this.manualLanguageOverride = true;
+        if (opts.ttsLanguage) this.activeTtsLanguage = opts.ttsLanguage;
         const frame: OutgoingFrame = { type: 'language' };
         if (opts.ttsLanguage) (frame as { ttsLanguage?: string }).ttsLanguage = opts.ttsLanguage;
         if (opts.transcriptionLanguage)
