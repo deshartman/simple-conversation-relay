@@ -3,7 +3,7 @@
         "Configuration": {
             "welcomeGreeting": "Hello there! How can I assist you with Conversation Relay today?",
             "welcomeGreetingInterruptible": "any",
-            "language": "en-AU",
+            "transcriptionLanguage": "multi",
             "hints": "",
             "interruptible": "any",
             "interruptSensitivity": "medium",
@@ -15,9 +15,8 @@
             "debug": "",
             "elevenlabsTextNormalization": "",
             "intelligenceService": "",
-            "transcriptionLanguage": "en-AU",
             "transcriptionProvider": "Deepgram",
-            "ttsLanguage": "en-AU",
+            "ttsLanguage": "multi",
             "ttsProvider": "ElevenLabs",
             "voice": "IKne3meq5aSn9XLyUdCD",
             "speechModel": "nova-3-general",
@@ -33,6 +32,20 @@
                     "code": "en-NZ",
                     "ttsProvider": "ElevenLabs",
                     "voice": "VEWZvLXUrFL3O7dUnBSW",
+                    "transcriptionProvider": "Deepgram",
+                    "speechModel": "nova-3-general"
+                },
+                {
+                    "code": "fr-FR",
+                    "ttsProvider": "ElevenLabs",
+                    "voice": "IKne3meq5aSn9XLyUdCD",
+                    "transcriptionProvider": "Deepgram",
+                    "speechModel": "nova-3-general"
+                },
+                {
+                    "code": "es-ES",
+                    "ttsProvider": "ElevenLabs",
+                    "voice": "IKne3meq5aSn9XLyUdCD",
                     "transcriptionProvider": "Deepgram",
                     "speechModel": "nova-3-general"
                 }

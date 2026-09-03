@@ -166,17 +166,32 @@ class TwilioService extends EventEmitter {
                 ...conversationRelayAttributes
             } as any);
 
-            // Add language configurations if available
+            // Add language configurations if available. Every attribute the
+            // config declares has to reach the TwiML: <Language> is the lookup
+            // table a `language` switch frame resolves against, so dropping
+            // transcriptionProvider/speechModel here would silently fall a
+            // switched-to language back to the parent's settings. Attributes
+            // left unset inherit from <ConversationRelay> by design, so emit
+            // whatever is present rather than requiring ttsProvider + voice.
+            // Keyed off the SDK type on purpose: crelay.ts's drift guard is
+            // deliberately narrow because it assumes this builder site carries
+            // the SDK types, so a renamed LanguageAttributes field must fail
+            // `tsc` here rather than slip through as an untyped object.
+            const LANGUAGE_ATTRS: readonly (keyof VoiceResponse.LanguageAttributes)[] = [
+                'ttsProvider',
+                'voice',
+                'transcriptionProvider',
+                'speechModel',
+            ];
             if (languages) {
                 Object.keys(languages).forEach(langCode => {
                     const langConfig = languages[langCode];
-                    if (langConfig && langConfig.ttsProvider && langConfig.voice) {
-                        conversationRelay.language({
-                            code: langCode,
-                            ttsProvider: langConfig.ttsProvider,
-                            voice: langConfig.voice,
-                        });
-                    }
+                    if (!langConfig) return;
+                    const attributes: VoiceResponse.LanguageAttributes = { code: langCode };
+                    LANGUAGE_ATTRS.forEach(attr => {
+                        if (langConfig[attr]) attributes[attr] = langConfig[attr];
+                    });
+                    conversationRelay.language(attributes);
                 });
             }
 

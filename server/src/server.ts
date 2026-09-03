@@ -304,6 +304,10 @@ app.ws('/conversation-relay', (ws: any, _req: express.Request) => {
                     serverConfig
                 );
 
+                // The declared <Language> codes double as the allow-list for
+                // automatic TTS switching, so the session resolves a detected
+                // language against exactly what the TwiML advertised.
+                const crConfig = cachedAssetsService.getConversationRelayConfig();
                 session = new ConversationRelaySession({
                     responseService,
                     sessionData,
@@ -311,6 +315,8 @@ app.ws('/conversation-relay', (ws: any, _req: express.Request) => {
                     initialListenMode: activeAssets.listenMode.enabled,
                     registry: toolRegistry,
                     send,
+                    declaredLanguages: Object.keys(cachedAssetsService.getLanguages() ?? {}),
+                    initialTtsLanguage: crConfig?.ttsLanguage,
                 });
 
                 if (message.callSid) {
