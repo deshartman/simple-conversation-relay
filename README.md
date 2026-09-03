@@ -17,30 +17,33 @@
 > webhook signature validation, and authenticated outbound calling.
 >
 > Moving from v3.0 to v4.x is not a drop-in upgrade — the architecture changed
-> substantially. See the [CHANGELOG](./CHANGELOG.md) for the full v4.0 → v4.12 history.
+> substantially. See the [CHANGELOG](./CHANGELOG.md) for the full v4.0 → v4.13 history.
 
 ---
 
 This is a reference implementation aimed at introducing the key concepts of Conversation Relay. The key here is to ensure it is a workable environment that can be used to understand the basic concepts of Conversation Relay. It is intentionally simple and only the minimum has been done to ensure the understanding is focussed on the core concepts.
 
-## Release v4.12.0 - ConversationRelay Session Model + In-Code Tool Registry
+## Release v4.13.0 - Outbound Readiness + Automatic Language Detection
 
-Ports CRelay patterns from the upcoming `@twilio/tac-conversationrelay` package. The WebSocket wire protocol is unchanged — this is an internal architecture refresh.
+Hardens the endpoints Twilio calls, fixes the speech-correctness and listen-mode defects that only outbound calls exposed, and adds automatic caller-language detection. Test suite 61 → 121.
 
-**🎯 Key Changes:**
-- **Per-WebSocket session class** (`ConversationRelaySession`) owns all per-call state and is the sole writer to the WebSocket.
-- **In-code tool registry**: tools are defined in their `server/src/tools/*.ts` file via `defineTool({...})` and registered once at startup via a `ToolRegistry`. `defaultToolManifest.json` is gone — schema and handler are now co-located.
-- **Zod-validated wire frames** with compile-time SDK drift guards pinned to the Twilio SDK types.
-- **Progressive-timeout `SilenceHandler`** — same wire behaviour, cheaper timer, no per-second wakeups.
-- **Terminal-frame deferral + in-flight tool tracking** so a tool-dispatched `end` frame can't race ahead of the LLM's streamed farewell.
-- **All tools now exposed**: `play-media` and `set-listen-mode` were present in `server/src/tools/` but absent from v4.11's JSON manifest; they now register with the rest.
+**🔒 Security:**
+- **Twilio signature validation** on `/handoff`, `/twilioStatusCallback` and `/connectConversationRelay` — all previously unauthenticated. Host and protocol are pinned to `SERVER_BASE_URL`, since inference fails behind any tunnel. On by default (`TWILIO_VALIDATE_WEBHOOKS`), disabled only by the exact string `false`.
+- **`POST /outboundCall` is authenticated and rate-limited.** It placed calls billed to your Twilio account with no auth, no rate limit and no number validation. Now a bearer token compared with `timingSafeEqual` and **failing closed** (503 with no key configured, never unauthenticated), E.164 validation, and a global rolling-minute limit — global rather than per-IP because Twilio spend is shared. New: `OUTBOUND_API_KEY`, `OUTBOUND_RATE_LIMIT_PER_MINUTE`.
 
-**⚠️ Breaking (internal):** `ConversationRelayService` removed (use `ConversationRelaySession`). `SetSilenceDetectionMessage` type removed — tools return `silenceEnabled: boolean`. Per-leg tool subsets no longer supported (all-tools-all-legs).
+**🎯 Features:**
+- **Automatic language detection**: ConversationRelay reports the detected language but never acts on it, so the session maps the detected tag onto a declared `<Language>` code and switches TTS itself. The `languages` array doubles as the allow-list; an explicit caller request latches automatic switching off. See [`server/docs/language-detection.md`](./server/docs/language-detection.md).
+- **Graceful live-agent handoff**: `<Connect>` had no `action` URL, so handoff dropped the call instantly. `/handoff` now returns hold music for a live-agent reason and empty TwiML for the rest.
+- **Status callbacks** registered on outbound calls (`initiated`, `ringing`, `answered`, `completed`) — a call that rang out or failed previously produced no signal at all.
+- **Per-call context selection** at WebSocket setup, so an outbound campaign prompt is no longer served to inbound callers.
 
-**📦 Dependency bumps:** `twilio` 5→6, `express` 4→5, `openai` 5→6, `zod` 3→4, `typescript` 5→6, `@types/node` 22→25, `dotenv` 16→17.
+**🐛 Fixes:** double speech when a turn both spoke and called a terminal tool; interleaved speech from concurrent streams (cancel-previous, not queued); listen mode that could not be turned off (the agent went permanently mute); listen mode arming a silent countdown to hangup; `CallSid` casing dropping every status callback; a `parameterDataMap` leak.
+
+**⚠️ Behaviour change:** `serverConfig.json` now defaults to multi-language (`transcriptionLanguage` and `ttsLanguage` are `"multi"`, with `fr-FR` and `es-ES` declared). The required Deepgram + ElevenLabs pairings were already the defaults, so no new credentials are needed. To keep v4.12 behaviour, set both back to `en-AU` and trim `languages`.
 
 **🧪 Testing:**
-- `npm test` - Run full test suite (61 tests)
+- `npm test` - Run full test suite (121 tests)
+- `npm run typecheck` - Type-check `src/**` *and* test files (tests were previously unchecked)
 - `npm run test:watch` - Watch mode
 - `npm run test:ui` - Interactive UI
 - `npm run test:coverage` - Coverage report

@@ -1,5 +1,84 @@
 # Changelog
 
+## Release v4.13.0
+
+### Outbound Readiness: Webhook Authentication, Stream Correctness, Automatic Language Detection
+
+Everything merged since v4.12.0. Most of it came out of an outbound-call readiness review: v4.12 had only ever been exercised inbound, and the inbound `defaultContext.md` names none of the nine tools, so whole classes of defect had never been reached. Closes with automatic caller-language detection.
+
+Test suite: **61 -> 121**.
+
+#### 🔒 Security
+
+**Twilio signature validation on every endpoint Twilio actually calls** (`src/middleware/twilio-signature.ts`)
+- `/handoff`, `/twilioStatusCallback` and `/connectConversationRelay` were all unauthenticated.
+- Host and protocol are pinned to `SERVER_BASE_URL` rather than inferred from the request — behind a tunnel Express sees `http://localhost:3007` while Twilio signed `https://<public-host>`, so inference fails every time.
+- Controlled by `TWILIO_VALIDATE_WEBHOOKS`, defaulting to **on** and disabled only by the exact string `false`, so a typo cannot silently switch off signature checking.
+- Throws at construction if validation is on with no auth token — failing at startup beats rejecting every webhook at runtime with an unexplained 500.
+- **Fixed within this release:** the first implementation passed the auth token inside the options object. `twilio.webhook()` ends with `options.authToken = tokenString ? tokenString : process.env.TWILIO_AUTH_TOKEN`, which overwrites it with either a *positional* argument or `TWILIO_AUTH_TOKEN`. The SDK's own `WebhookOptions` type declares `authToken?: string`, so it typechecked and read correctly while being discarded at runtime — and this project reads `AUTH_TOKEN`, not `TWILIO_AUTH_TOKEN`. Every webhook was rejected, `/handoff` never ran, and status callbacks were dropped. The token is now passed positionally.
+
+**Authenticated, rate-limited `POST /outboundCall`** (`src/middleware/outbound-guards.ts`)
+- The endpoint placed calls billed to the Twilio account with no authentication, no rate limit and no number validation. Any POST carrying a phone number reached the carrier. The exposure is toll fraud rather than data leakage, so the fix is an authenticator plus a damage cap.
+- Signature validation cannot cover this route: Twilio never calls it. It is our own API, public only because the whole app is tunnelled for Twilio's benefit.
+- **Bearer token, failing closed.** SHA-256 digests compared with `timingSafeEqual`, so neither the token nor its length leaks. With no key configured the route answers **503** rather than serving unauthenticated — a forgotten secret must not silently reopen a billable endpoint.
+- **E.164 validation**, returning 400 instead of the previous opaque 500 from the Twilio API. No country restriction, which means the rate limit is the only cap on a leaked token.
+- **Rolling-minute rate limit**, default 30, counted **globally rather than per-IP**: Twilio spend is shared, and a per-IP limit is bypassed by rotating source addresses. In-memory, so the effective limit multiplies if this is ever scaled out.
+- Guards run auth -> validate -> rate limit, so unauthenticated or malformed requests cannot exhaust the quota and deny service to real campaign traffic.
+
+New environment variables: `TWILIO_VALIDATE_WEBHOOKS` (default `true`), `OUTBOUND_API_KEY`, `OUTBOUND_RATE_LIMIT_PER_MINUTE` (default `30`).
+
+#### 🎯 Features
+
+**Automatic caller-language detection and TTS switching** (`ConversationRelaySession.autoSwitchTtsLanguage()`)
+- ConversationRelay *reports* the detected language on every prompt when `transcriptionLanguage` is `multi`, but never acts on it — `<Language>` is a lookup table and detection is a read. This closes the loop: the detected primary tag (`fr`) is mapped onto a declared `<Language>` code (`fr-FR`) and TTS is switched, so the reply is spoken with that language's configured voice.
+- The `languages` array doubles as the allow-list. A detected language with no declared entry is **left alone** rather than switching TTS somewhere undefined.
+- `transcriptionLanguage` deliberately stays on `multi` for the whole call. Pinning STT to the detected language would *end* detection, so a caller who later drifted back to English would be transcribed by the wrong model with nothing to signal it.
+- An explicit `switch-language` call (i.e. the caller asked) latches automatic switching off for the rest of the call — otherwise a caller who says "please speak English" while still speaking French would be flipped straight back on the next prompt.
+- Switching happens in code, not through the LLM: detection already produces a reliable answer, so a tool round-trip would spend tokens and add a chance of not firing, all to reproduce a four-line mapping.
+- Full write-up, including the platform semantics and gotchas: [`server/docs/language-detection.md`](./server/docs/language-detection.md).
+
+**Graceful live-agent handoff with hold music**
+- `<Connect>` had no `action` URL, so when the `live-agent-handoff` tool fired, Twilio dropped the call immediately and the caller experienced an abrupt hangup. `action="{serverBaseUrl}/handoff"` plus a `/handoff` route now returns Twilio's demo hold music (3 loops) for `reasonCode: "live-agent-handoff"`. Other end reasons return empty TwiML, preserving the existing clean-hangup UX.
+
+**Status callbacks wired on outbound calls**
+- `calls.create()` now registers `statusCallback` / `Method` / `Event` for `initiated`, `ringing`, `answered` and `completed`. Previously nothing pointed at `/twilioStatusCallback`, so an outbound call that rang out, was busy or failed produced no signal at all beyond a WebSocket that never opened.
+
+**Per-call context selection at WebSocket setup**
+- `contextKey` was honoured only by `POST /updateResponseService`, i.e. after the call was already running, so the active context was effectively global — an outbound campaign prompt would also be served to inbound callers. An unknown key logs and falls back rather than failing the call.
+
+#### 🐛 Bug Fixes
+
+**Speech correctness** — surfaced by live outbound calls, latent since v4.12
+- **Double speech.** `processStream()` recurses on each tool call and every follow-up stream may emit text, so a model that spoke a farewell *and* called `end-call` in one response had the follow-up produce a second farewell. Terminal tools no longer create a follow-up generation. The current stream is still read to completion, because `response.completed` must fire its `last: true` token or the session's deferred terminal frame never flushes and the call stays open. Non-terminal tools keep their follow-up — that is how a tool-then-speak turn produces its speech.
+- **Interleaved speech.** `generateResponse()` had no concurrency guard, so two prompts arriving close together started two independent streams feeding the same handler and interleaved tokens mid-sentence. Fixed with cancel-previous semantics (each call claims a generation id; a stream whose generation is stale stops emitting), chosen over queueing because on a voice call a newer utterance should supersede the answer to the previous one rather than queue behind it.
+
+**Listen mode, status callbacks and session cleanup** — six defects, all latent on the shipped `ListenMode.enabled: false`, which is why the 61-test suite stayed green
+- **Listen mode could not be turned off; the agent went permanently mute.** `listenMode` existed twice — on the session (gating outgoing frames) and on `OpenAIResponseService` (gating token emission, constructor-set with no setter). The `set-listen-mode` tool only reached the session, so toggling off left the response service stuck `true` and every text delta was discarded upstream. The session is now the sole owner, consistent with it being the sole writer to the WebSocket. *Side effect:* the `/conversation` HTTP endpoint no longer honours listen mode — correct, as it has no WebSocket and wire-frame suppression is meaningless there.
+- **Starting in listen mode armed a silent countdown to hangup.** The constructor set `listenMode` but never disarmed silence detection; only the runtime setter did. Reminders are `text` frames and were suppressed, but the terminal `end` frame is not gated, so the call was hung up with `reasonCode: 'unresponsive'` and no audible warning.
+- **`/twilioStatusCallback` read `statusCallBack.callSid`;** Twilio posts `CallSid`, so the session lookup always missed and no status was ever injected into the conversation. `TwilioService.evaluateStatusCallback()` already read the correct casing, so the two halves disagreed.
+- **`parameterDataMap` was never cleaned up.** Now deleted on ws close/error alongside `wsSessionsMap`, plus a TTL prune at insert to bound the map for outbound calls that are never answered and so never open a WebSocket.
+- **`/outboundCall` logged `[object Object]`** instead of the call SID.
+- **Log accuracy:** the session's constructed line reported the silence *config* value while the handler could already be disarmed — actively misleading when debugging listen mode. The `setup` frame is also no longer passed to `handleIncoming()` after being fully consumed, which was logging "Duplicate setup ignored" on every single call.
+
+#### 🧪 Testing & Types
+
+- **61 -> 121 tests.** Every behavioural fix above was verified against the pre-fix tree rather than merely asserted green.
+- **Test files are now type-checked.** `tsconfig.json` scopes to `src/**` and vitest strips types without checking them, so test files never were — which is how a pre-v4.12 five-argument `OpenAIResponseService` constructor survived unnoticed in its own test file, silently landing the mock manifest in `registry` and `false` in `config` while every assertion said only `toBeDefined()`. Adds `tsconfig.test.json` and `npm run typecheck` covering both.
+- Signature-validation tests build requests with the SDK's own `getExpectedTwilioSignature`, exercising the real crypto path, and deliberately report `http://localhost:3007` while signing for `https://<public-host>` so they also prove protocol/host pinning.
+- Language-switching tests assert the table in `docs/language-detection.md` rather than trusting it, driven through `handleIncoming` so the `prompt` wiring is covered and not just the mapping.
+- **`ServerConfig` tests are now hermetic.** With `NODE_ENV` deleted, `fromEnv()` defaults to development and loaded the developer's real `.env.dev`, so an assertion passed or failed depending on whose machine ran it. They now pin `NODE_ENV=test`.
+- Tests use ACMA fictitious numbers rather than a real mobile.
+- **SDK typing restored at the TwiML `<Language>` builder site.** The attribute list is keyed off `keyof VoiceResponse.LanguageAttributes`, so a renamed SDK field fails `tsc` here — which is precisely what `crelay.ts`'s deliberately narrow drift guard assumes.
+
+#### ⚠️ Behaviour Change
+
+**`serverConfig.json` now defaults to multi-language.** `transcriptionLanguage` and `ttsLanguage` are both `"multi"`; the redundant `language: "en-AU"` key is gone (it sits lowest in both precedence lists and was already overridden); `fr-FR` and `es-ES` are declared alongside `en-AU`.
+
+- The provider pairings that `multi` requires — **Deepgram** for transcription, **ElevenLabs** for TTS — were already the shipped defaults, so **no new credentials are needed**.
+- Existing deployments that pull this release move from `en-AU`-pinned transcription to multi-language transcription. To keep v4.12 behaviour, set `transcriptionLanguage` and `ttsLanguage` back to `en-AU` and trim the `languages` array to that one entry.
+- The `fr-FR` and `es-ES` entries ship with the same ElevenLabs multilingual voice as `en-AU`. Set a per-language `voice` if you want distinct ones.
+- Note the silent failure mode documented in `language-detection.md`: **duplicate JSON keys in `serverConfig.json` fail silently** — `JSON.parse` keeps the last occurrence with no warning, so a config declaring `transcriptionLanguage` twice is quietly whatever came last.
+
 ## Release v4.12.0
 
 ### ConversationRelay Session Model + In-Code Tool Registry
