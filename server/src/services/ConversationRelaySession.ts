@@ -328,7 +328,7 @@ export class ConversationRelaySession {
             `${this.logPrefix} Detected '${detected}' — switching ttsLanguage to ${code}`
         );
         this.activeTtsLanguage = code;
-        this.sendResponse({ type: 'language', ttsLanguage: code } as OutgoingFrame);
+        this.sendResponse({ type: 'language', ttsLanguage: code });
     }
 
     switchLanguage(opts: { ttsLanguage?: string; transcriptionLanguage?: string }): void {

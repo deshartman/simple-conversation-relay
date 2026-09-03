@@ -173,16 +173,25 @@ class TwilioService extends EventEmitter {
             // switched-to language back to the parent's settings. Attributes
             // left unset inherit from <ConversationRelay> by design, so emit
             // whatever is present rather than requiring ttsProvider + voice.
-            const LANGUAGE_ATTRS = ['ttsProvider', 'voice', 'transcriptionProvider', 'speechModel'] as const;
+            // Keyed off the SDK type on purpose: crelay.ts's drift guard is
+            // deliberately narrow because it assumes this builder site carries
+            // the SDK types, so a renamed LanguageAttributes field must fail
+            // `tsc` here rather than slip through as an untyped object.
+            const LANGUAGE_ATTRS: readonly (keyof VoiceResponse.LanguageAttributes)[] = [
+                'ttsProvider',
+                'voice',
+                'transcriptionProvider',
+                'speechModel',
+            ];
             if (languages) {
                 Object.keys(languages).forEach(langCode => {
                     const langConfig = languages[langCode];
                     if (!langConfig) return;
-                    const attributes: Record<string, string> = { code: langCode };
+                    const attributes: VoiceResponse.LanguageAttributes = { code: langCode };
                     LANGUAGE_ATTRS.forEach(attr => {
                         if (langConfig[attr]) attributes[attr] = langConfig[attr];
                     });
-                    conversationRelay.language(attributes as any);
+                    conversationRelay.language(attributes);
                 });
             }
 
