@@ -47,6 +47,11 @@ export class ServerConfig {
     /** Rolling-minute cap on outbound calls. Bounds spend if the token leaks. */
     public readonly outboundRateLimitPerMinute: number;
 
+    /** Voice-call response back end: 'openai' (default) or 'mini-tac'. */
+    public readonly responseService: string;
+    public readonly miniTacUrl: string;
+    public readonly miniTacApiKey?: string;
+
     constructor(data: {
         port: number;
         serverBaseUrl: string;
@@ -62,6 +67,9 @@ export class ServerConfig {
         validateTwilioWebhooks: boolean;
         outboundApiKey?: string;
         outboundRateLimitPerMinute: number;
+        responseService: string;
+        miniTacUrl: string;
+        miniTacApiKey?: string;
     }) {
         this.port = data.port;
         this.serverBaseUrl = data.serverBaseUrl;
@@ -77,6 +85,9 @@ export class ServerConfig {
         this.validateTwilioWebhooks = data.validateTwilioWebhooks;
         this.outboundApiKey = data.outboundApiKey;
         this.outboundRateLimitPerMinute = data.outboundRateLimitPerMinute;
+        this.responseService = data.responseService;
+        this.miniTacUrl = data.miniTacUrl;
+        this.miniTacApiKey = data.miniTacApiKey;
     }
 
     /**
@@ -107,6 +118,9 @@ export class ServerConfig {
             'FROM_NUMBER'
         ];
 
+        const responseService = process.env.RESPONSE_SERVICE_TYPE || 'openai';
+        if (responseService === 'mini-tac') required.push('MINI_TAC_API_KEY');
+
         const missing = required.filter(key => !process.env[key]);
         if (missing.length > 0) {
             throw new Error(`Missing required environment variables: ${missing.join(', ')}`);
@@ -133,7 +147,10 @@ export class ServerConfig {
             outboundRateLimitPerMinute: parseInt(
                 process.env.OUTBOUND_RATE_LIMIT_PER_MINUTE || '30',
                 10
-            )
+            ),
+            responseService,
+            miniTacUrl: process.env.MINI_TAC_URL || 'http://localhost:8000',
+            miniTacApiKey: process.env.MINI_TAC_API_KEY
         });
     }
 
@@ -154,6 +171,8 @@ export class ServerConfig {
             assetLoaderType: 'file',
             validateTwilioWebhooks: false,
             outboundRateLimitPerMinute: 30,
+            responseService: 'openai',
+            miniTacUrl: 'http://localhost:8000',
             ...overrides as any
         });
     }

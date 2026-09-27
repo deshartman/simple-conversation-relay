@@ -205,7 +205,7 @@ export class ConversationRelaySession {
                     //     'Session',
                     //     `${this.logPrefix} INTERRUPT: ${JSON.stringify(message, null, 2)}`
                     // );
-                    this.responseService.interrupt();
+                    this.responseService.interrupt(message.utteranceUntilInterrupt);
                     break;
                 case 'info':
                     // Intentionally quiet — info frames are frequent.

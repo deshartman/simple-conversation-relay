@@ -93,8 +93,11 @@ export interface ResponseService {
         /**
          * Interrupts current response generation
          * Used when user interrupts AI during response to stop streaming
+         *
+         * @param heard - Optional text the caller actually heard (CR's
+         *   `utteranceUntilInterrupt`), for services that trim history to it
          */
-        interrupt(): void;
+        interrupt(heard?: string): void;
 
         /**
          * Updates the context for the response service

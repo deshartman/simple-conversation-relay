@@ -19,6 +19,8 @@ import path from 'path';
 
 import { ConversationRelaySession } from './services/ConversationRelaySession.js';
 import { OpenAIResponseService } from './services/OpenAIResponseService.js';
+import { MiniTacResponseService } from './services/MiniTacResponseService.js';
+import type { ResponseService } from './interfaces/ResponseService.js';
 import { TwilioService } from './services/TwilioService.js';
 import { CachedAssetsService } from './services/CachedAssetsService.js';
 import { ServerConfig } from './config/ServerConfig.js';
@@ -298,10 +300,11 @@ app.ws('/conversation-relay', (ws: any, _req: express.Request) => {
                     }
                 }
 
-                const responseService = new OpenAIResponseService(
-                    context,
-                    toolRegistry,
-                    serverConfig
+                // /conversation (HTTP chat) stays on OpenAI regardless.
+                const responseService = createResponseService(
+                    message.callSid ?? crypto.randomUUID(),
+                    message.from ?? '',
+                    context
                 );
 
                 // The declared <Language> codes double as the allow-list for
@@ -474,6 +477,25 @@ app.post('/twilioStatusCallback', validateTwilioSignature, async (req: express.R
     }
     res.json({ success: true });
 });
+
+/**
+ * Pick the voice back end from RESPONSE_SERVICE_TYPE.
+ */
+function createResponseService(
+    key: string,
+    phone: string,
+    context: string
+): ResponseService {
+    return serverConfig.responseService === 'mini-tac'
+        ? new MiniTacResponseService({
+              baseUrl: serverConfig.miniTacUrl,
+              apiKey: serverConfig.miniTacApiKey!,
+              key,
+              phone,
+              instructions: context,
+          })
+        : new OpenAIResponseService(context, toolRegistry, serverConfig);
+}
 
 app.post('/conversation', async (req: express.Request, res: express.Response) => {
     try {
