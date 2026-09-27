@@ -201,6 +201,10 @@ export class ConversationRelaySession {
                         'Session',
                         `${this.logPrefix} INTERRUPT: ${message.utteranceUntilInterrupt}`
                     );
+                    // logOut(
+                    //     'Session',
+                    //     `${this.logPrefix} INTERRUPT: ${JSON.stringify(message, null, 2)}`
+                    // );
                     this.responseService.interrupt();
                     break;
                 case 'info':
@@ -433,11 +437,15 @@ export class ConversationRelaySession {
                 // text frame via the session's outgoing path.
                 if (!response.last) {
                     this.accumulatedTokens += response.token || '';
-                } else {
                     logOut(
                         'Session',
-                        `${this.logPrefix} Complete response: "${this.accumulatedTokens}"`
+                        `${this.logPrefix} Streaming response: "${response.token}"`
                     );
+                } else {
+                    // logOut(
+                    //     'Session',
+                    //     `${this.logPrefix} Complete response: "${this.accumulatedTokens}"`
+                    // );
                     this.accumulatedTokens = '';
                 }
                 this.sendText(response.token, response.last).catch(err =>
