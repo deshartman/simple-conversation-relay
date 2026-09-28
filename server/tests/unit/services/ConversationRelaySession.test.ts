@@ -448,6 +448,57 @@ describe('ConversationRelaySession', () => {
         });
     });
 
+    describe('call actions (service asks, transport builds the frame)', () => {
+        const act = (rs: any, action: any) =>
+            rs.handler.toolResult({ toolType: 't', toolData: { success: true, message: '', action } });
+
+        it('builds sendDigits, play and language frames from actions', () => {
+            const { session, sent, responseService } = makeSession({ initialListenMode: false });
+            sessions.push(session);
+
+            act(responseService, { type: 'sendDigits', digits: '6' });
+            act(responseService, { type: 'play', source: 'https://x/a.mp3', loop: 1 });
+            act(responseService, { type: 'language', ttsLanguage: 'fr-FR' });
+
+            expect(sent).toEqual([
+                { type: 'sendDigits', digits: '6' },
+                { type: 'play', source: 'https://x/a.mp3', loop: 1 },
+                { type: 'language', ttsLanguage: 'fr-FR' },
+            ]);
+        });
+
+        it('holds endCall until the farewell has been spoken', async () => {
+            const { session, sent, responseService } = makeSession({ initialListenMode: false });
+            sessions.push(session);
+
+            act(responseService, { type: 'endCall', handoffData: '{"conversationId":"c1"}' });
+            expect(sent).toEqual([]);
+
+            await session.sendText('Transferring you now', true);
+
+            expect(typesOf(sent)).toEqual(['text', 'end']);
+            expect(sent[1]).toEqual({ type: 'end', handoffData: '{"conversationId":"c1"}' });
+        });
+
+        it('toggles listen mode from an action', () => {
+            const { session, responseService } = makeSession({ initialListenMode: false });
+            sessions.push(session);
+
+            act(responseService, { type: 'listenMode', enabled: true });
+
+            expect(session.isListenMode()).toBe(true);
+        });
+
+        it('drops an action whose frame is invalid', () => {
+            const { session, sent, responseService } = makeSession({ initialListenMode: false });
+            sessions.push(session);
+
+            act(responseService, { type: 'sendDigits', digits: 'abc' });
+
+            expect(sent).toEqual([]);
+        });
+    });
+
     describe('call events (transport reports, service decides)', () => {
         it('reports setup as data, with no prompt text of its own', async () => {
             const { session, responseService } = makeSession({ initialListenMode: false });

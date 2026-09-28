@@ -24,7 +24,7 @@
 import { logOut, logError } from '../utils/logger.js';
 import { SilenceHandler } from './SilenceHandler.js';
 import type { SilenceDetectionConfig } from './SilenceHandler.js';
-import type { ResponseService, ResponseHandler, ContentResponse, ToolResultEvent } from '../interfaces/ResponseService.js';
+import type { ResponseService, ResponseHandler, ContentResponse, ToolResultEvent, CallAction } from '../interfaces/ResponseService.js';
 import type { SessionData, IncomingMessage } from '../interfaces/ConversationRelay.js';
 import {
     OutgoingFrameSchema,
@@ -479,9 +479,9 @@ export class ConversationRelaySession {
 
     /**
      * Bridge from `ResponseService` (streaming tokens, tool results) to the
-     * session's outgoing methods. Routes tool-result side-effect fields
-     * (`silenceEnabled`, `listenMode`, `outgoingMessage`) to the right
-     * session method.
+     * session's outgoing methods. Applies a tool result's `action` (or the
+     * legacy `silenceEnabled` / `listenMode` / `outgoingMessage` fields) to
+     * the call.
      */
     private buildResponseHandler(): ResponseHandler {
         return {
@@ -512,6 +512,13 @@ export class ConversationRelaySession {
 
                 if (!toolData) return;
 
+                if (toolData.action) {
+                    this.applyAction(toolData.action, toolType);
+                    return;
+                }
+
+                // Legacy result fields, accepted until every tool returns `action`.
+
                 // Priority 1: silence-detection toggle.
                 if (typeof toolData.silenceEnabled === 'boolean') {
                     this.setSilenceDetection(toolData.silenceEnabled);
@@ -525,32 +532,9 @@ export class ConversationRelaySession {
                 }
 
                 // Priority 3: outgoing frame from the tool.
-                const outgoing = toolData.outgoingMessage;
-                if (!outgoing) return;
-
-                const parsed = OutgoingFrameSchema.safeParse(outgoing);
-                if (!parsed.success) {
-                    logError(
-                        'Session',
-                        `${this.logPrefix} Tool '${toolType}' produced invalid outgoingMessage: ${JSON.stringify(parsed.error.issues)}`
-                    );
-                    return;
+                if (toolData.outgoingMessage) {
+                    this.applyToolFrame(toolData.outgoingMessage, toolType);
                 }
-
-                const frame = parsed.data;
-                if (frame.type === 'end') {
-                    // Defer terminal frames until after the final text token,
-                    // so the LLM's farewell isn't cut off mid-sentence.
-                    this.pendingTerminalFrame = frame;
-                    logOut(
-                        'Session',
-                        `${this.logPrefix} Deferring terminal frame from '${toolType}' until farewell flush`
-                    );
-                    return;
-                }
-
-                // Non-terminal frames ship immediately.
-                this.sendResponse(frame);
             },
 
             error: (error: Error) => {
@@ -568,6 +552,58 @@ export class ConversationRelaySession {
                 this.trackToolCall(promise);
             },
         };
+    }
+
+    /** What a call action means on the wire. The only place tools' effects become frames. */
+    private applyAction(action: CallAction, toolType: string): void {
+        switch (action.type) {
+            case 'listenMode':
+                this.setListenMode(action.enabled);
+                return;
+            case 'silence':
+                this.setSilenceDetection(action.enabled);
+                return;
+            case 'endCall':
+            case 'sendDigits':
+            case 'play':
+            case 'language': {
+                const { type, ...fields } = action;
+                const frameType = type === 'endCall' ? 'end' : type;
+                this.applyToolFrame({ type: frameType, ...fields }, toolType);
+                return;
+            }
+            default:
+                logError(
+                    'Session',
+                    `${this.logPrefix} Tool '${toolType}' requested unknown action: ${JSON.stringify(action)}`
+                );
+        }
+    }
+
+    private applyToolFrame(outgoing: unknown, toolType: string): void {
+        const parsed = OutgoingFrameSchema.safeParse(outgoing);
+        if (!parsed.success) {
+            logError(
+                'Session',
+                `${this.logPrefix} Tool '${toolType}' produced invalid frame: ${JSON.stringify(parsed.error.issues)}`
+            );
+            return;
+        }
+
+        const frame = parsed.data;
+        if (frame.type === 'end') {
+            // Defer terminal frames until after the final text token,
+            // so the LLM's farewell isn't cut off mid-sentence.
+            this.pendingTerminalFrame = frame;
+            logOut(
+                'Session',
+                `${this.logPrefix} Deferring terminal frame from '${toolType}' until farewell flush`
+            );
+            return;
+        }
+
+        // Non-terminal frames ship immediately.
+        this.sendResponse(frame);
     }
 
     // =========================================================================

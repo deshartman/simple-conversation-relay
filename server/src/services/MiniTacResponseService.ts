@@ -13,8 +13,9 @@
  *                      (optional reply {text}; SCR owns when to remind/end)
  *   cleanup   -> DELETE /sessions/:key            (MINI-TAC consolidates memory)
  *
- * Tools run in MINI-TAC; any CR frame they produce (e.g. an `end` handoff)
- * arrives as a {"frame"} line and is routed through toolResult.
+ * Tools run in MINI-TAC. Its handoff asks for the end with a {"handoff"} line
+ * (handoffData string); SCR turns that into an `endCall` action, so MINI-TAC
+ * never builds CR frames.
  * A `context` event is ignored: MINI-TAC owns its prompt.
  */
 
@@ -164,7 +165,7 @@ class MiniTacResponseService implements ResponseService {
             .catch(err => logError('MiniTacResponseService', `cleanup failed: ${err.message}`));
     }
 
-    /** Parse the NDJSON stream: {"token"} and {"frame","tool"} lines, then {"last":true,...}. */
+    /** Parse the NDJSON stream: {"token"} and {"handoff","tool"} lines, then {"last":true,...}. */
     private async readStream(res: Response, signal: AbortSignal): Promise<void> {
         if (!res.body) throw new Error('respond returned no body');
         const reader = res.body.getReader();
@@ -186,15 +187,19 @@ class MiniTacResponseService implements ResponseService {
                     token?: string;
                     last?: boolean;
                     interrupted?: boolean;
-                    frame?: unknown;
+                    handoff?: string;
                     tool?: string;
                 };
-                if (frame.frame) {
-                    // A MINI-TAC tool produced a CR frame only SCR can send; route it
-                    // like a local tool result so `end` is held until last:true.
+                if (typeof frame.handoff === 'string') {
+                    // MINI-TAC's handoff tool asks for the end; SCR builds the
+                    // frame and holds it until the farewell has been spoken.
                     this.responseHandler.toolResult({
-                        toolType: frame.tool ?? 'mini-tac',
-                        toolData: { success: true, message: 'from MINI-TAC', outgoingMessage: frame.frame },
+                        toolType: frame.tool ?? 'handoff',
+                        toolData: {
+                            success: true,
+                            message: 'from MINI-TAC',
+                            action: { type: 'endCall', handoffData: frame.handoff },
+                        },
                     });
                     continue;
                 }

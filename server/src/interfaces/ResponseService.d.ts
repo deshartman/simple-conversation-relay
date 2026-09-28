@@ -49,8 +49,22 @@ export interface ContentResponse {
  */
 export interface ToolResultEvent {
     toolType: string;  // The tool name (e.g., "send-dtmf", "live-agent-handoff", "send-sms")
-    toolData: ToolResult; // The complete tool result including outgoingMessage for CRelay tools
+    toolData: ToolResult; // The complete tool result, incl. `action` for tools that act on the call
 }
+
+/**
+ * Something a service asks the transport to do to the call. The service's
+ * tools decide *when*; the transport owns *what it means* on the wire (which
+ * frame, and that `endCall` waits for the farewell). Services never build CR
+ * frames themselves.
+ */
+export type CallAction =
+    | { type: 'endCall'; handoffData?: string }
+    | { type: 'sendDigits'; digits: string }
+    | { type: 'play'; source: string; loop?: number; interruptible?: boolean; preemptible?: boolean }
+    | { type: 'language'; ttsLanguage?: string; transcriptionLanguage?: string }
+    | { type: 'listenMode'; enabled: boolean }
+    | { type: 'silence'; enabled: boolean };
 
 /**
  * Interface for tool result from individual tool execution
@@ -58,6 +72,8 @@ export interface ToolResultEvent {
 export interface ToolResult {
     success: boolean;
     message: string;
+    /** Applied to the call by the transport. */
+    action?: CallAction;
     [key: string]: any; // Allows additional properties like digits, recipient, summary, etc.
 }
 

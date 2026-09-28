@@ -173,27 +173,26 @@ describe('MiniTacResponseService', () => {
         expect(calls).toEqual([]);
     });
 
-    it('routes a {"frame"} line through toolResult, before last:true', async () => {
-        const end = { type: 'end', handoffData: '{"reasonCode":"live-agent-handoff"}' };
+    it('maps a {"handoff"} line to an endCall action, before last:true', async () => {
+        const handoffData = '{"conversationId":"conv_1","storeId":"mem_1"}';
         const order: string[] = [];
-        const { service, content, toolResults } = await started([
+        const { service, toolResults } = await started([
             { token: 'Transferring you' },
-            { frame: end, tool: 'handoff' },
+            { handoff: handoffData, tool: 'handoff' },
             { last: true, text: 'Transferring you' },
         ]);
         const handler = (service as any).responseHandler;
         const content0 = handler.content, tool0 = handler.toolResult;
         handler.content = (r: any) => { order.push(r.last ? 'last' : 'token'); content0(r); };
-        handler.toolResult = (e: any) => { order.push('frame'); tool0(e); };
+        handler.toolResult = (e: any) => { order.push('handoff'); tool0(e); };
 
         await service.handleEvent({ type: 'prompt', text: 'agent please' });
 
         expect(toolResults).toEqual([{
             toolType: 'handoff',
-            toolData: { success: true, message: 'from MINI-TAC', outgoingMessage: end },
+            toolData: { success: true, message: 'from MINI-TAC', action: { type: 'endCall', handoffData } },
         }]);
-        expect(order).toEqual(['token', 'frame', 'last']);
-        expect(content).toHaveLength(2);
+        expect(order).toEqual(['token', 'handoff', 'last']);
     });
 
     it('forwards what the caller heard on interrupt', async () => {
