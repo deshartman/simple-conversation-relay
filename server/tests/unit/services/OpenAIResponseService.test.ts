@@ -110,9 +110,11 @@ describe('OpenAIResponseService', () => {
             expect((service as any).setListenMode).toBeUndefined();
         });
 
-        it('should accept exactly three constructor arguments', () => {
+        it('should require exactly three constructor arguments', () => {
             // Guards against silently reintroducing the removed `listenMode`
             // parameter, which type-checking will not catch in this file.
+            // (The optional fourth, silenceReminders, has a default, so it
+            // does not count toward `length`.)
             expect(OpenAIResponseService.length).toBe(3);
         });
     });
@@ -214,6 +216,68 @@ describe('OpenAIResponseService', () => {
             });
 
             expect(campaign.getDefault).not.toHaveBeenCalled();
+        });
+
+        describe('silence', () => {
+            const REMINDERS = ['Still there?', 'Just checking you are still there?'];
+
+            function withHandler() {
+                const service = new OpenAIResponseService(contexts, registry, config(), REMINDERS);
+                const out: any[] = [];
+                service.createResponseHandler({
+                    content: r => out.push({ content: r.token, last: r.last }),
+                    toolResult: e => out.push({ tool: e.toolType, frame: e.toolData.outgoingMessage }),
+                    error: () => {},
+                    callSid: () => {},
+                });
+                return { service, out };
+            }
+
+            it('speaks the configured reminders on breaches 1 and 2', async () => {
+                const { service, out } = withHandler();
+                await service.handleEvent({ type: 'silence', count: 1 });
+                await service.handleEvent({ type: 'silence', count: 2 });
+
+                expect(out).toEqual([
+                    { content: 'Still there?', last: true },
+                    { content: 'Just checking you are still there?', last: true },
+                ]);
+            });
+
+            it('ends the call as unresponsive on the breach after the last reminder', async () => {
+                const { service, out } = withHandler();
+                await service.handleEvent({ type: 'silence', count: 3 });
+
+                expect(out[0].tool).toBe('silence');
+                expect(out[0].frame.type).toBe('end');
+                expect(JSON.parse(out[0].frame.handoffData)).toEqual({
+                    reasonCode: 'unresponsive',
+                    reason: 'The caller was not speaking',
+                });
+                // The last:true that releases the deferred end frame.
+                expect(out[1]).toEqual({ content: '', last: true });
+            });
+
+            it('does nothing after the call has been ended', async () => {
+                const { service, out } = withHandler();
+                await service.handleEvent({ type: 'silence', count: 4 });
+
+                expect(out).toEqual([]);
+            });
+
+            it('with no reminders configured, ends on the first breach', async () => {
+                const service = new OpenAIResponseService(contexts, registry, config());
+                const tools: string[] = [];
+                service.createResponseHandler({
+                    content: () => {},
+                    toolResult: e => tools.push(e.toolType),
+                    error: () => {},
+                    callSid: () => {},
+                });
+                await service.handleEvent({ type: 'silence', count: 1 });
+
+                expect(tools).toEqual(['silence']);
+            });
         });
     });
 });

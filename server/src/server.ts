@@ -294,7 +294,9 @@ app.ws('/conversation-relay', (ws: any, req: express.Request) => {
                 // The service owns its prompt (incl. contextKey) from the setup
                 // event; the transport loads none.
                 // /conversation (HTTP chat) stays on OpenAI regardless.
-                const responseService = createResponseService();
+                const responseService = createResponseService(
+                    activeAssets.silenceDetection.messages ?? []
+                );
 
                 // The declared <Language> codes double as the allow-list for
                 // automatic TTS switching, so the session resolves a detected
@@ -468,15 +470,16 @@ app.post('/twilioStatusCallback', validateTwilioSignature, async (req: express.R
 });
 
 /**
- * Pick the voice back end from RESPONSE_SERVICE_TYPE.
+ * Pick the voice back end from RESPONSE_SERVICE_TYPE. Silence wording goes to
+ * the service that speaks it; MINI-TAC owns its own (or none).
  */
-function createResponseService(): ResponseService {
+function createResponseService(silenceReminders: string[]): ResponseService {
     return serverConfig.responseService === 'mini-tac'
         ? new MiniTacResponseService({
               baseUrl: serverConfig.miniTacUrl,
               apiKey: serverConfig.miniTacApiKey!,
           })
-        : new OpenAIResponseService(contextStore, toolRegistry, serverConfig);
+        : new OpenAIResponseService(contextStore, toolRegistry, serverConfig, silenceReminders);
 }
 
 app.post('/conversation', async (req: express.Request, res: express.Response) => {

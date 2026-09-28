@@ -96,14 +96,16 @@ describe('MiniTacResponseService', () => {
         expect(content).toEqual([{ token: 'Hi', last: false }]);
     });
 
-    it('posts dtmf and status events to /events', async () => {
+    it('posts dtmf, status and silence events to /events', async () => {
         const { service, calls } = await started();
         await service.handleEvent({ type: 'dtmf', digit: '5' });
         await service.handleEvent({ type: 'status', status: { callStatus: 'completed' } });
+        await service.handleEvent({ type: 'silence', count: 2 });
 
         expect(calls.slice(1).map(c => [c.url, c.body])).toEqual([
             ['http://localhost:8000/sessions/CA1/events', { type: 'dtmf', digit: '5' }],
             ['http://localhost:8000/sessions/CA1/events', { type: 'status', status: { callStatus: 'completed' } }],
+            ['http://localhost:8000/sessions/CA1/events', { type: 'silence', count: 2 }],
         ]);
     });
 

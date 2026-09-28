@@ -64,7 +64,7 @@ export interface ToolResult {
 /**
  * Call events the transport (ConversationRelaySession) reports to the service.
  * These are SCR's own events, not raw CR frames: `info`/`error` frames are
- * transport noise, and `status` is not a CR frame at all.
+ * transport noise, and `status` and `silence` are not CR frames at all.
  */
 export type CallEvent =
     | {
@@ -85,6 +85,15 @@ export type CallEvent =
           type: 'status';
           /** Evaluated Twilio status callback (see TwilioService.evaluateStatusCallback). */
           status: unknown;
+      }
+    | {
+          type: 'silence';
+          /**
+           * Consecutive silence breaches since the caller last spoke: 1, 2, 3, …
+           * The transport only measures; the service decides whether to speak,
+           * end the call, or ignore it.
+           */
+          count: number;
       };
 
 /**

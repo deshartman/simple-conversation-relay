@@ -9,6 +9,7 @@
  *   interrupt -> POST   /sessions/:key/interrupt  (+ abort local fetch)
  *   dtmf      -> POST   /sessions/:key/events     {type:'dtmf', digit}
  *   status    -> POST   /sessions/:key/events     {type:'status', status}
+ *   silence   -> POST   /sessions/:key/events     {type:'silence', count}
  *   cleanup   -> DELETE /sessions/:key            (MINI-TAC consolidates memory)
  *
  * Tools run in MINI-TAC; any CR frame they produce (e.g. an `end` handoff)
@@ -89,6 +90,10 @@ class MiniTacResponseService implements ResponseService {
                 break;
             case 'status':
                 await this.postEvent({ type: 'status', status: event.status });
+                break;
+            case 'silence':
+                // MINI-TAC decides; like TAC it currently ignores silence.
+                await this.postEvent({ type: 'silence', count: event.count });
                 break;
         }
     }

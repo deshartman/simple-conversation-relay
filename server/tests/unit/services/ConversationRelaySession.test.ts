@@ -154,14 +154,19 @@ describe('ConversationRelaySession', () => {
             expect((session as any).silenceHandler.isEnabled()).toBe(true);
         });
 
-        it('never terminates the call while starting in listen mode', async () => {
-            const { session, sent } = makeSession({ initialListenMode: true, silenceEnabled: true });
+        it('never reports silence while starting in listen mode', async () => {
+            const { session, sent, responseService } = makeSession({
+                initialListenMode: true,
+                silenceEnabled: true,
+            });
             sessions.push(session);
 
             await session.setup();
             // Well past 3 x 20s — reminders exhausted plus a terminal breach.
             await vi.advanceTimersByTimeAsync(90_000);
 
+            const silence = responseService.handleEvent.mock.calls.filter(c => c[0].type === 'silence');
+            expect(silence).toEqual([]);
             expect(typesOf(sent)).not.toContain('end');
         });
 
@@ -336,6 +341,38 @@ describe('ConversationRelaySession', () => {
             await say(session, 'fr');
 
             expect(ttsFrames(sent)).toEqual([]);
+        });
+    });
+
+    describe('silence (transport times, service decides)', () => {
+        const silenceEvents = (rs: ReturnType<typeof makeFakeResponseService>) =>
+            rs.handleEvent.mock.calls.map(c => c[0]).filter((e: any) => e.type === 'silence');
+
+        it('reports each 20s breach as a counted silence event, sending nothing itself', async () => {
+            const { session, sent, responseService } = makeSession({ initialListenMode: false });
+            sessions.push(session);
+
+            await session.setup();
+            await vi.advanceTimersByTimeAsync(61_000);
+
+            expect(silenceEvents(responseService)).toEqual([
+                { type: 'silence', count: 1 },
+                { type: 'silence', count: 2 },
+                { type: 'silence', count: 3 },
+            ]);
+            expect(sent).toEqual([]);
+        });
+
+        it('restarts the count when the caller speaks', async () => {
+            const { session, responseService } = makeSession({ initialListenMode: false });
+            sessions.push(session);
+
+            await session.setup();
+            await vi.advanceTimersByTimeAsync(21_000);
+            await session.handleIncoming({ type: 'prompt', voicePrompt: 'hi' } as any);
+            await vi.advanceTimersByTimeAsync(21_000);
+
+            expect(silenceEvents(responseService).map((e: any) => e.count)).toEqual([1, 1]);
         });
     });
 

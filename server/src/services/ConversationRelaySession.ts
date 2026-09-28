@@ -94,32 +94,28 @@ export class ConversationRelaySession {
         }
         this.activeTtsLanguage = opts.initialTtsLanguage ?? null;
 
+        // The session owns only the timer; the service decides what a breach
+        // means (speak a reminder, end the call, or nothing).
         this.silenceHandler = opts.silenceConfig.enabled
             ? new SilenceHandler({
                   enabled: true,
                   secondsThreshold: opts.silenceConfig.secondsThreshold,
-                  messages: opts.silenceConfig.messages,
-                  onReminder: reminder => {
-                      logOut('Session', `${this.logPrefix} Silence reminder: "${reminder}"`);
-                      this.sendText(reminder, true).catch(err =>
-                          logError('Session', `Reminder sendText failed: ${err.message}`)
-                      );
-                  },
-                  onTerminate: () => {
-                      logOut('Session', `${this.logPrefix} Silence terminal — ending call`);
-                      this.endCall({
-                          reasonCode: 'unresponsive',
-                          reason: 'The caller was not speaking',
-                      });
+                  onBreach: count => {
+                      this.responseService
+                          .handleEvent({ type: 'silence', count })
+                          .catch(err =>
+                              logError('Session', `${this.logPrefix} silence event failed: ${err.message}`)
+                          );
                   },
               })
             : null;
 
         // BUG-2: starting in listen mode must mirror the runtime
-        // `setListenMode()` path and disarm silence detection. Otherwise the
-        // reminders are swallowed (they are `text` frames, which listen mode
-        // gates) while the terminal `end` frame is NOT gated — so the call is
-        // hung up with `reasonCode: 'unresponsive'` and no audible warning.
+        // `setListenMode()` path and disarm silence detection. Otherwise a
+        // service's reminders are swallowed (they are `text` frames, which
+        // listen mode gates) while its terminal `end` frame is NOT gated — so
+        // the call is hung up with `reasonCode: 'unresponsive'` and no audible
+        // warning.
         if (this.listenMode) {
             this.silenceHandler?.setEnabled(false);
         }
