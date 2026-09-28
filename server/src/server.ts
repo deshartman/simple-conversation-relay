@@ -32,7 +32,7 @@ import {
     createDestinationValidator,
     createRateLimiter,
 } from './middleware/outbound-guards.js';
-import { createTwilioSignatureValidator } from './middleware/twilio-signature.js';
+import { createTwilioSignatureValidator, isValidWsUpgrade } from './middleware/twilio-signature.js';
 
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
@@ -213,7 +213,13 @@ async function initializeServices(): Promise<void> {
 // WebSocket — /conversation-relay
 // ----------------------------------------------------------------------------
 
-app.ws('/conversation-relay', (ws: any, _req: express.Request) => {
+app.ws('/conversation-relay', (ws: any, req: express.Request) => {
+    if (serverConfig.validateWsSignature && !isValidWsUpgrade(req, serverConfig.crSigningAuthToken)) {
+        logError('WS', 'Rejected /conversation-relay upgrade: invalid X-Twilio-Signature');
+        ws.close(1008, 'Invalid signature');
+        return;
+    }
+
     let session: ConversationRelaySession | null = null;
     let sessionData: SessionData = {
         parameterData: {},

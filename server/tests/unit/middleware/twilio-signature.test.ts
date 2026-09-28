@@ -10,7 +10,7 @@
 
 import { describe, it, expect, vi } from 'vitest';
 import { getExpectedTwilioSignature } from 'twilio';
-import { createTwilioSignatureValidator } from '../../../src/middleware/twilio-signature.js';
+import { createTwilioSignatureValidator, isValidWsUpgrade } from '../../../src/middleware/twilio-signature.js';
 
 const TOKEN = 'test-auth-token-0123456789';
 const HOST = 'example.ngrok.dev';
@@ -141,5 +141,42 @@ describe('createTwilioSignatureValidator', () => {
         expect(() =>
             createTwilioSignatureValidator({ validate: true, authToken: '', host: HOST })
         ).toThrow(/auth token/i);
+    });
+});
+
+describe('isValidWsUpgrade', () => {
+    const WS_URL = `wss://${HOST}/conversation-relay`;
+
+    /** An upgrade as express-ws hands it to the route: rewritten path, tunnel headers. */
+    function upgradeReq(signature: string | undefined, extra: Record<string, string> = {}) {
+        return {
+            originalUrl: '/conversation-relay/.websocket',
+            headers: {
+                host: 'localhost:3007',
+                'x-forwarded-proto': 'https',
+                'x-forwarded-host': HOST,
+                ...(signature === undefined ? {} : { 'x-twilio-signature': signature }),
+                ...extra,
+            },
+        } as any;
+    }
+
+    it('accepts an upgrade signed for the public wss:// URL', () => {
+        const sig = getExpectedTwilioSignature(TOKEN, WS_URL, {});
+        expect(isValidWsUpgrade(upgradeReq(sig), TOKEN)).toBe(true);
+    });
+
+    it('rejects a signature made with another account token', () => {
+        const sig = getExpectedTwilioSignature('other-account-token', WS_URL, {});
+        expect(isValidWsUpgrade(upgradeReq(sig), TOKEN)).toBe(false);
+    });
+
+    it('rejects a missing signature', () => {
+        expect(isValidWsUpgrade(upgradeReq(undefined), TOKEN)).toBe(false);
+    });
+
+    it('rejects a signature for a different host', () => {
+        const sig = getExpectedTwilioSignature(TOKEN, 'wss://evil.example/conversation-relay', {});
+        expect(isValidWsUpgrade(upgradeReq(sig), TOKEN)).toBe(false);
     });
 });

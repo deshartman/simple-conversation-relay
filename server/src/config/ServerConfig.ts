@@ -47,6 +47,17 @@ export class ServerConfig {
     /** Rolling-minute cap on outbound calls. Bounds spend if the token leaks. */
     public readonly outboundRateLimitPerMinute: number;
 
+    /**
+     * Whether to verify X-Twilio-Signature on the /conversation-relay upgrade.
+     * Defaults to on; VALIDATE_WS_SIGNATURE=false disables it.
+     */
+    public readonly validateWsSignature: boolean;
+    /**
+     * Token for the account whose TwiML opens the WebSocket. That can be another
+     * account (MINI-TAC's), so CR_SIGNING_AUTH_TOKEN overrides AUTH_TOKEN.
+     */
+    public readonly crSigningAuthToken: string;
+
     /** Voice-call response back end: 'openai' (default) or 'mini-tac'. */
     public readonly responseService: string;
     public readonly miniTacUrl: string;
@@ -67,6 +78,8 @@ export class ServerConfig {
         validateTwilioWebhooks: boolean;
         outboundApiKey?: string;
         outboundRateLimitPerMinute: number;
+        validateWsSignature: boolean;
+        crSigningAuthToken: string;
         responseService: string;
         miniTacUrl: string;
         miniTacApiKey?: string;
@@ -85,6 +98,8 @@ export class ServerConfig {
         this.validateTwilioWebhooks = data.validateTwilioWebhooks;
         this.outboundApiKey = data.outboundApiKey;
         this.outboundRateLimitPerMinute = data.outboundRateLimitPerMinute;
+        this.validateWsSignature = data.validateWsSignature;
+        this.crSigningAuthToken = data.crSigningAuthToken;
         this.responseService = data.responseService;
         this.miniTacUrl = data.miniTacUrl;
         this.miniTacApiKey = data.miniTacApiKey;
@@ -148,6 +163,8 @@ export class ServerConfig {
                 process.env.OUTBOUND_RATE_LIMIT_PER_MINUTE || '30',
                 10
             ),
+            validateWsSignature: process.env.VALIDATE_WS_SIGNATURE !== 'false',
+            crSigningAuthToken: process.env.CR_SIGNING_AUTH_TOKEN || process.env.AUTH_TOKEN!,
             responseService,
             miniTacUrl: process.env.MINI_TAC_URL || 'http://localhost:8000',
             miniTacApiKey: process.env.MINI_TAC_API_KEY
@@ -171,6 +188,8 @@ export class ServerConfig {
             assetLoaderType: 'file',
             validateTwilioWebhooks: false,
             outboundRateLimitPerMinute: 30,
+            validateWsSignature: false,
+            crSigningAuthToken: 'test-twilio-token',
             responseService: 'openai',
             miniTacUrl: 'http://localhost:8000',
             ...overrides as any

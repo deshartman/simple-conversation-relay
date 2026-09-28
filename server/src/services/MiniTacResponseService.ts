@@ -10,8 +10,9 @@
  *   interrupt        -> POST   /sessions/:key/interrupt  (+ abort local fetch)
  *   cleanup          -> DELETE /sessions/:key            (MINI-TAC consolidates memory)
  *
- * PoC limits: SCR's ToolRegistry is not exposed to MINI-TAC, so end-call,
- * handoff etc. never fire on this path. updateContext/updateTools are no-ops.
+ * Tools run in MINI-TAC; any CR frame they produce (e.g. an `end` handoff)
+ * arrives as a {"frame"} line and is routed through toolResult.
+ * updateContext/updateTools are no-ops.
  */
 
 import { logOut, logError } from '../utils/logger.js';
@@ -121,7 +122,7 @@ class MiniTacResponseService implements ResponseService {
             .catch(err => logError('MiniTacResponseService', `cleanup failed: ${err.message}`));
     }
 
-    /** Parse the NDJSON stream: {"token"} lines, then {"last":true,...}. */
+    /** Parse the NDJSON stream: {"token"} and {"frame","tool"} lines, then {"last":true,...}. */
     private async readStream(res: Response, signal: AbortSignal): Promise<void> {
         if (!res.body) throw new Error('respond returned no body');
         const reader = res.body.getReader();
@@ -139,7 +140,22 @@ class MiniTacResponseService implements ResponseService {
                 buffer = buffer.slice(newline + 1);
                 if (!line || signal.aborted) continue;
 
-                const frame = JSON.parse(line) as { token?: string; last?: boolean; interrupted?: boolean };
+                const frame = JSON.parse(line) as {
+                    token?: string;
+                    last?: boolean;
+                    interrupted?: boolean;
+                    frame?: unknown;
+                    tool?: string;
+                };
+                if (frame.frame) {
+                    // A MINI-TAC tool produced a CR frame only SCR can send; route it
+                    // like a local tool result so `end` is held until last:true.
+                    this.responseHandler.toolResult({
+                        toolType: frame.tool ?? 'mini-tac',
+                        toolData: { success: true, message: 'from MINI-TAC', outgoingMessage: frame.frame },
+                    });
+                    continue;
+                }
                 if (frame.last) {
                     if (!frame.interrupted) {
                         this.responseHandler.content({ type: 'text', token: '', last: true } as ContentResponse);
