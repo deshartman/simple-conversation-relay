@@ -5,14 +5,12 @@
  * v4.12 changes:
  *  - Replaced `loadedTools: Record<string, Function>` + `manifest` with a
  *    single `ToolRegistry`. Schema and handler now co-located in tool files.
- *  - `executeToolCall()` looks up via `registry.get(name).handler(args, session)`.
- *    The session is threaded through at construction for tools that need it
- *    (e.g. `change-context`, which calls `session.updateContext`).
+ *  - `executeToolCall()` looks up via `registry.get(name).handler(args, ctx)`.
+ *    `ctx` is this service's `ToolContext` — tools never see the transport
+ *    session (e.g. `change-context` calls `ctx.changeContext`).
  *  - Calls `responseHandler.toolCallStart?(promise)` so the session can
  *    track in-flight tool promises (lets `sendText(last=true)` await them
  *    before emitting the terminal text — closes the farewell/end race).
- *  - `updateTools(registry)` accepts a `ToolRegistry` instead of a JSON
- *    manifest.
  */
 
 import dotenv from 'dotenv';
@@ -33,8 +31,8 @@ import type {
 } from '../interfaces/ResponseService.js';
 import type { ServerConfig } from '../config/ServerConfig.js';
 import type { ToolRegistry } from '../tools/tool-registry.js';
-import type { ConversationRelaySession } from './ConversationRelaySession.js';
-import type { ContextSource } from './ContextStore.js';
+import type { ToolContext } from '../tools/define-tool.js';
+import { ContextNotFoundError, type ContextSource } from './ContextStore.js';
 
 dotenv.config();
 
@@ -63,9 +61,6 @@ class OpenAIResponseService implements ResponseService {
      * tokens mid-sentence on the wire.
      */
     protected generation = 0;
-    /** Set by `setSession()` — required before `generateResponse()` is called via a session. */
-    protected session: ConversationRelaySession | null = null;
-
     private responseHandler!: ResponseHandler;
 
     /** Where this service reads its prompt from; nothing is loaded until needed. */
@@ -83,20 +78,6 @@ class OpenAIResponseService implements ResponseService {
         this.isInterrupted = false;
         this.registry = registry;
         this.inputMessages = [];
-    }
-
-    /**
-     * Inject the session reference. Called once by
-     * `ConversationRelaySession` after it constructs the service — the
-     * session reference is needed by tool handlers that mutate session
-     * state (e.g. `change-context`).
-     *
-     * The `/conversation` HTTP endpoint doesn't use a session; tools that
-     * require one will fail gracefully if called without it (which is
-     * fine — that endpoint is for non-call LLM exchanges).
-     */
-    setSession(session: ConversationRelaySession): void {
-        this.session = session;
     }
 
     createResponseHandler(handler: ResponseHandler): void {
@@ -154,8 +135,25 @@ class OpenAIResponseService implements ResponseService {
             case 'status':
                 await this.insertMessage('system', JSON.stringify(event.status));
                 break;
+            case 'context': {
+                const context = await this.contexts.get(event.key);
+                if (!context) throw new ContextNotFoundError(event.key);
+                await this.updateContext(context);
+                break;
+            }
         }
     }
+
+    /**
+     * What tools may do to this conversation. Same object for the voice path
+     * and /conversation, so a tool works identically with or without a call.
+     */
+    private readonly toolContext: ToolContext = {
+        changeContext: async (context, handoffSummary) => {
+            await this.updateContext(context);
+            await this.insertMessage('system', `Context handoff summary: ${handoffSummary}`);
+        },
+    };
 
     /**
      * Execute a tool call via the registry. Notifies
@@ -171,13 +169,7 @@ class OpenAIResponseService implements ResponseService {
             }
 
             const toolArgs = JSON.parse(tool.arguments);
-            // The registry's handler expects a session. For the HTTP
-            // `/conversation` path (no session), pass a placeholder `any`
-            // — tools that need the session (e.g. `change-context`) will
-            // throw; that's the correct behavior for a session-less context.
-            const sessionArg = this.session as unknown as ConversationRelaySession;
-
-            const promise = Promise.resolve(registered.handler(toolArgs, sessionArg));
+            const promise = Promise.resolve(registered.handler(toolArgs, this.toolContext));
             // Track the in-flight tool promise before awaiting so the
             // session can include it in any concurrent sendText(last=true)
             // await set.
@@ -253,18 +245,6 @@ class OpenAIResponseService implements ResponseService {
         this.currentResponseId = null;
         this.inputMessages = [];
         logOut('OpenAIResponseService', `Updated context (${context.length} characters)`);
-    }
-
-    /**
-     * Replace the tool registry. Typed as `any` in the `ResponseService`
-     * interface to avoid a cross-layer import; narrowed here.
-     */
-    updateTools(registry: ToolRegistry): void {
-        this.registry = registry;
-        logOut(
-            'OpenAIResponseService',
-            `Updated tool registry (${registry.size()} tools)`
-        );
     }
 
     cleanup(): void {

@@ -277,7 +277,7 @@ Context documents are `.md` files in `server/assets/`, keyed by filename:
 
 ### Tools (v4.12: in-code registry)
 
-Tools are defined in code under `server/src/tools/` using the `defineTool({ name, description, parameters, handler })` factory. The `defaultToolManifest.json` / `legs/*/toolManifest.json` files have been removed — schema (what OpenAI sees) and handler (what runs) are now co-located in each tool file. `buildDefaultRegistry(config, contexts)` in `server/src/tools/index.ts` registers all tools once at startup, and the same `ToolRegistry` is handed to every `ConversationRelaySession`.
+Tools are defined in code under `server/src/tools/` using the `defineTool({ name, description, parameters, handler })` factory. The `defaultToolManifest.json` / `legs/*/toolManifest.json` files have been removed — schema (what OpenAI sees) and handler (what runs) are now co-located in each tool file. `buildDefaultRegistry(config, contexts)` in `server/src/tools/index.ts` registers all tools once at startup, and the same `ToolRegistry` is handed to every `OpenAIResponseService`. Tools belong to the ResponseService, not the transport: a handler receives `(args, ctx)`, where `ctx` is the service's `ToolContext` (currently `changeContext(context, summary)`), never the session. Tools affect the call only through the fields they return.
 
 **Available Tools (9 total, all registered by default):**
 1. `end-call` — Gracefully terminates the current call
@@ -288,7 +288,7 @@ Tools are defined in code under `server/src/tools/` using the `defineTool({ name
 6. `play-media` — Plays audio media from URLs
 7. `set-listen-mode` — Toggles outbound text/play/language suppression for listen-only mode
 8. `set-silence-detection` — Enables/disables the silence reminder timer mid-call
-9. `change-context` — Switches the LLM's system prompt mid-call (factory: captures `CachedAssetsService`)
+9. `change-context` — Switches the LLM's system prompt mid-call (factory: captures `ContextStore`; applies via `ctx.changeContext`)
 
 **Adding a new tool:**
 1. Create `server/src/tools/my-tool.ts` that exports a `defineTool({...})` record (or a factory returning one, if it needs DI).

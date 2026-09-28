@@ -18,6 +18,14 @@ export interface ContextSource {
     getDefault(): Promise<string>;
 }
 
+/** Thrown when a requested context key has no `.md` file. */
+export class ContextNotFoundError extends Error {
+    constructor(key: string) {
+        super(`Context not found for key: ${key}`);
+        this.name = 'ContextNotFoundError';
+    }
+}
+
 /** Keys arrive from callers (customParameters, HTTP), so no paths. */
 const KEY_PATTERN = /^[A-Za-z0-9_-]+$/;
 

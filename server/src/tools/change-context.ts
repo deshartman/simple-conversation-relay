@@ -2,10 +2,9 @@
  * change-context tool — swaps the LLM's system prompt mid-call.
  *
  * Factory captures the `ContextSource` the response service reads prompts
- * from. The handler uses the session parameter to update the
- * live conversation — `session.insertMessage` adds a handoff summary to
- * conversation history, `session.updateContext` replaces the system
- * instructions.
+ * from. The handler asks its `ToolContext` to swap the prompt; the service
+ * does that internally (new instructions + handoff summary). The transport is
+ * not involved.
  *
  * Tool registry is unchanged by context switches (all-tools-all-legs in
  * v4.12). If per-leg tool scoping is ever needed again, it belongs here.
@@ -63,7 +62,7 @@ export function createChangeContextTool(
             required: ['newContext', 'handoffSummary'],
             additionalProperties: false,
         },
-        handler: async (args, session) => {
+        handler: async (args, ctx) => {
             logOut('ChangeContext', `Called with: ${JSON.stringify(args)}`);
 
             if (!args.newContext) {
@@ -89,8 +88,7 @@ export function createChangeContextTool(
                     throw new Error(`Context '${args.newContext}' not found`);
                 }
 
-                await session.insertMessage('system', `Context handoff summary: ${args.handoffSummary}`);
-                await session.updateContext(context);
+                await ctx.changeContext(context, args.handoffSummary);
                 // Registry is not per-leg in v4.12 — all tools stay available.
 
                 logOut('ChangeContext', `Switched to context: ${args.newContext}`);

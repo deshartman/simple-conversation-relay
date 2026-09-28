@@ -1,6 +1,6 @@
 /**
  * buildDefaultRegistry — called once at server startup to produce the
- * ToolRegistry that every ConversationRelaySession will share. Registers
+ * ToolRegistry that every OpenAIResponseService will share. Registers
  * all 9 tools defined under `server/src/tools/`, with Phase 1 IoC factory
  * invocation for the two tools that require dependencies (`send-sms`,
  * `change-context`).
@@ -42,4 +42,5 @@ export type {
     ToolParameters,
     ToolResult,
     ToolHandler,
+    ToolContext,
 } from './define-tool.js';

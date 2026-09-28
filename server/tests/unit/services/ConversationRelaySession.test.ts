@@ -20,7 +20,6 @@
 
 import { describe, it, expect, beforeEach, afterEach, vi } from 'vitest';
 import { ConversationRelaySession } from '../../../src/services/ConversationRelaySession.js';
-import { ToolRegistry } from '../../../src/tools/tool-registry.js';
 
 function makeFakeResponseService() {
     return {
@@ -29,9 +28,6 @@ function makeFakeResponseService() {
             this.handler = h;
         },
         handleEvent: vi.fn(async (_event: any) => {}),
-        insertMessage: vi.fn(async () => {}),
-        updateContext: vi.fn(async () => {}),
-        updateTools: vi.fn(),
         cleanup: vi.fn(),
     };
 }
@@ -57,7 +53,6 @@ function makeSession(opts: {
             messages: ['Still there?', 'Just checking you are still there?'],
         },
         initialListenMode: opts.initialListenMode,
-        registry: new ToolRegistry(),
         send: (frame: any) => sent.push(frame),
         declaredLanguages: opts.declaredLanguages,
         initialTtsLanguage: opts.initialTtsLanguage,
@@ -448,7 +443,7 @@ describe('ConversationRelaySession', () => {
                 setup: { callSid: 'CAtest0000000000000000000000000000' },
                 parameters: {},
             });
-            expect(responseService.insertMessage).not.toHaveBeenCalled();
+            expect(Object.keys(responseService)).not.toContain('insertMessage');
         });
 
         it('maps prompt, dtmf and interrupt frames onto events', async () => {
@@ -476,6 +471,15 @@ describe('ConversationRelaySession', () => {
                 type: 'status',
                 status: { callStatus: 'completed' },
             });
+        });
+
+        it('relays an operator context switch as an event', async () => {
+            const { session, responseService } = makeSession({ initialListenMode: false });
+            sessions.push(session);
+
+            await session.switchContext('campaign');
+
+            expect(responseService.handleEvent).toHaveBeenCalledWith({ type: 'context', key: 'campaign' });
         });
 
         it('does not forward info or error frames to the service', async () => {

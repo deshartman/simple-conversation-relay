@@ -23,7 +23,7 @@ import { MiniTacResponseService } from './services/MiniTacResponseService.js';
 import type { ResponseService } from './interfaces/ResponseService.js';
 import { TwilioService } from './services/TwilioService.js';
 import { CachedAssetsService } from './services/CachedAssetsService.js';
-import { ContextStore } from './services/ContextStore.js';
+import { ContextStore, ContextNotFoundError } from './services/ContextStore.js';
 import { ServerConfig } from './config/ServerConfig.js';
 import type { SessionData } from './interfaces/ConversationRelay.js';
 import { buildDefaultRegistry, ToolRegistry } from './tools/index.js';
@@ -305,7 +305,6 @@ app.ws('/conversation-relay', (ws: any, req: express.Request) => {
                     sessionData,
                     silenceConfig: activeAssets.silenceDetection,
                     initialListenMode: activeAssets.listenMode.enabled,
-                    registry: toolRegistry,
                     send,
                     declaredLanguages: Object.keys(cachedAssetsService.getLanguages() ?? {}),
                     initialTtsLanguage: crConfig?.ttsLanguage,
@@ -567,15 +566,14 @@ app.post('/updateResponseService', async (req: express.Request, res: express.Res
             return;
         }
 
-        const cachedContext = await contextStore.get(contextKey);
-        if (!cachedContext) {
-            res.status(400).json({ success: false, error: `Context not found for key: ${contextKey}` });
-            return;
-        }
-
-        await wsSession.session.updateContext(cachedContext);
+        // The service resolves and applies the key; the transport only relays it.
+        await wsSession.session.switchContext(contextKey);
         res.json({ success: true });
     } catch (error) {
+        if (error instanceof ContextNotFoundError) {
+            res.status(400).json({ success: false, error: error.message });
+            return;
+        }
         logError(
             'Server',
             `Error updating response service: ${error instanceof Error ? error.message : String(error)}`

@@ -61,11 +61,11 @@ describe('MiniTacResponseService', () => {
 
     it('creates the session from the setup event, without instructions', async () => {
         const { service, calls } = await started();
-        await service.insertMessage('system', 'call details');
+        await service.handleEvent({ type: 'dtmf', digit: '1' });
 
         expect(calls.map(c => `${c.method} ${c.url}`)).toEqual([
             'POST http://localhost:8000/sessions',
-            'POST http://localhost:8000/sessions/CA1/messages',
+            'POST http://localhost:8000/sessions/CA1/events',
         ]);
         expect(calls[0].body).toEqual({
             key: 'CA1',
@@ -157,6 +157,13 @@ describe('MiniTacResponseService', () => {
             expect(waited).toBeGreaterThanOrEqual(1400);
             expect(waited).toBeLessThan(3000);
         });
+    });
+
+    it('ignores a context event — MINI-TAC owns its prompt', async () => {
+        const { service, calls } = await started();
+        await service.handleEvent({ type: 'context', key: 'campaign' });
+
+        expect(calls).toHaveLength(1); // just /sessions
     });
 
     it('makes no MINI-TAC calls before the setup event', async () => {

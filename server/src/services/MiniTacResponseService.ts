@@ -15,7 +15,7 @@
  *
  * Tools run in MINI-TAC; any CR frame they produce (e.g. an `end` handoff)
  * arrives as a {"frame"} line and is routed through toolResult.
- * insertMessage maps to /messages; updateContext/updateTools are no-ops.
+ * A `context` event is ignored: MINI-TAC owns its prompt.
  */
 
 import { logOut, logError } from '../utils/logger.js';
@@ -55,15 +55,6 @@ class MiniTacResponseService implements ResponseService {
         this.responseHandler = handler;
     }
 
-    async insertMessage(role: 'system' | 'user' | 'assistant', message: string): Promise<void> {
-        try {
-            await this.ready;
-            await this.request('POST', `/sessions/${this.key}/messages`, { role, content: message });
-        } catch (error) {
-            logError('MiniTacResponseService', `insertMessage failed: ${(error as Error).message}`);
-        }
-    }
-
     async handleEvent(event: CallEvent): Promise<void> {
         switch (event.type) {
             case 'setup': {
@@ -93,6 +84,10 @@ class MiniTacResponseService implements ResponseService {
                 break;
             case 'status':
                 await this.postEvent({ type: 'status', status: event.status });
+                break;
+            case 'context':
+                // MINI-TAC owns its prompt; SCR has no context to switch to.
+                logOut('MiniTacResponseService', `context switch '${event.key}' ignored — MINI-TAC owns the prompt`);
                 break;
         }
     }
@@ -159,14 +154,6 @@ class MiniTacResponseService implements ResponseService {
         this.ready
             .then(() => this.request('POST', `/sessions/${this.key}/interrupt`, heard === undefined ? {} : { heard }))
             .catch(err => logError('MiniTacResponseService', `interrupt failed: ${err.message}`));
-    }
-
-    async updateContext(_context: string): Promise<void> {
-        logOut('MiniTacResponseService', 'updateContext not supported (PoC) — ignored');
-    }
-
-    updateTools(_registry: unknown): void {
-        logOut('MiniTacResponseService', 'updateTools not supported (PoC) — ignored');
     }
 
     cleanup(): void {

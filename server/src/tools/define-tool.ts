@@ -7,14 +7,12 @@
  * (handler) that existed in v4.11.
  *
  * The returned object is frozen so per-call state can't accidentally land on
- * the tool itself — per-call state lives on the `ConversationRelaySession`
- * the handler receives as its second arg.
+ * the tool itself — per-call state lives in the `ToolContext` the handler
+ * receives as its second arg, provided by the ResponseService.
  *
  * Based on the `defineTool` pattern from twilio-innovation/twilio-agent-
  * connect-typescript PR #54.
  */
-
-import type { ConversationRelaySession } from '../services/ConversationRelaySession.js';
 
 /**
  * JSON-schema-lite shape for parameter declarations. Matches OpenAI's
@@ -51,13 +49,22 @@ export interface ToolResultBase {
 export type ToolResult = ToolResultBase & Record<string, unknown>;
 
 /**
- * Handler signature: receives parsed args and the active session. The session
- * is the ONLY per-call state the handler should touch. Closures over
- * singletons (config, caches) are fine and expected.
+ * What a tool may touch of the conversation it runs in. Provided by the
+ * ResponseService, never the transport: tools affect the call only through
+ * the fields they return (`outgoingMessage`, `listenMode`, `silenceEnabled`).
+ */
+export interface ToolContext {
+    /** Replace the system prompt, keeping a summary so the model has continuity. */
+    changeContext(context: string, handoffSummary: string): Promise<void>;
+}
+
+/**
+ * Handler signature: receives parsed args and the conversation's ToolContext.
+ * Closures over singletons (config, caches) are fine and expected.
  */
 export type ToolHandler<TArgs = unknown, TResult extends ToolResult = ToolResult> = (
     args: TArgs,
-    session: ConversationRelaySession
+    ctx: ToolContext
 ) => Promise<TResult> | TResult;
 
 export interface ConversationRelayTool<

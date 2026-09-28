@@ -4,8 +4,8 @@
  * Tests for the change-context tool factory and execution.
  * v4.12:
  *  - factory returns a `ConversationRelayTool` record; invoke via `.handler`.
- *  - handler's 2nd arg is a `ConversationRelaySession` (not a response
- *    service directly); the session proxies `insertMessage`/`updateContext`.
+ *  - handler's 2nd arg is the response service's `ToolContext`; the tool
+ *    calls `ctx.changeContext(context, summary)` and never sees the session.
  *  - v4.12 drops per-leg tool manifests, so the handler no longer calls
  *    `session.updateTools`.
  *  - Contexts come from a `ContextSource` (`get(key)` -> string | null),
@@ -19,23 +19,21 @@ interface MockContextSource {
     get: ReturnType<typeof vi.fn>;
 }
 
-interface MockSession {
-    insertMessage: ReturnType<typeof vi.fn>;
-    updateContext: ReturnType<typeof vi.fn>;
+interface MockToolContext {
+    changeContext: ReturnType<typeof vi.fn>;
 }
 
 describe('change-context Tool', () => {
     let mockContexts: MockContextSource;
-    let mockSession: MockSession;
+    let mockCtx: MockToolContext;
 
     beforeEach(() => {
         mockContexts = {
             get: vi.fn().mockResolvedValue(null),
         };
 
-        mockSession = {
-            insertMessage: vi.fn().mockResolvedValue(undefined),
-            updateContext: vi.fn().mockResolvedValue(undefined),
+        mockCtx = {
+            changeContext: vi.fn().mockResolvedValue(undefined),
         };
     });
 
@@ -55,7 +53,7 @@ describe('change-context Tool', () => {
 
             await tool.handler(
                 { newContext: 'test-context', handoffSummary: 'Test summary' },
-                mockSession as any
+                mockCtx as any
             );
 
             expect(mockContexts.get).toHaveBeenCalledWith(
@@ -70,7 +68,7 @@ describe('change-context Tool', () => {
 
             const result = await tool.handler(
                 { newContext: '', handoffSummary: 'Test summary' } as any,
-                mockSession as any
+                mockCtx as any
             );
 
             expect(result.success).toBe(false);
@@ -83,7 +81,7 @@ describe('change-context Tool', () => {
 
             const result = await tool.handler(
                 { newContext: 'test-context', handoffSummary: '' } as any,
-                mockSession as any
+                mockCtx as any
             );
 
             expect(result.success).toBe(false);
@@ -98,7 +96,7 @@ describe('change-context Tool', () => {
 
             const result = await tool.handler(
                 { newContext: 'test-context', handoffSummary: 'Test summary' },
-                mockSession as any
+                mockCtx as any
             );
 
             expect(result.success).toBe(true);
@@ -113,7 +111,7 @@ describe('change-context Tool', () => {
 
             await tool.handler(
                 { newContext: 'support-context', handoffSummary: 'Escalating to support' },
-                mockSession as any
+                mockCtx as any
             );
 
             expect(mockContexts.get).toHaveBeenCalledWith(
@@ -121,21 +119,17 @@ describe('change-context Tool', () => {
             );
         });
 
-        it('should call session methods in correct order', async () => {
+        it('should hand the new context and summary to the ToolContext', async () => {
             mockContexts.get.mockResolvedValue('new context content');
 
             const tool = createChangeContextTool(mockContexts as any);
 
             await tool.handler(
                 { newContext: 'test-context', handoffSummary: 'Test handoff' },
-                mockSession as any
+                mockCtx as any
             );
 
-            expect(mockSession.insertMessage).toHaveBeenCalledWith(
-                'system',
-                'Context handoff summary: Test handoff'
-            );
-            expect(mockSession.updateContext).toHaveBeenCalledWith('new context content');
+            expect(mockCtx.changeContext).toHaveBeenCalledWith('new context content', 'Test handoff');
         });
 
         it('should return success response with context details', async () => {
@@ -148,7 +142,7 @@ describe('change-context Tool', () => {
                     newContext: 'billing-context',
                     handoffSummary: 'Customer has billing question',
                 },
-                mockSession as any
+                mockCtx as any
             );
 
             expect(result).toEqual({
@@ -168,7 +162,7 @@ describe('change-context Tool', () => {
 
             const result = await tool.handler(
                 { newContext: 'nonexistent-context', handoffSummary: 'Test' },
-                mockSession as any
+                mockCtx as any
             );
 
             expect(result.success).toBe(false);
@@ -178,13 +172,13 @@ describe('change-context Tool', () => {
 
         it('should handle errors during context switch', async () => {
             mockContexts.get.mockResolvedValue('new context content');
-            mockSession.updateContext.mockRejectedValue(new Error('Update failed'));
+            mockCtx.changeContext.mockRejectedValue(new Error('Update failed'));
 
             const tool = createChangeContextTool(mockContexts as any);
 
             const result = await tool.handler(
                 { newContext: 'test-context', handoffSummary: 'Test' },
-                mockSession as any
+                mockCtx as any
             );
 
             expect(result.success).toBe(false);
@@ -203,7 +197,7 @@ describe('change-context Tool', () => {
                     handoffSummary: 'Test',
                     extraProperty: 'should be ignored',
                 } as any,
-                mockSession as any
+                mockCtx as any
             );
 
             expect(result.success).toBe(true);

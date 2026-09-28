@@ -85,6 +85,15 @@ export type CallEvent =
           type: 'status';
           /** Evaluated Twilio status callback (see TwilioService.evaluateStatusCallback). */
           status: unknown;
+      }
+    | {
+          type: 'context';
+          /**
+           * Operator request (POST /updateResponseService) to switch this call's
+           * prompt. The service resolves the key; services that don't own a
+           * prompt ignore it.
+           */
+          key: string;
       };
 
 /**
@@ -112,31 +121,6 @@ export interface ResponseService {
          * to use the configured `SilenceDetection.messages`.
          */
         silenceReminder?(count: number): Promise<string | null>;
-
-        /**
-         * Inserts a message into conversation context without generating a response
-         * 
-         * @param role - Message role ('system', 'user', or 'assistant')
-         * @param message - Message content to add to context
-         * @returns Promise that resolves when message is inserted
-         */
-        insertMessage(role: 'system' | 'user' | 'assistant', message: string): Promise<void>;
-
-        /**
-         * Updates the context for the response service
-         * 
-         * @param context - New context content string
-         * @returns Promise that resolves when update is complete
-         */
-        updateContext(context: string): Promise<void>;
-
-        /**
-         * Updates the tool registry for the response service.
-         * v4.12: replaced the `object` (JSON manifest) arg with a
-         * `ToolRegistry`. Typed as `any` in this declaration file to avoid a
-         * cross-layer import; implementations narrow it.
-         */
-        updateTools(registry: any): void;
 
         /**
          * Performs cleanup of service resources

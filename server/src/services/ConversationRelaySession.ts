@@ -25,8 +25,6 @@ import { logOut, logError } from '../utils/logger.js';
 import { SilenceHandler } from './SilenceHandler.js';
 import type { SilenceDetectionConfig } from './SilenceHandler.js';
 import type { ResponseService, ResponseHandler, ContentResponse, ToolResultEvent } from '../interfaces/ResponseService.js';
-import type { OpenAIResponseService } from './OpenAIResponseService.js';
-import type { ToolRegistry } from '../tools/tool-registry.js';
 import type { SessionData, IncomingMessage } from '../interfaces/ConversationRelay.js';
 import {
     OutgoingFrameSchema,
@@ -52,7 +50,6 @@ export interface ConversationRelaySessionOptions {
     sessionData: SessionData;
     silenceConfig: SilenceDetectionConfig;
     initialListenMode: boolean;
-    registry: ToolRegistry;
     /** Inject the ws.send wrapper. The session never touches `ws` directly. */
     send: (frame: OutgoingFrame) => void;
     /**
@@ -68,7 +65,6 @@ export interface ConversationRelaySessionOptions {
 export class ConversationRelaySession {
     private readonly responseService: ResponseService;
     private readonly sessionData: SessionData;
-    private readonly registry: ToolRegistry;
     private readonly send: (frame: OutgoingFrame) => void;
     private readonly silenceHandler: SilenceHandler | null;
     /** Default reminder wording; its length is the number of reminders before ending. */
@@ -91,7 +87,6 @@ export class ConversationRelaySession {
     constructor(opts: ConversationRelaySessionOptions) {
         this.responseService = opts.responseService;
         this.sessionData = opts.sessionData;
-        this.registry = opts.registry;
         this.send = opts.send;
         this.listenMode = opts.initialListenMode;
         this.logPrefix = `Call SID: ${this.sessionData.setupData.callSid ?? 'unknown'}]`;
@@ -129,13 +124,6 @@ export class ConversationRelaySession {
         }
 
         this.responseService.createResponseHandler(this.buildResponseHandler());
-        // Hand ourselves to the response service so tool handlers can
-        // receive the session reference. Not all ResponseService
-        // implementations have `setSession`, so guard the call.
-        const maybeWithSession = this.responseService as unknown as Partial<OpenAIResponseService>;
-        if (typeof maybeWithSession.setSession === 'function') {
-            maybeWithSession.setSession(this);
-        }
 
         logOut(
             'Session',
@@ -474,26 +462,9 @@ export class ConversationRelaySession {
         }
     }
 
-    // =========================================================================
-    // Proxies for HTTP endpoints (/twilioStatusCallback, /updateResponseService)
-    // =========================================================================
-
-    async insertMessage(role: 'system' | 'user' | 'assistant', content: string): Promise<void> {
-        await this.responseService.insertMessage(role, content);
-    }
-
-    async updateContext(context: string): Promise<void> {
-        await this.responseService.updateContext(context);
-    }
-
-    /**
-     * Accept a new `ToolRegistry` for this session. In v4.12 the registry is
-     * process-wide and identical for every session (all-tools-all-legs), so
-     * this is effectively a no-op unless a caller wants to swap in a subset
-     * registry. Kept for forward compatibility.
-     */
-    async updateTools(registry: ToolRegistry): Promise<void> {
-        this.responseService.updateTools(registry);
+    /** Operator request to switch this call's prompt; the service resolves `key`. */
+    async switchContext(key: string): Promise<void> {
+        await this.responseService.handleEvent({ type: 'context', key });
     }
 
     // =========================================================================

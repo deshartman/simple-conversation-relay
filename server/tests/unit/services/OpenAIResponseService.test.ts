@@ -220,5 +220,36 @@ describe('OpenAIResponseService', () => {
             const service = new OpenAIResponseService(contexts, registry, config());
             expect((service as any).silenceReminder).toBeUndefined();
         });
+
+        it('switches prompt on a context event, clearing history', async () => {
+            const service = new OpenAIResponseService(withCampaign(), registry, config());
+            (service as any).inputMessages.push({ role: 'user', content: 'old' });
+            await service.handleEvent({ type: 'context', key: 'campaign' });
+
+            expect((service as any).instructions).toBe('Campaign context');
+            expect((service as any).inputMessages).toEqual([]);
+        });
+
+        it('rejects a context event for an unknown key', async () => {
+            const service = new OpenAIResponseService(contexts, registry, config());
+            await expect(service.handleEvent({ type: 'context', key: 'nope' })).rejects.toThrow(
+                'Context not found for key: nope'
+            );
+        });
+
+        it("gives tools a ToolContext whose changeContext swaps prompt and keeps the summary", async () => {
+            const service = new OpenAIResponseService(contexts, registry, config());
+            await (service as any).toolContext.changeContext('New prompt', 'Caller wants billing');
+
+            expect((service as any).instructions).toBe(
+                'New prompt\n\nContext handoff summary: Caller wants billing'
+            );
+        });
+
+        it('has no session back-reference', () => {
+            const service = new OpenAIResponseService(contexts, registry, config());
+            expect((service as any).setSession).toBeUndefined();
+            expect((service as any).session).toBeUndefined();
+        });
     });
 });

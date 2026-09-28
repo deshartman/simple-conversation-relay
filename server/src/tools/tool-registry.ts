@@ -2,9 +2,9 @@
  * ToolRegistry — in-memory map of registered CR tools.
  *
  * Built once at server startup by `buildDefaultRegistry` and passed by
- * reference into every `ConversationRelaySession` and `OpenAIResponseService`.
- * Safe to share across concurrent sessions because tool records are frozen
- * and handlers are stateless (per-call state lives on the session).
+ * reference into every `OpenAIResponseService`. Safe to share across
+ * concurrent calls because tool records are frozen and handlers are stateless
+ * (per-call state lives in the `ToolContext`).
  */
 
 import type { ConversationRelayTool, ToolResult } from './define-tool.js';
