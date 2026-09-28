@@ -1,18 +1,22 @@
 /**
  * MiniTacResponseService — ResponseService backed by a MINI-TAC agent over HTTP.
  *
- * MINI-TAC owns the conversation history and memory, so this adapter keeps
- * none: every ResponseService method maps to one MINI-TAC route.
+ * MINI-TAC owns the prompt, tools, conversation history and memory, so this
+ * adapter keeps none: each call event maps to one MINI-TAC route.
  *
- *   constructor      -> POST   /sessions                 (lazy, awaited before first use)
- *   insertMessage    -> POST   /sessions/:key/messages
- *   generateResponse -> POST   /sessions/:key/respond    (NDJSON token stream)
- *   interrupt        -> POST   /sessions/:key/interrupt  (+ abort local fetch)
- *   cleanup          -> DELETE /sessions/:key            (MINI-TAC consolidates memory)
+ *   setup     -> POST   /sessions                 (awaited before any other call)
+ *   prompt    -> POST   /sessions/:key/respond    (NDJSON token stream)
+ *   interrupt -> POST   /sessions/:key/interrupt  (+ abort local fetch)
+ *   dtmf      -> POST   /sessions/:key/events     {type:'dtmf', digit}
+ *   status    -> POST   /sessions/:key/events     {type:'status', status}
+ *   silenceReminder -> POST /sessions/:key/events {type:'silence', count}
+ *                      (optional reply {text}; SCR owns when to remind/end)
+ *   cleanup   -> DELETE /sessions/:key            (MINI-TAC consolidates memory)
  *
- * Tools run in MINI-TAC; any CR frame they produce (e.g. an `end` handoff)
- * arrives as a {"frame"} line and is routed through toolResult.
- * updateContext/updateTools are no-ops.
+ * Tools run in MINI-TAC. Its handoff asks for the end with a {"handoff"} line
+ * (handoffData string); SCR turns that into an `endCall` action, so MINI-TAC
+ * never builds CR frames.
+ * A `context` event is ignored: MINI-TAC owns its prompt.
  */
 
 import { logOut, logError } from '../utils/logger.js';
@@ -20,24 +24,24 @@ import type {
     ResponseService,
     ContentResponse,
     ResponseHandler,
+    CallEvent,
 } from '../interfaces/ResponseService.js';
 
 export interface MiniTacOptions {
     baseUrl: string;
     apiKey: string;
-    /** Session key — the callSid. */
-    key: string;
-    /** Caller's number; MINI-TAC keys memory on it. */
-    phone: string;
-    /** SCR context string; MINI-TAC appends its own memory instructions. */
-    instructions: string;
 }
+
+/** How long a silence reminder may wait for MINI-TAC's wording before SCR's is used. */
+const SILENCE_WORDING_TIMEOUT_MS = 1500;
 
 class MiniTacResponseService implements ResponseService {
     private readonly baseUrl: string;
     private readonly apiKey: string;
-    private readonly key: string;
-    private readonly ready: Promise<void>;
+    /** Session key — the callSid from setup (UUID when absent). */
+    private key = '';
+    /** Settles once POST /sessions has; every later call awaits it. */
+    private ready: Promise<void> = Promise.reject(new Error('setup event not received'));
     private responseHandler!: ResponseHandler;
     /** Aborts the in-flight /respond fetch (interrupt or cancel-previous). */
     private abortController: AbortController | null = null;
@@ -45,36 +49,83 @@ class MiniTacResponseService implements ResponseService {
     constructor(opts: MiniTacOptions) {
         this.baseUrl = opts.baseUrl.replace(/\/$/, '');
         this.apiKey = opts.apiKey;
-        this.key = opts.key;
-        // Constructors can't be async; every call awaits this first.
-        this.ready = this.request('POST', '/sessions', {
-            key: opts.key,
-            phone: opts.phone,
-            channel: 'voice',
-            instructions: opts.instructions,
-        })
-            .then(async res => {
-                const body = await res.json();
-                logOut('MiniTacResponseService', `Session ${this.key} ready (isNew=${body.isNew}, name=${body.name ?? '-'})`);
-            });
-        // Surface creation failures on first use, not as an unhandled rejection.
-        this.ready.catch(err => logError('MiniTacResponseService', `Session create failed: ${err.message}`));
+        this.ready.catch(() => {}); // replaced on setup; don't surface the placeholder
     }
 
     createResponseHandler(handler: ResponseHandler): void {
         this.responseHandler = handler;
     }
 
-    async insertMessage(role: 'system' | 'user' | 'assistant', message: string): Promise<void> {
-        try {
-            await this.ready;
-            await this.request('POST', `/sessions/${this.key}/messages`, { role, content: message });
-        } catch (error) {
-            logError('MiniTacResponseService', `insertMessage failed: ${(error as Error).message}`);
+    async handleEvent(event: CallEvent): Promise<void> {
+        switch (event.type) {
+            case 'setup': {
+                this.key = event.setup.callSid ?? crypto.randomUUID();
+                this.ready = this.request('POST', '/sessions', {
+                    key: this.key,
+                    phone: event.setup.from ?? '',
+                    channel: 'voice',
+                    setup: event.setup,
+                    parameters: event.parameters,
+                }).then(() => {
+                    logOut('MiniTacResponseService', `Session ${this.key} ready`);
+                });
+                // Surface creation failures here, not as an unhandled rejection;
+                // later calls still see the rejection through `ready`.
+                this.ready.catch(err => logError('MiniTacResponseService', `Session create failed: ${err.message}`));
+                break;
+            }
+            case 'prompt':
+                await this.generateResponse('user', event.text, event.lang);
+                break;
+            case 'interrupt':
+                this.interrupt(event.heard);
+                break;
+            case 'dtmf':
+                await this.postEvent({ type: 'dtmf', digit: event.digit });
+                break;
+            case 'status':
+                await this.postEvent({ type: 'status', status: event.status });
+                break;
+            case 'context':
+                // MINI-TAC owns its prompt; SCR has no context to switch to.
+                logOut('MiniTacResponseService', `context switch '${event.key}' ignored — MINI-TAC owns the prompt`);
+                break;
         }
     }
 
-    async generateResponse(role: 'user' | 'system' = 'user', prompt: string): Promise<void> {
+    /**
+     * Ask MINI-TAC for the wording of silence reminder `count`. SCR decides when
+     * to remind and when to end; MINI-TAC may only reword. Anything but a quick
+     * 2xx `{ text }` means "use SCR's configured wording" — the caller is
+     * already waiting, so a slow MINI-TAC must not delay the reminder.
+     */
+    async silenceReminder(count: number): Promise<string | null> {
+        try {
+            await this.ready;
+            const res = await this.request(
+                'POST',
+                `/sessions/${this.key}/events`,
+                { type: 'silence', count },
+                AbortSignal.timeout(SILENCE_WORDING_TIMEOUT_MS)
+            );
+            const body = (await res.json().catch(() => null)) as { text?: unknown } | null;
+            return typeof body?.text === 'string' && body.text.trim() ? body.text : null;
+        } catch (error) {
+            logError('MiniTacResponseService', `silence wording unavailable: ${(error as Error).message}`);
+            return null;
+        }
+    }
+
+    private async postEvent(body: object): Promise<void> {
+        try {
+            await this.ready;
+            await this.request('POST', `/sessions/${this.key}/events`, body);
+        } catch (error) {
+            logError('MiniTacResponseService', `event failed: ${(error as Error).message}`);
+        }
+    }
+
+    async generateResponse(role: 'user' | 'system' = 'user', prompt: string, lang?: string): Promise<void> {
         // Cancel-previous locally; MINI-TAC also cancels server-side on a new /respond.
         this.abortController?.abort();
         const controller = new AbortController();
@@ -85,7 +136,7 @@ class MiniTacResponseService implements ResponseService {
             const res = await this.request(
                 'POST',
                 `/sessions/${this.key}/respond`,
-                { role, content: prompt },
+                lang === undefined ? { role, content: prompt } : { role, content: prompt, lang },
                 controller.signal
             );
             await this.readStream(res, controller.signal);
@@ -106,14 +157,6 @@ class MiniTacResponseService implements ResponseService {
             .catch(err => logError('MiniTacResponseService', `interrupt failed: ${err.message}`));
     }
 
-    async updateContext(_context: string): Promise<void> {
-        logOut('MiniTacResponseService', 'updateContext not supported (PoC) — ignored');
-    }
-
-    updateTools(_registry: unknown): void {
-        logOut('MiniTacResponseService', 'updateTools not supported (PoC) — ignored');
-    }
-
     cleanup(): void {
         this.abortController?.abort();
         this.abortController = null;
@@ -122,7 +165,7 @@ class MiniTacResponseService implements ResponseService {
             .catch(err => logError('MiniTacResponseService', `cleanup failed: ${err.message}`));
     }
 
-    /** Parse the NDJSON stream: {"token"} and {"frame","tool"} lines, then {"last":true,...}. */
+    /** Parse the NDJSON stream: {"token"} and {"handoff","tool"} lines, then {"last":true,...}. */
     private async readStream(res: Response, signal: AbortSignal): Promise<void> {
         if (!res.body) throw new Error('respond returned no body');
         const reader = res.body.getReader();
@@ -144,15 +187,19 @@ class MiniTacResponseService implements ResponseService {
                     token?: string;
                     last?: boolean;
                     interrupted?: boolean;
-                    frame?: unknown;
+                    handoff?: string;
                     tool?: string;
                 };
-                if (frame.frame) {
-                    // A MINI-TAC tool produced a CR frame only SCR can send; route it
-                    // like a local tool result so `end` is held until last:true.
+                if (typeof frame.handoff === 'string') {
+                    // MINI-TAC's handoff tool asks for the end; SCR builds the
+                    // frame and holds it until the farewell has been spoken.
                     this.responseHandler.toolResult({
-                        toolType: frame.tool ?? 'mini-tac',
-                        toolData: { success: true, message: 'from MINI-TAC', outgoingMessage: frame.frame },
+                        toolType: frame.tool ?? 'handoff',
+                        toolData: {
+                            success: true,
+                            message: 'from MINI-TAC',
+                            action: { type: 'endCall', handoffData: frame.handoff },
+                        },
                     });
                     continue;
                 }

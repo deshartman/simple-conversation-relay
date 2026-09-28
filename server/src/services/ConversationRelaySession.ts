@@ -24,9 +24,7 @@
 import { logOut, logError } from '../utils/logger.js';
 import { SilenceHandler } from './SilenceHandler.js';
 import type { SilenceDetectionConfig } from './SilenceHandler.js';
-import type { ResponseService, ResponseHandler, ContentResponse, ToolResultEvent } from '../interfaces/ResponseService.js';
-import type { OpenAIResponseService } from './OpenAIResponseService.js';
-import type { ToolRegistry } from '../tools/tool-registry.js';
+import type { ResponseService, ResponseHandler, ContentResponse, ToolResultEvent, CallAction, ActionOutcome } from '../interfaces/ResponseService.js';
 import type { SessionData, IncomingMessage } from '../interfaces/ConversationRelay.js';
 import {
     OutgoingFrameSchema,
@@ -38,20 +36,58 @@ import {
  * `sendDigits` and `end` are deliberately excluded — DTMF navigation and
  * call termination must always work.
  */
+/**
+ * How long a silence reminder waits for service wording before the configured
+ * wording is spoken. Enforced here, not trusted to the service: the caller is
+ * already waiting, and a hung service must not swallow the reminder.
+ */
+const SILENCE_WORDING_TIMEOUT_MS = 1500;
+
 const LISTEN_MODE_GATED: ReadonlySet<OutgoingFrame['type']> = new Set(['text', 'play', 'language']);
+
+/**
+ * `<Parameter>` names the TwiML author uses to tell the session which
+ * `<Language>` codes and opening `ttsLanguage` the call was set up with. The
+ * setup frame carries neither, so without these the session could only guess
+ * from its own config — which drifts when someone else writes the TwiML.
+ */
+export const CALL_LANGUAGES_PARAM = 'crLanguages';
+export const CALL_TTS_LANGUAGE_PARAM = 'crTtsLanguage';
+
+/**
+ * The call's declared languages and opening TTS language: from the TwiML's
+ * `<Parameter>`s when present, otherwise the transport's own config.
+ */
+export function resolveCallLanguages(
+    customParameters: Record<string, string> | undefined,
+    fallback: { languages: string[]; ttsLanguage?: string }
+): { languages: string[]; ttsLanguage?: string; source: 'call' | 'config' } {
+    const declared = customParameters?.[CALL_LANGUAGES_PARAM]
+        ?.split(',')
+        .map(code => code.trim())
+        .filter(Boolean);
+    if (declared?.length) {
+        return {
+            languages: declared,
+            ttsLanguage: customParameters?.[CALL_TTS_LANGUAGE_PARAM] || fallback.ttsLanguage,
+            source: 'call',
+        };
+    }
+    return { ...fallback, source: 'config' };
+}
 
 export interface ConversationRelaySessionOptions {
     responseService: ResponseService;
     sessionData: SessionData;
     silenceConfig: SilenceDetectionConfig;
     initialListenMode: boolean;
-    registry: ToolRegistry;
     /** Inject the ws.send wrapper. The session never touches `ws` directly. */
     send: (frame: OutgoingFrame) => void;
     /**
      * Language codes declared as <Language> children in the TwiML, e.g.
      * ['en-AU', 'fr-FR']. Doubles as the allow-list for automatic TTS
-     * switching: a detected language with no declared entry is left alone.
+     * switching (a detected language with no declared entry is left alone)
+     * and for `language` actions (Twilio rejects an undeclared code).
      */
     declaredLanguages?: string[];
     /** ttsLanguage the TwiML opened on, so an already-active code isn't re-sent. */
@@ -61,13 +97,15 @@ export interface ConversationRelaySessionOptions {
 export class ConversationRelaySession {
     private readonly responseService: ResponseService;
     private readonly sessionData: SessionData;
-    private readonly registry: ToolRegistry;
     private readonly send: (frame: OutgoingFrame) => void;
     private readonly silenceHandler: SilenceHandler | null;
+    /** Default reminder wording; its length is the number of reminders before ending. */
+    private readonly silenceMessages: string[];
     private readonly logPrefix: string;
 
     /** Detected primary tag (`fr`) -> declared code (`fr-FR`). First declaration wins. */
     private readonly ttsLanguageByTag: Map<string, string>;
+    private readonly declaredLanguages: ReadonlySet<string>;
     private activeTtsLanguage: string | null;
     private manualLanguageOverride = false;
 
@@ -80,11 +118,11 @@ export class ConversationRelaySession {
     constructor(opts: ConversationRelaySessionOptions) {
         this.responseService = opts.responseService;
         this.sessionData = opts.sessionData;
-        this.registry = opts.registry;
         this.send = opts.send;
         this.listenMode = opts.initialListenMode;
         this.logPrefix = `Call SID: ${this.sessionData.setupData.callSid ?? 'unknown'}]`;
 
+        this.declaredLanguages = new Set(opts.declaredLanguages ?? []);
         this.ttsLanguageByTag = new Map();
         for (const code of opts.declaredLanguages ?? []) {
             const tag = code.split('-')[0].toLowerCase();
@@ -92,23 +130,18 @@ export class ConversationRelaySession {
         }
         this.activeTtsLanguage = opts.initialTtsLanguage ?? null;
 
+        // Silence policy is the transport's, whatever the back end: remind once
+        // per configured message, then end the call. Only the words may come
+        // from the ResponseService.
+        this.silenceMessages = opts.silenceConfig.messages ?? [];
         this.silenceHandler = opts.silenceConfig.enabled
             ? new SilenceHandler({
                   enabled: true,
                   secondsThreshold: opts.silenceConfig.secondsThreshold,
-                  messages: opts.silenceConfig.messages,
-                  onReminder: reminder => {
-                      logOut('Session', `${this.logPrefix} Silence reminder: "${reminder}"`);
-                      this.sendText(reminder, true).catch(err =>
-                          logError('Session', `Reminder sendText failed: ${err.message}`)
+                  onBreach: count => {
+                      this.onSilence(count).catch(err =>
+                          logError('Session', `${this.logPrefix} silence handling failed: ${err.message}`)
                       );
-                  },
-                  onTerminate: () => {
-                      logOut('Session', `${this.logPrefix} Silence terminal — ending call`);
-                      this.endCall({
-                          reasonCode: 'unresponsive',
-                          reason: 'The caller was not speaking',
-                      });
                   },
               })
             : null;
@@ -123,13 +156,6 @@ export class ConversationRelaySession {
         }
 
         this.responseService.createResponseHandler(this.buildResponseHandler());
-        // Hand ourselves to the response service so tool handlers can
-        // receive the session reference. Not all ResponseService
-        // implementations have `setSession`, so guard the call.
-        const maybeWithSession = this.responseService as unknown as Partial<OpenAIResponseService>;
-        if (typeof maybeWithSession.setSession === 'function') {
-            maybeWithSession.setSession(this);
-        }
 
         logOut(
             'Session',
@@ -155,22 +181,25 @@ export class ConversationRelaySession {
     // Lifecycle
     // =========================================================================
 
-    /** Called from the server WS handler on first `setup` frame. */
+    /**
+     * Called from the server WS handler on first `setup` frame. Reports the
+     * setup to the service, which owns what (if anything) the model is told.
+     */
     async setup(): Promise<void> {
         const { parameterData, setupData } = this.sessionData;
-        const initialMessage = `These are all the details of the call: ${JSON.stringify(
-            setupData,
-            null,
-            4
-        )} and the parameter data needed to complete your objective: ${JSON.stringify(
-            parameterData,
-            null,
-            4
-        )}. Use this to complete your objective`;
-        await this.responseService.insertMessage('system', initialMessage);
+        await this.responseService.handleEvent({
+            type: 'setup',
+            setup: setupData,
+            parameters: parameterData,
+        });
 
         this.silenceHandler?.start();
         logOut('Session', `${this.logPrefix} Setup complete`);
+    }
+
+    /** Evaluated Twilio status callback for this call, reported to the service. */
+    async handleStatus(status: unknown): Promise<void> {
+        await this.responseService.handleEvent({ type: 'status', status });
     }
 
     /** Called from the server WS handler for every validated incoming frame (post-setup). */
@@ -191,10 +220,15 @@ export class ConversationRelaySession {
                 case 'prompt':
                     logOut('Session', `${this.logPrefix} PROMPT: ${message.voicePrompt}`);
                     this.autoSwitchTtsLanguage(message.lang);
-                    await this.responseService.generateResponse('user', message.voicePrompt || '');
+                    await this.responseService.handleEvent({
+                        type: 'prompt',
+                        text: message.voicePrompt || '',
+                        lang: message.lang,
+                    });
                     break;
                 case 'dtmf':
                     logOut('Session', `${this.logPrefix} DTMF: ${message.digit}`);
+                    await this.responseService.handleEvent({ type: 'dtmf', digit: message.digit });
                     break;
                 case 'interrupt':
                     logOut(
@@ -205,7 +239,10 @@ export class ConversationRelaySession {
                     //     'Session',
                     //     `${this.logPrefix} INTERRUPT: ${JSON.stringify(message, null, 2)}`
                     // );
-                    this.responseService.interrupt(message.utteranceUntilInterrupt);
+                    await this.responseService.handleEvent({
+                        type: 'interrupt',
+                        heard: message.utteranceUntilInterrupt,
+                    });
                     break;
                 case 'info':
                     // Intentionally quiet — info frames are frequent.
@@ -335,18 +372,40 @@ export class ConversationRelaySession {
         this.sendResponse({ type: 'language', ttsLanguage: code });
     }
 
-    switchLanguage(opts: { ttsLanguage?: string; transcriptionLanguage?: string }): void {
-        // An explicit switch (the switch-language tool — i.e. the caller asked)
-        // wins for the rest of the call. Without this latch, automatic
-        // detection would flip TTS straight back on the next prompt.
-        this.manualLanguageOverride = true;
-        if (opts.ttsLanguage) this.activeTtsLanguage = opts.ttsLanguage;
-        const frame: OutgoingFrame = { type: 'language' };
-        if (opts.ttsLanguage) (frame as { ttsLanguage?: string }).ttsLanguage = opts.ttsLanguage;
-        if (opts.transcriptionLanguage)
-            (frame as { transcriptionLanguage?: string }).transcriptionLanguage =
-                opts.transcriptionLanguage;
-        this.sendResponse(frame);
+    /**
+     * Breach `count` of continuous silence. Breaches 1..n speak reminder n;
+     * breach n+1 ends the call. The ResponseService may reword a reminder but
+     * cannot skip it or change when the call ends.
+     */
+    private async onSilence(count: number): Promise<void> {
+        const fallback = this.silenceMessages[count - 1];
+        if (fallback === undefined) {
+            if (count !== this.silenceMessages.length + 1) return;
+            logOut('Session', `${this.logPrefix} Silence terminal — ending call`);
+            this.endCall({ reasonCode: 'unresponsive', reason: 'The caller was not speaking' });
+            return;
+        }
+
+        let reminder = fallback;
+        let timer: NodeJS.Timeout | undefined;
+        try {
+            const timeout = new Promise<null>(resolve => {
+                timer = setTimeout(() => resolve(null), SILENCE_WORDING_TIMEOUT_MS);
+            });
+            const worded = this.responseService.silenceReminder?.(count) ?? null;
+            reminder = (await Promise.race([worded, timeout])) || fallback;
+        } catch (error) {
+            logError(
+                'Session',
+                `${this.logPrefix} silenceReminder failed, using configured wording: ${
+                    error instanceof Error ? error.message : String(error)
+                }`
+            );
+        } finally {
+            clearTimeout(timer);
+        }
+        logOut('Session', `${this.logPrefix} Silence reminder ${count}: "${reminder}"`);
+        await this.sendText(reminder, true);
     }
 
     /**
@@ -398,26 +457,9 @@ export class ConversationRelaySession {
         }
     }
 
-    // =========================================================================
-    // Proxies for HTTP endpoints (/twilioStatusCallback, /updateResponseService)
-    // =========================================================================
-
-    async insertMessage(role: 'system' | 'user' | 'assistant', content: string): Promise<void> {
-        await this.responseService.insertMessage(role, content);
-    }
-
-    async updateContext(context: string): Promise<void> {
-        await this.responseService.updateContext(context);
-    }
-
-    /**
-     * Accept a new `ToolRegistry` for this session. In v4.12 the registry is
-     * process-wide and identical for every session (all-tools-all-legs), so
-     * this is effectively a no-op unless a caller wants to swap in a subset
-     * registry. Kept for forward compatibility.
-     */
-    async updateTools(registry: ToolRegistry): Promise<void> {
-        this.responseService.updateTools(registry);
+    /** Operator request to switch this call's prompt; the service resolves `key`. */
+    async switchContext(key: string): Promise<void> {
+        await this.responseService.handleEvent({ type: 'context', key });
     }
 
     // =========================================================================
@@ -426,9 +468,7 @@ export class ConversationRelaySession {
 
     /**
      * Bridge from `ResponseService` (streaming tokens, tool results) to the
-     * session's outgoing methods. Routes tool-result side-effect fields
-     * (`silenceEnabled`, `listenMode`, `outgoingMessage`) to the right
-     * session method.
+     * session's outgoing methods. Applies a tool result's `action` to the call.
      */
     private buildResponseHandler(): ResponseHandler {
         return {
@@ -453,51 +493,13 @@ export class ConversationRelaySession {
                 );
             },
 
-            toolResult: (event: ToolResultEvent) => {
+            toolResult: (event: ToolResultEvent): ActionOutcome | void => {
                 const { toolType, toolData } = event;
                 logOut('Session', `${this.logPrefix} Tool result: ${toolType}`);
 
-                if (!toolData) return;
-
-                // Priority 1: silence-detection toggle.
-                if (typeof toolData.silenceEnabled === 'boolean') {
-                    this.setSilenceDetection(toolData.silenceEnabled);
-                    return;
+                if (toolData?.action) {
+                    return this.applyAction(toolData.action, toolType);
                 }
-
-                // Priority 2: listen-mode toggle.
-                if (typeof toolData.listenMode === 'boolean') {
-                    this.setListenMode(toolData.listenMode);
-                    return;
-                }
-
-                // Priority 3: outgoing frame from the tool.
-                const outgoing = toolData.outgoingMessage;
-                if (!outgoing) return;
-
-                const parsed = OutgoingFrameSchema.safeParse(outgoing);
-                if (!parsed.success) {
-                    logError(
-                        'Session',
-                        `${this.logPrefix} Tool '${toolType}' produced invalid outgoingMessage: ${JSON.stringify(parsed.error.issues)}`
-                    );
-                    return;
-                }
-
-                const frame = parsed.data;
-                if (frame.type === 'end') {
-                    // Defer terminal frames until after the final text token,
-                    // so the LLM's farewell isn't cut off mid-sentence.
-                    this.pendingTerminalFrame = frame;
-                    logOut(
-                        'Session',
-                        `${this.logPrefix} Deferring terminal frame from '${toolType}' until farewell flush`
-                    );
-                    return;
-                }
-
-                // Non-terminal frames ship immediately.
-                this.sendResponse(frame);
             },
 
             error: (error: Error) => {
@@ -515,6 +517,114 @@ export class ConversationRelaySession {
                 this.trackToolCall(promise);
             },
         };
+    }
+
+    /**
+     * What a call action means on the wire. The only place tools' effects
+     * become frames, and the only place that knows which action ends the call.
+     */
+    private applyAction(action: CallAction, toolType: string): ActionOutcome {
+        switch (action.type) {
+            case 'listenMode':
+                this.setListenMode(action.enabled);
+                return { applied: true, terminal: false };
+            case 'silence':
+                this.setSilenceDetection(action.enabled);
+                return { applied: true, terminal: false };
+            case 'language': {
+                // Twilio rejects a code the TwiML didn't declare, so resolve
+                // each one against the declared list (same lookup as the
+                // auto-switch: `en-US` -> the declared `en-AU`).
+                const tts = this.resolveDeclaredLanguage(action.ttsLanguage, toolType);
+                const stt = this.resolveDeclaredLanguage(action.transcriptionLanguage, toolType);
+                if (tts === null || stt === null) {
+                    return {
+                        applied: false,
+                        terminal: false,
+                        detail: `This call only supports: ${[...this.declaredLanguages].join(', ')}`,
+                    };
+                }
+                const frame: CallAction = { type: 'language' };
+                if (tts) frame.ttsLanguage = tts;
+                if (stt) frame.transcriptionLanguage = stt;
+                if (!this.applyToolFrame(frame, toolType)) return { applied: false, terminal: false };
+                // An explicit switch (the caller asked) wins for the rest of
+                // the call; without this, automatic detection would flip TTS
+                // straight back on the next prompt.
+                this.manualLanguageOverride = true;
+                if (tts) this.activeTtsLanguage = tts;
+                const substituted = [
+                    tts !== action.ttsLanguage ? `${action.ttsLanguage} -> ${tts}` : null,
+                    stt !== action.transcriptionLanguage ? `${action.transcriptionLanguage} -> ${stt}` : null,
+                ].filter(Boolean);
+                return substituted.length > 0
+                    ? { applied: true, terminal: false, detail: `Used the call's language: ${substituted.join(', ')}` }
+                    : { applied: true, terminal: false };
+            }
+            case 'endCall':
+            case 'sendDigits':
+            case 'play': {
+                const { type, ...fields } = action;
+                const frameType = type === 'endCall' ? 'end' : type;
+                const applied = this.applyToolFrame({ type: frameType, ...fields }, toolType);
+                return { applied, terminal: applied && type === 'endCall' };
+            }
+            default:
+                logError(
+                    'Session',
+                    `${this.logPrefix} Tool '${toolType}' requested unknown action: ${JSON.stringify(action)}`
+                );
+                return { applied: false, terminal: false, detail: 'Unknown action' };
+        }
+    }
+
+    /**
+     * A declared code for `code`: itself if declared, else the declared code
+     * with the same primary tag. `undefined` passes through; null means no
+     * declared match, so the action is dropped. With no declared list, every
+     * code passes.
+     */
+    private resolveDeclaredLanguage(code: string | undefined, toolType: string): string | undefined | null {
+        if (code === undefined || code === 'multi' || this.declaredLanguages.size === 0) return code;
+        if (this.declaredLanguages.has(code)) return code;
+        const match = this.ttsLanguageByTag.get(code.split('-')[0].toLowerCase());
+        if (match) {
+            logOut('Session', `${this.logPrefix} Tool '${toolType}' asked for ${code} — using declared ${match}`);
+            return match;
+        }
+        logError(
+            'Session',
+            `${this.logPrefix} Tool '${toolType}' asked for undeclared language ${code} — declared: ${[...this.declaredLanguages].join(', ')}`
+        );
+        return null;
+    }
+
+    /** Validates and ships (or defers) a tool's frame; false when invalid. */
+    private applyToolFrame(outgoing: unknown, toolType: string): boolean {
+        const parsed = OutgoingFrameSchema.safeParse(outgoing);
+        if (!parsed.success) {
+            logError(
+                'Session',
+                `${this.logPrefix} Tool '${toolType}' produced invalid frame: ${JSON.stringify(parsed.error.issues)}`
+            );
+            return false;
+        }
+
+        const frame = parsed.data;
+        if (frame.type === 'end') {
+            // Defer terminal frames until after the final text token,
+            // so the LLM's farewell isn't cut off mid-sentence.
+            this.pendingTerminalFrame = frame;
+            logOut(
+                'Session',
+                `${this.logPrefix} Deferring terminal frame from '${toolType}' until farewell flush`
+            );
+            return true;
+        }
+
+        // Non-terminal frames ship immediately.
+        this.sendResponse(frame);
+        return true;
     }
 
     // =========================================================================

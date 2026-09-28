@@ -1,6 +1,6 @@
-import { logOut } from '../utils/logger.js';
-import { defineTool } from './define-tool.js';
-import type { SendDigitsFrame } from '../types/crelay.js';
+import { logOut } from '../../utils/logger.js';
+import { defineTool } from '../define-tool.js';
+import type { CallAction } from '../../interfaces/ResponseService.js';
 
 interface SendDTMFArgs {
     dtmfDigit: string;
@@ -10,7 +10,7 @@ interface SendDTMFResult {
     success: boolean;
     message: string;
     digits: string;
-    outgoingMessage: SendDigitsFrame;
+    action: CallAction;
     [key: string]: unknown;
 }
 
@@ -34,7 +34,7 @@ export const sendDtmfTool = defineTool<SendDTMFArgs, SendDTMFResult>({
             success: true,
             message: 'DTMF digits sent successfully',
             digits: args.dtmfDigit,
-            outgoingMessage: {
+            action: {
                 type: 'sendDigits',
                 digits: args.dtmfDigit,
             },

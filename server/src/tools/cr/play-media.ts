@@ -1,6 +1,6 @@
-import { logOut } from '../utils/logger.js';
-import { defineTool } from './define-tool.js';
-import type { PlayFrame } from '../types/crelay.js';
+import { logOut } from '../../utils/logger.js';
+import { defineTool } from '../define-tool.js';
+import type { CallAction } from '../../interfaces/ResponseService.js';
 
 interface PlayMediaArgs {
     source: string;
@@ -13,7 +13,7 @@ interface PlayMediaResult {
     success: boolean;
     message: string;
     source: string;
-    outgoingMessage?: PlayFrame;
+    action?: CallAction;
     [key: string]: unknown;
 }
 
@@ -53,16 +53,16 @@ export const playMediaTool = defineTool<PlayMediaArgs, PlayMediaResult>({
             };
         }
 
-        const frame: PlayFrame = { type: 'play', source: args.source };
-        if (args.loop !== undefined) frame.loop = args.loop;
-        if (args.preemptible !== undefined) frame.preemptible = args.preemptible;
-        if (args.interruptible !== undefined) frame.interruptible = args.interruptible;
+        const action: CallAction & { type: 'play' } = { type: 'play', source: args.source };
+        if (args.loop !== undefined) action.loop = args.loop;
+        if (args.preemptible !== undefined) action.preemptible = args.preemptible;
+        if (args.interruptible !== undefined) action.interruptible = args.interruptible;
 
         return {
             success: true,
             message: 'Media playback initiated successfully',
             source: args.source,
-            outgoingMessage: frame,
+            action,
         };
     },
 });

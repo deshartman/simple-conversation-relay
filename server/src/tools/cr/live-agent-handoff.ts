@@ -1,6 +1,6 @@
-import { logOut } from '../utils/logger.js';
-import { defineTool } from './define-tool.js';
-import type { EndFrame } from '../types/crelay.js';
+import { logOut } from '../../utils/logger.js';
+import { defineTool } from '../define-tool.js';
+import type { CallAction } from '../../interfaces/ResponseService.js';
 
 interface LiveAgentHandoffArgs {
     summary: string;
@@ -10,7 +10,7 @@ interface LiveAgentHandoffResult {
     success: boolean;
     message: string;
     summary: string;
-    outgoingMessage: EndFrame;
+    action: CallAction;
     [key: string]: unknown;
 }
 
@@ -34,8 +34,8 @@ export const liveAgentHandoffTool = defineTool<LiveAgentHandoffArgs, LiveAgentHa
             success: true,
             message: 'Live agent handoff initiated',
             summary: args.summary,
-            outgoingMessage: {
-                type: 'end',
+            action: {
+                type: 'endCall',
                 handoffData: JSON.stringify({
                     reasonCode: 'live-agent-handoff',
                     reason: args.summary,
