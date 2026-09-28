@@ -1,5 +1,49 @@
 # Changelog
 
+## Release v4.14.0
+
+### Transport / ResponseService Separation
+
+Splits `ConversationRelaySession` (ConversationRelay protocol) from the ResponseService (conversation content). The rule of thumb: if it writes prompt text or decides model capability it belongs in the ResponseService; if it is about CR frames, their order or audio timing it belongs in the transport. Developed on `v4.simple-tac`, where a second ResponseService proved the interface; this release contains only the OpenAI path.
+
+Test suite: **121 -> 170**.
+
+#### 🏗️ Architecture
+
+**One event entry point** (`ResponseService.handleEvent`)
+- The session emits SCR's own `CallEvent`s (`setup`, `prompt`, `dtmf`, `interrupt`, `status`, `context`) rather than calling `generateResponse` and composing system messages itself.
+- The call-details system message and status-callback text moved into `OpenAIResponseService`, unchanged.
+- DTMF, previously logged and dropped, now reaches the service.
+
+**Contexts** (`ContextStore`)
+- The transport loads no prompt. `OpenAIResponseService` reads `server/assets/<key>.md` on first use (cached) — `defaultContext`, or the setup's `customParameters.contextKey`.
+- `/updateResponseService` relays the key to the service; an unknown key returns 400.
+
+**Silence**
+- `SilenceHandler` is timer-only. `ConversationRelaySession` owns the policy: reminder *n* after breach *n*, then `end {reasonCode:'unresponsive'}`.
+- A service may supply the wording via optional `silenceReminder(count)`; anything slower than 1.5s falls back to the configured messages. It cannot skip a reminder or change when the call ends.
+
+**Tools and call actions**
+- Handlers take `(args, ctx: ToolContext)`; `setSession()` and the session back-reference are gone.
+- `tools/cr/` tools return a `CallAction` (`endCall`, `sendDigits`, `play`, `language`, `listenMode`, `silence`). The transport decides what it means on the wire, including deferring `end` until after the farewell.
+- `toolResult` returns `ActionOutcome {applied, terminal, detail?}`. `OpenAIResponseService` skips the follow-up generation only when the transport reports `terminal`, and rewrites the function output when an action was not applied.
+- `tools/llm/` holds tools that don't touch the call (`send-sms`, `change-context`).
+
+**Languages from the call's TwiML**
+- `<Parameter name="crLanguages">` / `crTtsLanguage` advertise the TwiML's `<Language>` codes; SCR's own TwiML emits both. `resolveCallLanguages()` falls back to `serverConfig.json` and each call logs the source.
+
+#### 🔒 Security
+- `X-Twilio-Signature` is verified on the `/conversation-relay` WebSocket upgrade (against the public `wss://` URL, with `AUTH_TOKEN`); failures close with 1008. Follows `TWILIO_VALIDATE_WEBHOOKS`.
+
+#### 🐛 Fixes
+- **Undeclared language codes hung the call.** The model asked for `en-GB` (from the tool's own examples); Twilio answered `Value of 'ttsLanguage' is not configured` and the call went unresponsive. Language actions now resolve against the declared codes: exact match, else primary tag (`en-GB` -> `en-AU`), else dropped with the model told which languages the call supports.
+
+#### ⚠️ Breaking changes
+- Twilio Sync asset loading (`SyncAssetLoader`, `scripts/upload-assets.js`) removed; `"file"` is the only loader and any other value fails at startup.
+- `AssetLoader.activeContextKey` removed; select a prompt per call with `contextKey`.
+- Tool results: `outgoingMessage` / `listenMode` / `silenceEnabled` replaced by `action`.
+- `ResponseService` is now `createResponseHandler`, `handleEvent`, optional `silenceReminder`, `cleanup`.
+
 ## Release v4.13.0
 
 ### Outbound Readiness: Webhook Authentication, Stream Correctness, Automatic Language Detection
