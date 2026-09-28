@@ -303,7 +303,7 @@ Other back ends use the same actions: MINI-TAC's handoff streams `{"handoff": "<
 No JSON editing, no filename/manifest-name coupling. Type parameters on `defineTool<TArgs, TResult>` tie the handler's args type to the declared schema — a mismatch fails at compile time.
 
 **Tool-result conventions:** handlers return `{ success, message }` plus:
-- `action` (optional) — a `CallAction` the transport applies: `endCall {handoffData?}` (deferred until after the farewell; the only action that ends the call), `sendDigits {digits}`, `play {source, loop?, …}`, `language {ttsLanguage?, transcriptionLanguage?}`, `listenMode {enabled}`, `silence {enabled}`. Invalid actions are dropped by the transport's frame validation.
+- `action` (optional) — a `CallAction` the transport applies: `endCall {handoffData?}` (deferred until after the farewell; the only action that ends the call), `sendDigits {digits}`, `play {source, loop?, …}`, `language {ttsLanguage?, transcriptionLanguage?}`, `listenMode {enabled}`, `silence {enabled}`. Invalid actions are dropped by the transport's frame validation. `language` codes are resolved against the call's declared `<Language>`s (`en-GB` → `en-AU`; no match → dropped), and an applied switch stops automatic language detection for the rest of the call. The transport returns an `ActionOutcome {applied, terminal, detail?}` from `toolResult`; `OpenAIResponseService` puts that in the function output so the model hears what really happened, and uses `terminal` to skip a second farewell.
 - Any other fields — passed back to the LLM as the function-call output.
 
 ### Language Switching Example

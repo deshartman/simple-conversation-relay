@@ -24,7 +24,7 @@
 import { logOut, logError } from '../utils/logger.js';
 import { SilenceHandler } from './SilenceHandler.js';
 import type { SilenceDetectionConfig } from './SilenceHandler.js';
-import type { ResponseService, ResponseHandler, ContentResponse, ToolResultEvent, CallAction } from '../interfaces/ResponseService.js';
+import type { ResponseService, ResponseHandler, ContentResponse, ToolResultEvent, CallAction, ActionOutcome } from '../interfaces/ResponseService.js';
 import type { SessionData, IncomingMessage } from '../interfaces/ConversationRelay.js';
 import {
     OutgoingFrameSchema,
@@ -408,20 +408,6 @@ export class ConversationRelaySession {
         await this.sendText(reminder, true);
     }
 
-    switchLanguage(opts: { ttsLanguage?: string; transcriptionLanguage?: string }): void {
-        // An explicit switch (the switch-language tool — i.e. the caller asked)
-        // wins for the rest of the call. Without this latch, automatic
-        // detection would flip TTS straight back on the next prompt.
-        this.manualLanguageOverride = true;
-        if (opts.ttsLanguage) this.activeTtsLanguage = opts.ttsLanguage;
-        const frame: OutgoingFrame = { type: 'language' };
-        if (opts.ttsLanguage) (frame as { ttsLanguage?: string }).ttsLanguage = opts.ttsLanguage;
-        if (opts.transcriptionLanguage)
-            (frame as { transcriptionLanguage?: string }).transcriptionLanguage =
-                opts.transcriptionLanguage;
-        this.sendResponse(frame);
-    }
-
     /**
      * End the call immediately. Bypasses listen-mode gating (always sent)
      * and the terminal-deferral path (callers invoking this directly are
@@ -507,14 +493,12 @@ export class ConversationRelaySession {
                 );
             },
 
-            toolResult: (event: ToolResultEvent) => {
+            toolResult: (event: ToolResultEvent): ActionOutcome | void => {
                 const { toolType, toolData } = event;
                 logOut('Session', `${this.logPrefix} Tool result: ${toolType}`);
 
-                if (!toolData) return;
-
-                if (toolData.action) {
-                    this.applyAction(toolData.action, toolType);
+                if (toolData?.action) {
+                    return this.applyAction(toolData.action, toolType);
                 }
             },
 
@@ -535,41 +519,62 @@ export class ConversationRelaySession {
         };
     }
 
-    /** What a call action means on the wire. The only place tools' effects become frames. */
-    private applyAction(action: CallAction, toolType: string): void {
+    /**
+     * What a call action means on the wire. The only place tools' effects
+     * become frames, and the only place that knows which action ends the call.
+     */
+    private applyAction(action: CallAction, toolType: string): ActionOutcome {
         switch (action.type) {
             case 'listenMode':
                 this.setListenMode(action.enabled);
-                return;
+                return { applied: true, terminal: false };
             case 'silence':
                 this.setSilenceDetection(action.enabled);
-                return;
+                return { applied: true, terminal: false };
             case 'language': {
                 // Twilio rejects a code the TwiML didn't declare, so resolve
                 // each one against the declared list (same lookup as the
                 // auto-switch: `en-US` -> the declared `en-AU`).
-                const ttsLanguage = this.resolveDeclaredLanguage(action.ttsLanguage, toolType);
-                const transcriptionLanguage = this.resolveDeclaredLanguage(action.transcriptionLanguage, toolType);
-                if (ttsLanguage === null || transcriptionLanguage === null) return;
+                const tts = this.resolveDeclaredLanguage(action.ttsLanguage, toolType);
+                const stt = this.resolveDeclaredLanguage(action.transcriptionLanguage, toolType);
+                if (tts === null || stt === null) {
+                    return {
+                        applied: false,
+                        terminal: false,
+                        detail: `This call only supports: ${[...this.declaredLanguages].join(', ')}`,
+                    };
+                }
                 const frame: CallAction = { type: 'language' };
-                if (ttsLanguage) frame.ttsLanguage = ttsLanguage;
-                if (transcriptionLanguage) frame.transcriptionLanguage = transcriptionLanguage;
-                this.applyToolFrame(frame, toolType);
-                return;
+                if (tts) frame.ttsLanguage = tts;
+                if (stt) frame.transcriptionLanguage = stt;
+                if (!this.applyToolFrame(frame, toolType)) return { applied: false, terminal: false };
+                // An explicit switch (the caller asked) wins for the rest of
+                // the call; without this, automatic detection would flip TTS
+                // straight back on the next prompt.
+                this.manualLanguageOverride = true;
+                if (tts) this.activeTtsLanguage = tts;
+                const substituted = [
+                    tts !== action.ttsLanguage ? `${action.ttsLanguage} -> ${tts}` : null,
+                    stt !== action.transcriptionLanguage ? `${action.transcriptionLanguage} -> ${stt}` : null,
+                ].filter(Boolean);
+                return substituted.length > 0
+                    ? { applied: true, terminal: false, detail: `Used the call's language: ${substituted.join(', ')}` }
+                    : { applied: true, terminal: false };
             }
             case 'endCall':
             case 'sendDigits':
             case 'play': {
                 const { type, ...fields } = action;
                 const frameType = type === 'endCall' ? 'end' : type;
-                this.applyToolFrame({ type: frameType, ...fields }, toolType);
-                return;
+                const applied = this.applyToolFrame({ type: frameType, ...fields }, toolType);
+                return { applied, terminal: applied && type === 'endCall' };
             }
             default:
                 logError(
                     'Session',
                     `${this.logPrefix} Tool '${toolType}' requested unknown action: ${JSON.stringify(action)}`
                 );
+                return { applied: false, terminal: false, detail: 'Unknown action' };
         }
     }
 
@@ -594,14 +599,15 @@ export class ConversationRelaySession {
         return null;
     }
 
-    private applyToolFrame(outgoing: unknown, toolType: string): void {
+    /** Validates and ships (or defers) a tool's frame; false when invalid. */
+    private applyToolFrame(outgoing: unknown, toolType: string): boolean {
         const parsed = OutgoingFrameSchema.safeParse(outgoing);
         if (!parsed.success) {
             logError(
                 'Session',
                 `${this.logPrefix} Tool '${toolType}' produced invalid frame: ${JSON.stringify(parsed.error.issues)}`
             );
-            return;
+            return false;
         }
 
         const frame = parsed.data;
@@ -613,11 +619,12 @@ export class ConversationRelaySession {
                 'Session',
                 `${this.logPrefix} Deferring terminal frame from '${toolType}' until farewell flush`
             );
-            return;
+            return true;
         }
 
         // Non-terminal frames ship immediately.
         this.sendResponse(frame);
+        return true;
     }
 
     // =========================================================================

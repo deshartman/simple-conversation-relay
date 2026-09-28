@@ -262,11 +262,14 @@ describe('ConversationRelaySession', () => {
          * speaking French is flipped straight back on the next prompt.
          */
         it('stops switching for the rest of the call once the caller explicitly asks', async () => {
-            const { session, sent } = makeLangSession();
+            const { session, sent, responseService } = makeLangSession();
             sessions.push(session);
 
             await say(session, 'fr');
-            session.switchLanguage({ ttsLanguage: 'en-AU' });
+            (responseService as any).handler.toolResult({
+                toolType: 'switch-language',
+                toolData: { success: true, message: '', action: { type: 'language', ttsLanguage: 'en-AU' } },
+            });
             await say(session, 'fr');
             await say(session, 'fr');
 
@@ -515,6 +518,28 @@ describe('ConversationRelaySession', () => {
             act(responseService, { type: 'language', ttsLanguage: 'de-DE' });
 
             expect(sent).toEqual([]);
+        });
+
+        it('reports what it did: endCall is terminal, a dropped language is not applied', () => {
+            const { session, responseService } = makeSession({
+                initialListenMode: false,
+                declaredLanguages: ['en-AU', 'fr-FR'],
+            });
+            sessions.push(session);
+
+            expect(act(responseService, { type: 'endCall', handoffData: '{}' })).toEqual({ applied: true, terminal: true });
+            expect(act(responseService, { type: 'sendDigits', digits: '6' })).toEqual({ applied: true, terminal: false });
+            expect(act(responseService, { type: 'language', ttsLanguage: 'en-US' })).toEqual({
+                applied: true,
+                terminal: false,
+                detail: "Used the call's language: en-US -> en-AU",
+            });
+            expect(act(responseService, { type: 'language', ttsLanguage: 'de-DE' })).toEqual({
+                applied: false,
+                terminal: false,
+                detail: 'This call only supports: en-AU, fr-FR',
+            });
+            expect(act(responseService, { type: 'sendDigits', digits: 'abc' })).toEqual({ applied: false, terminal: false });
         });
 
         it('drops an action whose frame is invalid', () => {

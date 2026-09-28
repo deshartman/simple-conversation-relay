@@ -28,7 +28,7 @@ import type {
     ToolResultEvent,
     ResponseHandler,
     CallEvent,
-    CallAction,
+    ActionOutcome,
 } from '../interfaces/ResponseService.js';
 import type { ServerConfig } from '../config/ServerConfig.js';
 import type { ToolRegistry } from '../tools/tool-registry.js';
@@ -161,7 +161,9 @@ class OpenAIResponseService implements ResponseService {
      * `responseHandler.toolCallStart` with the execution promise so the
      * session can track in-flight tools for terminal-text deferral.
      */
-    async executeToolCall(tool: ResponsesAPIToolCall): Promise<IToolResult | null> {
+    async executeToolCall(
+        tool: ResponsesAPIToolCall
+    ): Promise<{ result: IToolResult; outcome?: ActionOutcome } | null> {
         try {
             const registered = this.registry.get(tool.name);
             if (!registered) {
@@ -177,15 +179,26 @@ class OpenAIResponseService implements ResponseService {
             this.responseHandler.toolCallStart?.(promise);
 
             const toolResponse = (await promise) as IToolResult;
+            if (!toolResponse) return null;
 
-            if (toolResponse) {
+            const outcome =
                 this.responseHandler.toolResult({
                     toolType: tool.name,
                     toolData: toolResponse,
-                } as ToolResultEvent);
-            }
+                } as ToolResultEvent) ?? undefined;
 
-            return toolResponse;
+            // The model sees what actually happened to the call, not what the
+            // tool hoped would happen (e.g. an unsupported language dropped).
+            if (outcome && !outcome.applied) {
+                return {
+                    result: { ...toolResponse, success: false, message: outcome.detail ?? 'The call could not do that' },
+                    outcome,
+                };
+            }
+            if (outcome?.detail) {
+                return { result: { ...toolResponse, message: `${toolResponse.message}. ${outcome.detail}` }, outcome };
+            }
+            return { result: toolResponse, outcome };
         } catch (error) {
             logError(
                 'OpenAIResponseService',
@@ -305,9 +318,10 @@ class OpenAIResponseService implements ResponseService {
                 case 'response.function_call_arguments.done':
                     if (currentToolCall) {
                         try {
-                            const toolResult = await this.executeToolCall(currentToolCall);
+                            const executed = await this.executeToolCall(currentToolCall);
 
-                            if (toolResult !== null) {
+                            if (executed !== null) {
+                                const toolResult = executed.result;
                                 this.inputMessages.push({
                                     type: 'function_call',
                                     id: currentToolCall.id,
@@ -332,9 +346,10 @@ class OpenAIResponseService implements ResponseService {
                                 // its `last: true` token, because the session
                                 // defers the terminal frame until the final text
                                 // token. Skip that and the call never hangs up.
-                                const isTerminal =
-                                    (toolResult as { action?: CallAction }).action?.type ===
-                                    'endCall';
+                                //
+                                // Whether it ended the call is the transport's
+                                // answer, not something this service works out.
+                                const isTerminal = executed.outcome?.terminal === true;
 
                                 if (isTerminal) {
                                     logOut(
