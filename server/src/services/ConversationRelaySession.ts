@@ -155,22 +155,25 @@ export class ConversationRelaySession {
     // Lifecycle
     // =========================================================================
 
-    /** Called from the server WS handler on first `setup` frame. */
+    /**
+     * Called from the server WS handler on first `setup` frame. Reports the
+     * setup to the service, which owns what (if anything) the model is told.
+     */
     async setup(): Promise<void> {
         const { parameterData, setupData } = this.sessionData;
-        const initialMessage = `These are all the details of the call: ${JSON.stringify(
-            setupData,
-            null,
-            4
-        )} and the parameter data needed to complete your objective: ${JSON.stringify(
-            parameterData,
-            null,
-            4
-        )}. Use this to complete your objective`;
-        await this.responseService.insertMessage('system', initialMessage);
+        await this.responseService.handleEvent({
+            type: 'setup',
+            setup: setupData,
+            parameters: parameterData,
+        });
 
         this.silenceHandler?.start();
         logOut('Session', `${this.logPrefix} Setup complete`);
+    }
+
+    /** Evaluated Twilio status callback for this call, reported to the service. */
+    async handleStatus(status: unknown): Promise<void> {
+        await this.responseService.handleEvent({ type: 'status', status });
     }
 
     /** Called from the server WS handler for every validated incoming frame (post-setup). */
@@ -191,10 +194,15 @@ export class ConversationRelaySession {
                 case 'prompt':
                     logOut('Session', `${this.logPrefix} PROMPT: ${message.voicePrompt}`);
                     this.autoSwitchTtsLanguage(message.lang);
-                    await this.responseService.generateResponse('user', message.voicePrompt || '');
+                    await this.responseService.handleEvent({
+                        type: 'prompt',
+                        text: message.voicePrompt || '',
+                        lang: message.lang,
+                    });
                     break;
                 case 'dtmf':
                     logOut('Session', `${this.logPrefix} DTMF: ${message.digit}`);
+                    await this.responseService.handleEvent({ type: 'dtmf', digit: message.digit });
                     break;
                 case 'interrupt':
                     logOut(
@@ -205,7 +213,10 @@ export class ConversationRelaySession {
                     //     'Session',
                     //     `${this.logPrefix} INTERRUPT: ${JSON.stringify(message, null, 2)}`
                     // );
-                    this.responseService.interrupt(message.utteranceUntilInterrupt);
+                    await this.responseService.handleEvent({
+                        type: 'interrupt',
+                        heard: message.utteranceUntilInterrupt,
+                    });
                     break;
                 case 'info':
                     // Intentionally quiet — info frames are frequent.

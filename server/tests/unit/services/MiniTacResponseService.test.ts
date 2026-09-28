@@ -1,8 +1,9 @@
 /**
  * MiniTacResponseService — HTTP adapter to a MINI-TAC agent.
  *
- * fetch is stubbed so the tests pin the wire contract: lazy session
- * creation, NDJSON token mapping, interrupt semantics and cleanup.
+ * fetch is stubbed so the tests pin the wire contract: session creation on
+ * the setup event, NDJSON token mapping, interrupt semantics, dtmf/status
+ * events and cleanup.
  */
 
 import { describe, it, expect, beforeEach, afterEach, vi } from 'vitest';
@@ -31,13 +32,7 @@ function setup(respondLines: object[] = [{ token: 'Hi' }, { token: ' there' }, {
         return Response.json({ ok: true });
     }));
 
-    const service = new MiniTacResponseService({
-        baseUrl: 'http://localhost:8000/',
-        apiKey: 'secret',
-        key: 'CA1',
-        phone: '+61491570156',
-        instructions: 'ctx',
-    });
+    const service = new MiniTacResponseService({ baseUrl: 'http://localhost:8000/', apiKey: 'secret' });
     const content: { token: string; last: boolean }[] = [];
     const toolResults: any[] = [];
     service.createResponseHandler({
@@ -49,29 +44,44 @@ function setup(respondLines: object[] = [{ token: 'Hi' }, { token: ' there' }, {
     return { service, calls, content, toolResults };
 }
 
+const SETUP = { callSid: 'CA1', from: '+61491570156', to: '+61468160172', customParameters: { a: 'b' } };
+
+/** setup() then the service, as the transport drives it. */
+async function started(respondLines?: object[]) {
+    const ctx = setup(respondLines);
+    await ctx.service.handleEvent({ type: 'setup', setup: SETUP, parameters: { requestData: {} } });
+    return ctx;
+}
+
 const flush = () => new Promise(r => setTimeout(r, 0));
 
 describe('MiniTacResponseService', () => {
     beforeEach(() => vi.restoreAllMocks());
     afterEach(() => vi.unstubAllGlobals());
 
-    it('creates the session before the first message, with bearer auth', async () => {
-        const { service, calls } = setup();
+    it('creates the session from the setup event, without instructions', async () => {
+        const { service, calls } = await started();
         await service.insertMessage('system', 'call details');
 
         expect(calls.map(c => `${c.method} ${c.url}`)).toEqual([
             'POST http://localhost:8000/sessions',
             'POST http://localhost:8000/sessions/CA1/messages',
         ]);
-        expect(calls[0].body).toEqual({ key: 'CA1', phone: '+61491570156', channel: 'voice', instructions: 'ctx' });
-        expect(calls[1].body).toEqual({ role: 'system', content: 'call details' });
+        expect(calls[0].body).toEqual({
+            key: 'CA1',
+            phone: '+61491570156',
+            channel: 'voice',
+            setup: SETUP,
+            parameters: { requestData: {} },
+        });
         expect(calls.every(c => c.auth === 'Bearer secret')).toBe(true);
     });
 
-    it('maps NDJSON tokens to content and ends with last:true', async () => {
-        const { service, content } = setup();
-        await service.generateResponse('user', 'hello');
+    it('maps a prompt event to /respond and NDJSON tokens to content', async () => {
+        const { service, calls, content } = await started();
+        await service.handleEvent({ type: 'prompt', text: 'hello', lang: 'en-US' });
 
+        expect(calls[1].body).toEqual({ role: 'user', content: 'hello', lang: 'en-US' });
         expect(content).toEqual([
             { token: 'Hi', last: false },
             { token: ' there', last: false },
@@ -80,16 +90,34 @@ describe('MiniTacResponseService', () => {
     });
 
     it('does not emit last:true when MINI-TAC reports the turn interrupted', async () => {
-        const { service, content } = setup([{ token: 'Hi' }, { last: true, interrupted: true }]);
-        await service.generateResponse('user', 'hello');
+        const { service, content } = await started([{ token: 'Hi' }, { last: true, interrupted: true }]);
+        await service.handleEvent({ type: 'prompt', text: 'hello' });
 
         expect(content).toEqual([{ token: 'Hi', last: false }]);
+    });
+
+    it('posts dtmf and status events to /events', async () => {
+        const { service, calls } = await started();
+        await service.handleEvent({ type: 'dtmf', digit: '5' });
+        await service.handleEvent({ type: 'status', status: { callStatus: 'completed' } });
+
+        expect(calls.slice(1).map(c => [c.url, c.body])).toEqual([
+            ['http://localhost:8000/sessions/CA1/events', { type: 'dtmf', digit: '5' }],
+            ['http://localhost:8000/sessions/CA1/events', { type: 'status', status: { callStatus: 'completed' } }],
+        ]);
+    });
+
+    it('makes no MINI-TAC calls before the setup event', async () => {
+        const { service, calls } = setup();
+        await service.handleEvent({ type: 'dtmf', digit: '1' });
+
+        expect(calls).toEqual([]);
     });
 
     it('routes a {"frame"} line through toolResult, before last:true', async () => {
         const end = { type: 'end', handoffData: '{"reasonCode":"live-agent-handoff"}' };
         const order: string[] = [];
-        const { service, content, toolResults } = setup([
+        const { service, content, toolResults } = await started([
             { token: 'Transferring you' },
             { frame: end, tool: 'handoff' },
             { last: true, text: 'Transferring you' },
@@ -99,7 +127,7 @@ describe('MiniTacResponseService', () => {
         handler.content = (r: any) => { order.push(r.last ? 'last' : 'token'); content0(r); };
         handler.toolResult = (e: any) => { order.push('frame'); tool0(e); };
 
-        await service.generateResponse('user', 'agent please');
+        await service.handleEvent({ type: 'prompt', text: 'agent please' });
 
         expect(toolResults).toEqual([{
             toolType: 'handoff',
@@ -110,8 +138,8 @@ describe('MiniTacResponseService', () => {
     });
 
     it('forwards what the caller heard on interrupt', async () => {
-        const { service, calls } = setup();
-        service.interrupt('Hi th');
+        const { service, calls } = await started();
+        await service.handleEvent({ type: 'interrupt', heard: 'Hi th' });
         await flush();
 
         const interrupt = calls.find(c => c.url.endsWith('/interrupt'))!;
@@ -119,7 +147,7 @@ describe('MiniTacResponseService', () => {
     });
 
     it('deletes the session on cleanup so MINI-TAC can consolidate memory', async () => {
-        const { service, calls } = setup();
+        const { service, calls } = await started();
         service.cleanup();
         await flush();
 

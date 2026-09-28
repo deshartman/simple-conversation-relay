@@ -29,6 +29,7 @@ import type {
     ToolResult as IToolResult,
     ToolResultEvent,
     ResponseHandler,
+    CallEvent,
 } from '../interfaces/ResponseService.js';
 import type { ServerConfig } from '../config/ServerConfig.js';
 import type { ToolRegistry } from '../tools/tool-registry.js';
@@ -65,11 +66,16 @@ class OpenAIResponseService implements ResponseService {
 
     private responseHandler!: ResponseHandler;
 
+    /** Resolves `customParameters.contextKey` to a context; absent = no per-call override. */
+    private readonly lookupContext?: (key: string) => string | null;
+
     constructor(
         context: string,
         registry: ToolRegistry,
-        config: ServerConfig
+        config: ServerConfig,
+        lookupContext?: (key: string) => string | null
     ) {
+        this.lookupContext = lookupContext;
         this.openai = new OpenAI();
         this.model = config.openaiModel;
         this.currentResponseId = null;
@@ -95,6 +101,60 @@ class OpenAIResponseService implements ResponseService {
 
     createResponseHandler(handler: ResponseHandler): void {
         this.responseHandler = handler;
+    }
+
+    /**
+     * The service, not the transport, decides what each call event means for
+     * the conversation: which context applies, what the model is told about
+     * the call, and what DTMF and status updates contribute.
+     */
+    async handleEvent(event: CallEvent): Promise<void> {
+        switch (event.type) {
+            case 'setup': {
+                // Per-call context selection. Without this the active context is
+                // global, so an outbound campaign prompt would also be served to
+                // inbound callers.
+                const contextKey = event.setup.customParameters?.contextKey;
+                if (contextKey) {
+                    const override = this.lookupContext?.(contextKey);
+                    if (override) {
+                        this.instructions = override;
+                        logOut('OpenAIResponseService', `Using context '${contextKey}' for this call`);
+                    } else {
+                        logError(
+                            'OpenAIResponseService',
+                            `contextKey '${contextKey}' not found — falling back to the active context`
+                        );
+                    }
+                }
+                await this.insertMessage(
+                    'system',
+                    `These are all the details of the call: ${JSON.stringify(
+                        event.setup,
+                        null,
+                        4
+                    )} and the parameter data needed to complete your objective: ${JSON.stringify(
+                        event.parameters,
+                        null,
+                        4
+                    )}. Use this to complete your objective`
+                );
+                break;
+            }
+            case 'prompt':
+                await this.generateResponse('user', event.text);
+                break;
+            case 'interrupt':
+                this.interrupt();
+                break;
+            case 'dtmf':
+                // Unchanged behaviour: the model is not told about key presses.
+                logOut('OpenAIResponseService', `DTMF '${event.digit}' ignored`);
+                break;
+            case 'status':
+                await this.insertMessage('system', JSON.stringify(event.status));
+                break;
+        }
     }
 
     /**

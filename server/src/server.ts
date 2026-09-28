@@ -287,31 +287,10 @@ app.ws('/conversation-relay', (ws: any, req: express.Request) => {
 
                 const activeAssets = cachedAssetsService.getActiveAssets();
 
-                // Per-call context selection. Without this the active context is
-                // global, so an outbound campaign prompt would also be served to
-                // inbound callers. `contextKey` was previously honoured only by
-                // POST /updateResponseService, i.e. after the call had started.
-                let context = activeAssets.context;
-                const contextKeyParam = message.customParameters?.contextKey;
-                if (contextKeyParam) {
-                    const override = cachedAssetsService.getContext(contextKeyParam);
-                    if (override) {
-                        context = override;
-                        logOut('WS', `Using context '${contextKeyParam}' for this call`);
-                    } else {
-                        logError(
-                            'WS',
-                            `contextKey '${contextKeyParam}' not found — falling back to the active context`
-                        );
-                    }
-                }
-
+                // The service owns prompt selection (incl. contextKey) from the
+                // setup event; the transport only carries it.
                 // /conversation (HTTP chat) stays on OpenAI regardless.
-                const responseService = createResponseService(
-                    message.callSid ?? crypto.randomUUID(),
-                    message.from ?? '',
-                    context
-                );
+                const responseService = createResponseService(activeAssets.context);
 
                 // The declared <Language> codes double as the allow-list for
                 // automatic TTS switching, so the session resolves a detected
@@ -478,7 +457,7 @@ app.post('/twilioStatusCallback', validateTwilioSignature, async (req: express.R
     if (wsSession) {
         const evaluated = await twilioService.evaluateStatusCallback(statusCallBack);
         if (evaluated) {
-            await wsSession.session.insertMessage('system', JSON.stringify(evaluated));
+            await wsSession.session.handleStatus(evaluated);
         }
     }
     res.json({ success: true });
@@ -487,20 +466,15 @@ app.post('/twilioStatusCallback', validateTwilioSignature, async (req: express.R
 /**
  * Pick the voice back end from RESPONSE_SERVICE_TYPE.
  */
-function createResponseService(
-    key: string,
-    phone: string,
-    context: string
-): ResponseService {
+function createResponseService(context: string): ResponseService {
     return serverConfig.responseService === 'mini-tac'
         ? new MiniTacResponseService({
               baseUrl: serverConfig.miniTacUrl,
               apiKey: serverConfig.miniTacApiKey!,
-              key,
-              phone,
-              instructions: context,
           })
-        : new OpenAIResponseService(context, toolRegistry, serverConfig);
+        : new OpenAIResponseService(context, toolRegistry, serverConfig, key =>
+              cachedAssetsService!.getContext(key)
+          );
 }
 
 app.post('/conversation', async (req: express.Request, res: express.Response) => {

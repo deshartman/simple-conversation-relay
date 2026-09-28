@@ -28,9 +28,8 @@ function makeFakeResponseService() {
         createResponseHandler(h: any) {
             this.handler = h;
         },
-        generateResponse: vi.fn(async () => {}),
+        handleEvent: vi.fn(async (_event: any) => {}),
         insertMessage: vi.fn(async () => {}),
-        interrupt: vi.fn(),
         updateContext: vi.fn(async () => {}),
         updateTools: vi.fn(),
         cleanup: vi.fn(),
@@ -309,6 +308,59 @@ describe('ConversationRelaySession', () => {
             await say(session, 'fr');
 
             expect(ttsFrames(sent)).toEqual([]);
+        });
+    });
+
+    describe('call events (transport reports, service decides)', () => {
+        it('reports setup as data, with no prompt text of its own', async () => {
+            const { session, responseService } = makeSession({ initialListenMode: false });
+            sessions.push(session);
+
+            await session.setup();
+
+            expect(responseService.handleEvent).toHaveBeenCalledWith({
+                type: 'setup',
+                setup: { callSid: 'CAtest0000000000000000000000000000' },
+                parameters: {},
+            });
+            expect(responseService.insertMessage).not.toHaveBeenCalled();
+        });
+
+        it('maps prompt, dtmf and interrupt frames onto events', async () => {
+            const { session, responseService } = makeSession({ initialListenMode: false });
+            sessions.push(session);
+
+            await session.handleIncoming({ type: 'prompt', voicePrompt: 'hi', lang: 'en-US' } as any);
+            await session.handleIncoming({ type: 'dtmf', digit: '5' } as any);
+            await session.handleIncoming({ type: 'interrupt', utteranceUntilInterrupt: 'Hel' } as any);
+
+            expect(responseService.handleEvent.mock.calls.map(c => c[0])).toEqual([
+                { type: 'prompt', text: 'hi', lang: 'en-US' },
+                { type: 'dtmf', digit: '5' },
+                { type: 'interrupt', heard: 'Hel' },
+            ]);
+        });
+
+        it('reports a status callback as an event', async () => {
+            const { session, responseService } = makeSession({ initialListenMode: false });
+            sessions.push(session);
+
+            await session.handleStatus({ callStatus: 'completed' });
+
+            expect(responseService.handleEvent).toHaveBeenCalledWith({
+                type: 'status',
+                status: { callStatus: 'completed' },
+            });
+        });
+
+        it('does not forward info or error frames to the service', async () => {
+            const { session, responseService } = makeSession({ initialListenMode: false });
+            sessions.push(session);
+
+            await session.handleIncoming({ type: 'info' } as any);
+            await session.handleIncoming({ type: 'error', description: 'x' } as any);
+
+            expect(responseService.handleEvent).not.toHaveBeenCalled();
         });
     });
 });

@@ -98,10 +98,11 @@ describe('OpenAIResponseService', () => {
             expect((service as any).setListenMode).toBeUndefined();
         });
 
-        it('should accept exactly three constructor arguments', () => {
+        it('should accept exactly four constructor arguments', () => {
             // Guards against silently reintroducing the removed `listenMode`
             // parameter, which type-checking will not catch in this file.
-            expect(OpenAIResponseService.length).toBe(3);
+            // The fourth is the optional `lookupContext` for per-call contextKey.
+            expect(OpenAIResponseService.length).toBe(4);
         });
     });
 
@@ -125,6 +126,62 @@ describe('OpenAIResponseService', () => {
 
             expect(service).toBeDefined();
             expect((service as any).registry.size()).toBe(0);
+        });
+    });
+
+    describe('handleEvent (service owns the prompt)', () => {
+        const config = () => ServerConfig.forTesting();
+        const lookup = (key: string) => (key === 'campaign' ? 'Campaign context' : null);
+
+        it('appends the call details on setup, as the transport used to', async () => {
+            const service = new OpenAIResponseService(mockContext, registry, config(), lookup);
+            await service.handleEvent({ type: 'setup', setup: { callSid: 'CA1' }, parameters: { requestData: {} } });
+
+            const instructions = (service as any).instructions as string;
+            expect(instructions.startsWith(mockContext)).toBe(true);
+            expect(instructions).toContain('These are all the details of the call');
+            expect(instructions).toContain('"callSid": "CA1"');
+        });
+
+        it('swaps to the contextKey context before adding call details', async () => {
+            const service = new OpenAIResponseService(mockContext, registry, config(), lookup);
+            await service.handleEvent({
+                type: 'setup',
+                setup: { callSid: 'CA1', customParameters: { contextKey: 'campaign' } },
+                parameters: {},
+            });
+
+            expect((service as any).instructions.startsWith('Campaign context')).toBe(true);
+        });
+
+        it('keeps the default context when the contextKey is unknown', async () => {
+            const service = new OpenAIResponseService(mockContext, registry, config(), lookup);
+            await service.handleEvent({
+                type: 'setup',
+                setup: { callSid: 'CA1', customParameters: { contextKey: 'nope' } },
+                parameters: {},
+            });
+
+            expect((service as any).instructions.startsWith(mockContext)).toBe(true);
+        });
+
+        it('adds a status event to the instructions', async () => {
+            const service = new OpenAIResponseService(mockContext, registry, config());
+            await service.handleEvent({ type: 'status', status: { callStatus: 'no-answer' } });
+
+            expect((service as any).instructions).toContain('"callStatus":"no-answer"');
+        });
+
+        it('routes prompt and interrupt events to generateResponse and interrupt', async () => {
+            const service = new OpenAIResponseService(mockContext, registry, config());
+            const gen = vi.spyOn(service, 'generateResponse').mockResolvedValue();
+            const intr = vi.spyOn(service, 'interrupt');
+
+            await service.handleEvent({ type: 'prompt', text: 'hello' });
+            await service.handleEvent({ type: 'interrupt', heard: 'Hel' });
+
+            expect(gen).toHaveBeenCalledWith('user', 'hello');
+            expect(intr).toHaveBeenCalledOnce();
         });
     });
 });

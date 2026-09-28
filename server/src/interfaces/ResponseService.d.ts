@@ -62,6 +62,32 @@ export interface ToolResult {
 }
 
 /**
+ * Call events the transport (ConversationRelaySession) reports to the service.
+ * These are SCR's own events, not raw CR frames: `info`/`error` frames are
+ * transport noise, and `status` is not a CR frame at all.
+ */
+export type CallEvent =
+    | {
+          type: 'setup';
+          /** The CR setup frame: callSid, from, to, direction, customParameters, … */
+          setup: { callSid?: string; from?: string; customParameters?: Record<string, string>; [key: string]: any };
+          /** Request data stored for SCR-originated outbound calls (callReference). */
+          parameters: Record<string, any>;
+      }
+    | { type: 'prompt'; text: string; lang?: string }
+    | { type: 'dtmf'; digit: string }
+    | {
+          type: 'interrupt';
+          /** CR's `utteranceUntilInterrupt` — what the caller actually heard. */
+          heard?: string;
+      }
+    | {
+          type: 'status';
+          /** Evaluated Twilio status callback (see TwilioService.evaluateStatusCallback). */
+          status: unknown;
+      };
+
+/**
  * Interface that all Response Service implementations must follow
  * Uses dependency injection with unified response handler for better type safety
  */
@@ -73,13 +99,11 @@ export interface ResponseService {
          */
         createResponseHandler(handler: ResponseHandler): void;
         /**
-         * Generates a streaming response from the LLM service
-         * 
-         * @param role - Message role ('user' or 'system')
-         * @param prompt - Input message content
-         * @returns Promise that resolves when response generation starts
+         * Single entry point for call events, mirroring the transport's switch
+         * on CR frame type. The service decides what each event means for the
+         * conversation (prompt, context, tools); the transport only reports.
          */
-        generateResponse(role: 'user' | 'system', prompt: string): Promise<void>;
+        handleEvent(event: CallEvent): Promise<void>;
 
         /**
          * Inserts a message into conversation context without generating a response
@@ -89,15 +113,6 @@ export interface ResponseService {
          * @returns Promise that resolves when message is inserted
          */
         insertMessage(role: 'system' | 'user' | 'assistant', message: string): Promise<void>;
-
-        /**
-         * Interrupts current response generation
-         * Used when user interrupts AI during response to stop streaming
-         *
-         * @param heard - Optional text the caller actually heard (CR's
-         *   `utteranceUntilInterrupt`), for services that trim history to it
-         */
-        interrupt(heard?: string): void;
 
         /**
          * Updates the context for the response service

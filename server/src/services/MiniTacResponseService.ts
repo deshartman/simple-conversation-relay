@@ -1,18 +1,19 @@
 /**
  * MiniTacResponseService — ResponseService backed by a MINI-TAC agent over HTTP.
  *
- * MINI-TAC owns the conversation history and memory, so this adapter keeps
- * none: every ResponseService method maps to one MINI-TAC route.
+ * MINI-TAC owns the prompt, tools, conversation history and memory, so this
+ * adapter keeps none: each call event maps to one MINI-TAC route.
  *
- *   constructor      -> POST   /sessions                 (lazy, awaited before first use)
- *   insertMessage    -> POST   /sessions/:key/messages
- *   generateResponse -> POST   /sessions/:key/respond    (NDJSON token stream)
- *   interrupt        -> POST   /sessions/:key/interrupt  (+ abort local fetch)
- *   cleanup          -> DELETE /sessions/:key            (MINI-TAC consolidates memory)
+ *   setup     -> POST   /sessions                 (awaited before any other call)
+ *   prompt    -> POST   /sessions/:key/respond    (NDJSON token stream)
+ *   interrupt -> POST   /sessions/:key/interrupt  (+ abort local fetch)
+ *   dtmf      -> POST   /sessions/:key/events     {type:'dtmf', digit}
+ *   status    -> POST   /sessions/:key/events     {type:'status', status}
+ *   cleanup   -> DELETE /sessions/:key            (MINI-TAC consolidates memory)
  *
  * Tools run in MINI-TAC; any CR frame they produce (e.g. an `end` handoff)
  * arrives as a {"frame"} line and is routed through toolResult.
- * updateContext/updateTools are no-ops.
+ * insertMessage maps to /messages; updateContext/updateTools are no-ops.
  */
 
 import { logOut, logError } from '../utils/logger.js';
@@ -20,24 +21,21 @@ import type {
     ResponseService,
     ContentResponse,
     ResponseHandler,
+    CallEvent,
 } from '../interfaces/ResponseService.js';
 
 export interface MiniTacOptions {
     baseUrl: string;
     apiKey: string;
-    /** Session key — the callSid. */
-    key: string;
-    /** Caller's number; MINI-TAC keys memory on it. */
-    phone: string;
-    /** SCR context string; MINI-TAC appends its own memory instructions. */
-    instructions: string;
 }
 
 class MiniTacResponseService implements ResponseService {
     private readonly baseUrl: string;
     private readonly apiKey: string;
-    private readonly key: string;
-    private readonly ready: Promise<void>;
+    /** Session key — the callSid from setup (UUID when absent). */
+    private key = '';
+    /** Settles once POST /sessions has; every later call awaits it. */
+    private ready: Promise<void> = Promise.reject(new Error('setup event not received'));
     private responseHandler!: ResponseHandler;
     /** Aborts the in-flight /respond fetch (interrupt or cancel-previous). */
     private abortController: AbortController | null = null;
@@ -45,20 +43,7 @@ class MiniTacResponseService implements ResponseService {
     constructor(opts: MiniTacOptions) {
         this.baseUrl = opts.baseUrl.replace(/\/$/, '');
         this.apiKey = opts.apiKey;
-        this.key = opts.key;
-        // Constructors can't be async; every call awaits this first.
-        this.ready = this.request('POST', '/sessions', {
-            key: opts.key,
-            phone: opts.phone,
-            channel: 'voice',
-            instructions: opts.instructions,
-        })
-            .then(async res => {
-                const body = await res.json();
-                logOut('MiniTacResponseService', `Session ${this.key} ready (isNew=${body.isNew}, name=${body.name ?? '-'})`);
-            });
-        // Surface creation failures on first use, not as an unhandled rejection.
-        this.ready.catch(err => logError('MiniTacResponseService', `Session create failed: ${err.message}`));
+        this.ready.catch(() => {}); // replaced on setup; don't surface the placeholder
     }
 
     createResponseHandler(handler: ResponseHandler): void {
@@ -74,7 +59,50 @@ class MiniTacResponseService implements ResponseService {
         }
     }
 
-    async generateResponse(role: 'user' | 'system' = 'user', prompt: string): Promise<void> {
+    async handleEvent(event: CallEvent): Promise<void> {
+        switch (event.type) {
+            case 'setup': {
+                this.key = event.setup.callSid ?? crypto.randomUUID();
+                this.ready = this.request('POST', '/sessions', {
+                    key: this.key,
+                    phone: event.setup.from ?? '',
+                    channel: 'voice',
+                    setup: event.setup,
+                    parameters: event.parameters,
+                }).then(async res => {
+                    const body = await res.json();
+                    logOut('MiniTacResponseService', `Session ${this.key} ready (isNew=${body.isNew}, name=${body.name ?? '-'})`);
+                });
+                // Surface creation failures here, not as an unhandled rejection;
+                // later calls still see the rejection through `ready`.
+                this.ready.catch(err => logError('MiniTacResponseService', `Session create failed: ${err.message}`));
+                break;
+            }
+            case 'prompt':
+                await this.generateResponse('user', event.text, event.lang);
+                break;
+            case 'interrupt':
+                this.interrupt(event.heard);
+                break;
+            case 'dtmf':
+                await this.postEvent({ type: 'dtmf', digit: event.digit });
+                break;
+            case 'status':
+                await this.postEvent({ type: 'status', status: event.status });
+                break;
+        }
+    }
+
+    private async postEvent(body: object): Promise<void> {
+        try {
+            await this.ready;
+            await this.request('POST', `/sessions/${this.key}/events`, body);
+        } catch (error) {
+            logError('MiniTacResponseService', `event failed: ${(error as Error).message}`);
+        }
+    }
+
+    async generateResponse(role: 'user' | 'system' = 'user', prompt: string, lang?: string): Promise<void> {
         // Cancel-previous locally; MINI-TAC also cancels server-side on a new /respond.
         this.abortController?.abort();
         const controller = new AbortController();
@@ -85,7 +113,7 @@ class MiniTacResponseService implements ResponseService {
             const res = await this.request(
                 'POST',
                 `/sessions/${this.key}/respond`,
-                { role, content: prompt },
+                lang === undefined ? { role, content: prompt } : { role, content: prompt, lang },
                 controller.signal
             );
             await this.readStream(res, controller.signal);
