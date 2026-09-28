@@ -4,7 +4,7 @@ How this server detects the language a caller is speaking and answers them in a 
 
 ## Behaviour
 
-A caller dials in, is greeted in English, and starts speaking French. Once a second French utterance confirms it, the assistant replies in French, spoken with the voice configured for `fr-FR`. If they switch to Spanish, it follows. If they switch back to English, it follows back. If they explicitly ask for a language ("can you speak English?"), that request wins and sticks.
+A caller dials in, is greeted in English, and starts speaking French. From the next utterance onward the assistant replies in French, spoken with the voice configured for `fr-FR`. If they switch to Spanish, it follows. If they switch back to English, it follows back. If they explicitly ask for a language ("can you speak English?"), that request wins and sticks.
 
 ## The one thing to understand first
 
@@ -116,15 +116,11 @@ Only the parent `<ConversationRelay>` attributes decide what is active at the st
 
 **Switching fires on change only.** Re-sending the active code on every prompt would be pure noise on the wire.
 
-**A change needs two consecutive prompts in the new language.** Detection misfires on short utterances — live calls showed "Okay." and "Ok." reported as `es`, flipping an English caller to the Spanish voice for one turn. So while a declared voice is active, the first prompt in a different language is only noted; the switch happens when the *next* prompt is detected as that same language. A prompt back in the active language, or in a third language, cancels it. The very first detection of the call (opening on `multi`) switches immediately, since there is no declared voice to protect. Cost: a genuine switch is answered in the old voice for one turn.
-
 ## Verified behaviour
 
 | Detected sequence | `ttsLanguage` frames sent |
 |---|---|
-| `en, en, fr, fr, fr, es, en, es, es` | `en-AU`, `fr-FR`, `es-ES` — one-off `es` and `en` ignored |
-| `en, es, en, es, en` | `en-AU` only — alternating misdetections never switch |
-| `en, fr, es, fr` | `en-AU` only — a change must repeat back-to-back |
+| `en, en, fr, fr, fr, es, en` | `en-AU`, `fr-FR`, `es-ES`, `en-AU` — 4 frames for 7 prompts |
 | `de`, `ja`, or `lang` absent | none — undeclared languages are left alone |
 | `fr`, then caller asks for English, then keeps speaking French | `fr-FR`, `en-AU`, then nothing — the request holds |
 | `fr-CA` | `fr-FR` — full tags resolve via primary tag |

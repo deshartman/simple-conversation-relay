@@ -205,43 +205,15 @@ describe('ConversationRelaySession', () => {
         const ttsFrames = (frames: any[]) =>
             frames.filter(f => f.type === 'language').map(f => f.ttsLanguage);
 
-        it('switches on confirmed change only — 3 frames for 9 prompts', async () => {
+        it('switches on change only — 4 frames for 7 prompts', async () => {
             const { session, sent } = makeLangSession();
             sessions.push(session);
 
-            for (const lang of ['en', 'en', 'fr', 'fr', 'fr', 'es', 'en', 'es', 'es']) {
+            for (const lang of ['en', 'en', 'fr', 'fr', 'fr', 'es', 'en']) {
                 await say(session, lang);
             }
 
-            // en: first detection, immediate. fr: confirmed on its 2nd prompt.
-            // es, en: one-offs, ignored. es, es: confirmed.
-            expect(ttsFrames(sent)).toEqual(['en-AU', 'fr-FR', 'es-ES']);
-        });
-
-        /**
-         * The live-call failure this guards: short English replies ("Okay.",
-         * "Ok.") detected as Spanish flipped the voice for one turn, every time.
-         */
-        it('ignores a one-off misdetection between prompts in the same language', async () => {
-            const { session, sent } = makeLangSession();
-            sessions.push(session);
-
-            for (const lang of ['en', 'es', 'en', 'es', 'en']) {
-                await say(session, lang);
-            }
-
-            expect(ttsFrames(sent)).toEqual(['en-AU']);
-        });
-
-        it('needs the same new language twice in a row, not two different ones', async () => {
-            const { session, sent } = makeLangSession();
-            sessions.push(session);
-
-            for (const lang of ['en', 'fr', 'es', 'fr']) {
-                await say(session, lang);
-            }
-
-            expect(ttsFrames(sent)).toEqual(['en-AU']);
+            expect(ttsFrames(sent)).toEqual(['en-AU', 'fr-FR', 'es-ES', 'en-AU']);
         });
 
         it('leaves undeclared languages alone rather than switching somewhere undefined', async () => {

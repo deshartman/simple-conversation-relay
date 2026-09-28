@@ -106,8 +106,6 @@ export class ConversationRelaySession {
     private readonly ttsLanguageByTag: Map<string, string>;
     private activeTtsLanguage: string | null;
     private manualLanguageOverride = false;
-    /** A detected change seen once, waiting for a second prompt to confirm it. */
-    private pendingTtsLanguage: string | null = null;
 
     private listenMode: boolean;
     private suppressedCount = 0;
@@ -358,34 +356,11 @@ export class ConversationRelaySession {
      * detected language would end detection for the rest of the call, so a
      * caller who switched back would be transcribed by the wrong model with
      * nothing to signal it.
-     *
-     * Detection misfires on short utterances ("Okay." reported as `es`), so a
-     * change away from an active declared voice needs two consecutive prompts
-     * in the new language. The first detection of the call (opening on `multi`
-     * or an undeclared code) switches immediately — there is no voice to keep.
      */
     private autoSwitchTtsLanguage(detected?: string): void {
         if (this.manualLanguageOverride || !detected) return;
         const code = this.ttsLanguageByTag.get(detected.split('-')[0].toLowerCase());
-        if (!code) return;
-        if (code === this.activeTtsLanguage) {
-            this.pendingTtsLanguage = null;
-            return;
-        }
-
-        const onDeclaredVoice = [...this.ttsLanguageByTag.values()].includes(
-            this.activeTtsLanguage ?? ''
-        );
-        if (onDeclaredVoice && this.pendingTtsLanguage !== code) {
-            this.pendingTtsLanguage = code;
-            logOut(
-                'Session',
-                `${this.logPrefix} Detected '${detected}' once — keeping ${this.activeTtsLanguage} until it repeats`
-            );
-            return;
-        }
-
-        this.pendingTtsLanguage = null;
+        if (!code || code === this.activeTtsLanguage) return;
         logOut(
             'Session',
             `${this.logPrefix} Detected '${detected}' — switching ttsLanguage to ${code}`
