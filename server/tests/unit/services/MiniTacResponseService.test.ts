@@ -96,17 +96,67 @@ describe('MiniTacResponseService', () => {
         expect(content).toEqual([{ token: 'Hi', last: false }]);
     });
 
-    it('posts dtmf, status and silence events to /events', async () => {
+    it('posts dtmf and status events to /events', async () => {
         const { service, calls } = await started();
         await service.handleEvent({ type: 'dtmf', digit: '5' });
         await service.handleEvent({ type: 'status', status: { callStatus: 'completed' } });
-        await service.handleEvent({ type: 'silence', count: 2 });
 
         expect(calls.slice(1).map(c => [c.url, c.body])).toEqual([
             ['http://localhost:8000/sessions/CA1/events', { type: 'dtmf', digit: '5' }],
             ['http://localhost:8000/sessions/CA1/events', { type: 'status', status: { callStatus: 'completed' } }],
-            ['http://localhost:8000/sessions/CA1/events', { type: 'silence', count: 2 }],
         ]);
+    });
+
+    describe('silenceReminder (wording only; SCR owns the policy)', () => {
+        /** Replace the /events reply for silence lookups. */
+        function eventsReply(reply: (init: RequestInit) => Promise<Response>) {
+            const base = (globalThis.fetch as any).getMockImplementation();
+            vi.mocked(globalThis.fetch).mockImplementation(async (url: any, init: any) =>
+                String(url).endsWith('/events') ? reply(init) : base(url, init)
+            );
+        }
+
+        it('asks /events for wording and returns MINI-TAC text', async () => {
+            const { service } = await started();
+            let asked: unknown;
+            eventsReply(async init => {
+                asked = JSON.parse(init.body as string);
+                return Response.json({ text: 'Are you still with me?' });
+            });
+
+            expect(await service.silenceReminder(1)).toBe('Are you still with me?');
+            expect(asked).toEqual({ type: 'silence', count: 1 });
+        });
+
+        it('returns null when MINI-TAC has no wording ({ok:true})', async () => {
+            const { service } = await started();
+            eventsReply(async () => Response.json({ ok: true }));
+
+            expect(await service.silenceReminder(1)).toBeNull();
+        });
+
+        it('returns null on an error status', async () => {
+            const { service } = await started();
+            eventsReply(async () => new Response('nope', { status: 500 }));
+
+            expect(await service.silenceReminder(2)).toBeNull();
+        });
+
+        it('gives up after 1.5s so a slow MINI-TAC cannot delay the reminder', async () => {
+            const { service } = await started();
+            eventsReply(
+                init =>
+                    new Promise((_resolve, reject) => {
+                        init.signal!.addEventListener('abort', () => reject(init.signal!.reason));
+                    })
+            );
+
+            const started_at = Date.now();
+            expect(await service.silenceReminder(1)).toBeNull();
+            const waited = Date.now() - started_at;
+            expect(waited).toBeGreaterThanOrEqual(1400);
+            expect(waited).toBeLessThan(3000);
+        });
     });
 
     it('makes no MINI-TAC calls before the setup event', async () => {

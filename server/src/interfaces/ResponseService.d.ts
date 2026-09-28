@@ -64,7 +64,7 @@ export interface ToolResult {
 /**
  * Call events the transport (ConversationRelaySession) reports to the service.
  * These are SCR's own events, not raw CR frames: `info`/`error` frames are
- * transport noise, and `status` and `silence` are not CR frames at all.
+ * transport noise, and `status` is not a CR frame at all.
  */
 export type CallEvent =
     | {
@@ -85,15 +85,6 @@ export type CallEvent =
           type: 'status';
           /** Evaluated Twilio status callback (see TwilioService.evaluateStatusCallback). */
           status: unknown;
-      }
-    | {
-          type: 'silence';
-          /**
-           * Consecutive silence breaches since the caller last spoke: 1, 2, 3, …
-           * The transport only measures; the service decides whether to speak,
-           * end the call, or ignore it.
-           */
-          count: number;
       };
 
 /**
@@ -113,6 +104,14 @@ export interface ResponseService {
          * conversation (prompt, context, tools); the transport only reports.
          */
         handleEvent(event: CallEvent): Promise<void>;
+
+        /**
+         * Optional wording for the transport's silence reminder `count` (1-based).
+         * The transport owns the policy — when to remind and when to end the
+         * call — so this only supplies words. Return null (or omit the method)
+         * to use the configured `SilenceDetection.messages`.
+         */
+        silenceReminder?(count: number): Promise<string | null>;
 
         /**
          * Inserts a message into conversation context without generating a response

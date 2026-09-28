@@ -154,8 +154,8 @@ describe('ConversationRelaySession', () => {
             expect((session as any).silenceHandler.isEnabled()).toBe(true);
         });
 
-        it('never reports silence while starting in listen mode', async () => {
-            const { session, sent, responseService } = makeSession({
+        it('never terminates the call while starting in listen mode', async () => {
+            const { session, sent } = makeSession({
                 initialListenMode: true,
                 silenceEnabled: true,
             });
@@ -165,8 +165,6 @@ describe('ConversationRelaySession', () => {
             // Well past 3 x 20s — reminders exhausted plus a terminal breach.
             await vi.advanceTimersByTimeAsync(90_000);
 
-            const silence = responseService.handleEvent.mock.calls.filter(c => c[0].type === 'silence');
-            expect(silence).toEqual([]);
             expect(typesOf(sent)).not.toContain('end');
         });
 
@@ -344,27 +342,78 @@ describe('ConversationRelaySession', () => {
         });
     });
 
-    describe('silence (transport times, service decides)', () => {
-        const silenceEvents = (rs: ReturnType<typeof makeFakeResponseService>) =>
-            rs.handleEvent.mock.calls.map(c => c[0]).filter((e: any) => e.type === 'silence');
+    describe('silence (transport owns policy, service may reword)', () => {
+        const texts = (frames: any[]) => frames.filter(f => f.type === 'text').map(f => f.token);
 
-        it('reports each 20s breach as a counted silence event, sending nothing itself', async () => {
-            const { session, sent, responseService } = makeSession({ initialListenMode: false });
+        it('speaks the configured reminders, then ends the call as unresponsive', async () => {
+            const { session, sent } = makeSession({ initialListenMode: false });
             sessions.push(session);
 
             await session.setup();
             await vi.advanceTimersByTimeAsync(61_000);
 
-            expect(silenceEvents(responseService)).toEqual([
-                { type: 'silence', count: 1 },
-                { type: 'silence', count: 2 },
-                { type: 'silence', count: 3 },
-            ]);
-            expect(sent).toEqual([]);
+            expect(typesOf(sent)).toEqual(['text', 'text', 'end']);
+            expect(texts(sent)).toEqual(['Still there?', 'Just checking you are still there?']);
+            expect(JSON.parse(sent[2].handoffData)).toEqual({
+                reasonCode: 'unresponsive',
+                reason: 'The caller was not speaking',
+            });
         });
 
-        it('restarts the count when the caller speaks', async () => {
-            const { session, responseService } = makeSession({ initialListenMode: false });
+        it('uses the service wording when it supplies one', async () => {
+            const { session, sent, responseService } = makeSession({ initialListenMode: false });
+            (responseService as any).silenceReminder = vi.fn(async (n: number) =>
+                n === 1 ? 'Kia ora, still there?' : null
+            );
+            sessions.push(session);
+
+            await session.setup();
+            await vi.advanceTimersByTimeAsync(41_000);
+
+            // Reminder 2 falls back to config when the service returns null.
+            expect(texts(sent)).toEqual(['Kia ora, still there?', 'Just checking you are still there?']);
+        });
+
+        it('falls back to the configured wording when the service throws', async () => {
+            const { session, sent, responseService } = makeSession({ initialListenMode: false });
+            (responseService as any).silenceReminder = vi.fn(async () => {
+                throw new Error('down');
+            });
+            sessions.push(session);
+
+            await session.setup();
+            await vi.advanceTimersByTimeAsync(21_000);
+
+            expect(texts(sent)).toEqual(['Still there?']);
+        });
+
+        it('speaks the configured wording after 1.5s when the service never answers', async () => {
+            const { session, sent, responseService } = makeSession({ initialListenMode: false });
+            (responseService as any).silenceReminder = vi.fn(() => new Promise(() => {}));
+            sessions.push(session);
+
+            await session.setup();
+            await vi.advanceTimersByTimeAsync(20_000 + 1_400);
+            expect(texts(sent)).toEqual([]);
+            await vi.advanceTimersByTimeAsync(200);
+            expect(texts(sent)).toEqual(['Still there?']);
+        });
+
+        it('ends the call on schedule whatever the service returns', async () => {
+            const { session, sent, responseService } = makeSession({ initialListenMode: false });
+            (responseService as any).silenceReminder = vi.fn(async () => 'Custom');
+            sessions.push(session);
+
+            await session.setup();
+            await vi.advanceTimersByTimeAsync(61_000);
+
+            expect(typesOf(sent)).toEqual(['text', 'text', 'end']);
+            // Asked for reminders only — never consulted about ending.
+            expect((responseService as any).silenceReminder.mock.calls).toEqual([[1], [2]]);
+        });
+
+        it('restarts from the first reminder when the caller speaks', async () => {
+            const { session, sent } = makeSession({ initialListenMode: false });
             sessions.push(session);
 
             await session.setup();
@@ -372,7 +421,18 @@ describe('ConversationRelaySession', () => {
             await session.handleIncoming({ type: 'prompt', voicePrompt: 'hi' } as any);
             await vi.advanceTimersByTimeAsync(21_000);
 
-            expect(silenceEvents(responseService).map((e: any) => e.count)).toEqual([1, 1]);
+            expect(texts(sent)).toEqual(['Still there?', 'Still there?']);
+        });
+
+        it('never reports silence to the service as an event', async () => {
+            const { session, responseService } = makeSession({ initialListenMode: false });
+            sessions.push(session);
+
+            await session.setup();
+            await vi.advanceTimersByTimeAsync(61_000);
+
+            const types = responseService.handleEvent.mock.calls.map(c => c[0].type);
+            expect(types).toEqual(['setup']);
         });
     });
 

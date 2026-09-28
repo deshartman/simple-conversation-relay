@@ -9,7 +9,8 @@
  *   interrupt -> POST   /sessions/:key/interrupt  (+ abort local fetch)
  *   dtmf      -> POST   /sessions/:key/events     {type:'dtmf', digit}
  *   status    -> POST   /sessions/:key/events     {type:'status', status}
- *   silence   -> POST   /sessions/:key/events     {type:'silence', count}
+ *   silenceReminder -> POST /sessions/:key/events {type:'silence', count}
+ *                      (optional reply {text}; SCR owns when to remind/end)
  *   cleanup   -> DELETE /sessions/:key            (MINI-TAC consolidates memory)
  *
  * Tools run in MINI-TAC; any CR frame they produce (e.g. an `end` handoff)
@@ -29,6 +30,9 @@ export interface MiniTacOptions {
     baseUrl: string;
     apiKey: string;
 }
+
+/** How long a silence reminder may wait for MINI-TAC's wording before SCR's is used. */
+const SILENCE_WORDING_TIMEOUT_MS = 1500;
 
 class MiniTacResponseService implements ResponseService {
     private readonly baseUrl: string;
@@ -91,10 +95,29 @@ class MiniTacResponseService implements ResponseService {
             case 'status':
                 await this.postEvent({ type: 'status', status: event.status });
                 break;
-            case 'silence':
-                // MINI-TAC decides; like TAC it currently ignores silence.
-                await this.postEvent({ type: 'silence', count: event.count });
-                break;
+        }
+    }
+
+    /**
+     * Ask MINI-TAC for the wording of silence reminder `count`. SCR decides when
+     * to remind and when to end; MINI-TAC may only reword. Anything but a quick
+     * 2xx `{ text }` means "use SCR's configured wording" — the caller is
+     * already waiting, so a slow MINI-TAC must not delay the reminder.
+     */
+    async silenceReminder(count: number): Promise<string | null> {
+        try {
+            await this.ready;
+            const res = await this.request(
+                'POST',
+                `/sessions/${this.key}/events`,
+                { type: 'silence', count },
+                AbortSignal.timeout(SILENCE_WORDING_TIMEOUT_MS)
+            );
+            const body = (await res.json().catch(() => null)) as { text?: unknown } | null;
+            return typeof body?.text === 'string' && body.text.trim() ? body.text : null;
+        } catch (error) {
+            logError('MiniTacResponseService', `silence wording unavailable: ${(error as Error).message}`);
+            return null;
         }
     }
 

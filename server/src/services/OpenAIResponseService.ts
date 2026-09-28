@@ -70,17 +70,12 @@ class OpenAIResponseService implements ResponseService {
 
     /** Where this service reads its prompt from; nothing is loaded until needed. */
     private readonly contexts: ContextSource;
-    /** Spoken on silence breaches 1..n; breach n+1 ends the call. */
-    private readonly silenceReminders: string[];
-
     constructor(
         contexts: ContextSource,
         registry: ToolRegistry,
-        config: ServerConfig,
-        silenceReminders: string[] = []
+        config: ServerConfig
     ) {
         this.contexts = contexts;
-        this.silenceReminders = silenceReminders;
         this.openai = new OpenAI();
         this.model = config.openaiModel;
         this.currentResponseId = null;
@@ -159,32 +154,6 @@ class OpenAIResponseService implements ResponseService {
             case 'status':
                 await this.insertMessage('system', JSON.stringify(event.status));
                 break;
-            case 'silence': {
-                // Scripted, not generated: same wording and hang-up as before
-                // the timer moved to the transport.
-                const reminder = this.silenceReminders[event.count - 1];
-                if (reminder !== undefined) {
-                    this.responseHandler.content({ type: 'text', token: reminder, last: true });
-                } else if (event.count === this.silenceReminders.length + 1) {
-                    this.responseHandler.toolResult({
-                        toolType: 'silence',
-                        toolData: {
-                            success: true,
-                            message: 'Caller silent — ending call',
-                            outgoingMessage: {
-                                type: 'end',
-                                handoffData: JSON.stringify({
-                                    reasonCode: 'unresponsive',
-                                    reason: 'The caller was not speaking',
-                                }),
-                            },
-                        },
-                    });
-                    // The session sends a deferred `end` after the next last:true.
-                    this.responseHandler.content({ type: 'text', token: '', last: true });
-                }
-                break;
-            }
         }
     }
 

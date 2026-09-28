@@ -69,7 +69,7 @@ See the [CHANGELOG.md](./CHANGELOG.md) for detailed release history.
 │   ├── tsconfig.json     # TypeScript configuration
 │   ├── assets/
 │   │   ├── defaultContext.md    # Default LLM system prompt (markdown)
-│   │   ├── serverConfig.json    # TwiML config, silence detection, active context key
+│   │   ├── serverConfig.json    # TwiML config, silence detection, listen mode
 │   │   └── legs/                # Optional per-leg context.md overrides
 │   └── src/
 │       ├── server.ts                    # Express + WebSocket entrypoint
@@ -555,6 +555,15 @@ Silence detection is configured through the `ConversationRelay.SilenceDetection`
 3. **Escalation**: Subsequent silence periods trigger next messages in sequence
 4. **Conversation Reset**: Valid user responses reset message index to beginning
 5. **Call Termination**: After all messages exhausted, call ends with "unresponsive" reason
+
+**Who owns what:** the policy — when to remind, how many reminders, when to end —
+belongs to ConversationRelay (`ConversationRelaySession`) and applies whichever
+ResponseService is active. Only the *wording* may come from the service, via the
+optional `silenceReminder(count)`; if it returns nothing, or doesn't answer within
+1.5s, the configured `messages[count-1]` is spoken. A service can reword a
+reminder but cannot skip it or change when the call ends. `OpenAIResponseService`
+uses the configured messages; `MiniTacResponseService` asks MINI-TAC
+(`POST /sessions/:key/events {type:'silence', count}` → optional `{ text }`).
 
 ### Dynamic Silence Detection Control (v4.9.7)
 

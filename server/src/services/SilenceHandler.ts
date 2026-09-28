@@ -1,10 +1,10 @@
 /**
  * SilenceHandler — the silence *timer* for one ConversationRelaySession.
  *
- * Transport only: it measures silence and reports each breach; it has no
- * wording and never ends the call. The session forwards every breach to the
- * ResponseService as a `silence` event, and the service decides whether to
- * speak a reminder, end the call, or do nothing.
+ * Measures silence and reports each breach; it has no wording and never ends
+ * the call itself. The session applies the policy on each breach: speak
+ * reminder n (wording from the ResponseService or config), then end the call
+ * once the reminders are used up.
  *
  * Uses a `setTimeout` chain rather than a `setInterval` poll. While the caller
  * stays silent, `onBreach(n)` fires every `secondsThreshold` seconds with
@@ -18,11 +18,11 @@ interface SilenceDetectionConfig {
     enabled: boolean;
     secondsThreshold: number;
     /**
-     * Reminder wording. Not used by the timer — read by response services that
-     * speak reminders (OpenAI). Lives here only because it shares the
-     * `SilenceDetection` block in serverConfig.json.
+     * Default reminder wording, one per reminder; its length is the number of
+     * reminders before the call is ended. A ResponseService may supply its own
+     * words per reminder via `silenceReminder()`.
      */
-    messages?: string[];
+    messages: string[];
 }
 
 interface SilenceTimerOptions {

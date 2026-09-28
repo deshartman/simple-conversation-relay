@@ -38,6 +38,13 @@ import {
  * `sendDigits` and `end` are deliberately excluded — DTMF navigation and
  * call termination must always work.
  */
+/**
+ * How long a silence reminder waits for service wording before the configured
+ * wording is spoken. Enforced here, not trusted to the service: the caller is
+ * already waiting, and a hung service must not swallow the reminder.
+ */
+const SILENCE_WORDING_TIMEOUT_MS = 1500;
+
 const LISTEN_MODE_GATED: ReadonlySet<OutgoingFrame['type']> = new Set(['text', 'play', 'language']);
 
 export interface ConversationRelaySessionOptions {
@@ -64,6 +71,8 @@ export class ConversationRelaySession {
     private readonly registry: ToolRegistry;
     private readonly send: (frame: OutgoingFrame) => void;
     private readonly silenceHandler: SilenceHandler | null;
+    /** Default reminder wording; its length is the number of reminders before ending. */
+    private readonly silenceMessages: string[];
     private readonly logPrefix: string;
 
     /** Detected primary tag (`fr`) -> declared code (`fr-FR`). First declaration wins. */
@@ -94,28 +103,27 @@ export class ConversationRelaySession {
         }
         this.activeTtsLanguage = opts.initialTtsLanguage ?? null;
 
-        // The session owns only the timer; the service decides what a breach
-        // means (speak a reminder, end the call, or nothing).
+        // Silence policy is the transport's, whatever the back end: remind once
+        // per configured message, then end the call. Only the words may come
+        // from the ResponseService.
+        this.silenceMessages = opts.silenceConfig.messages ?? [];
         this.silenceHandler = opts.silenceConfig.enabled
             ? new SilenceHandler({
                   enabled: true,
                   secondsThreshold: opts.silenceConfig.secondsThreshold,
                   onBreach: count => {
-                      this.responseService
-                          .handleEvent({ type: 'silence', count })
-                          .catch(err =>
-                              logError('Session', `${this.logPrefix} silence event failed: ${err.message}`)
-                          );
+                      this.onSilence(count).catch(err =>
+                          logError('Session', `${this.logPrefix} silence handling failed: ${err.message}`)
+                      );
                   },
               })
             : null;
 
         // BUG-2: starting in listen mode must mirror the runtime
-        // `setListenMode()` path and disarm silence detection. Otherwise a
-        // service's reminders are swallowed (they are `text` frames, which
-        // listen mode gates) while its terminal `end` frame is NOT gated — so
-        // the call is hung up with `reasonCode: 'unresponsive'` and no audible
-        // warning.
+        // `setListenMode()` path and disarm silence detection. Otherwise the
+        // reminders are swallowed (they are `text` frames, which listen mode
+        // gates) while the terminal `end` frame is NOT gated — so the call is
+        // hung up with `reasonCode: 'unresponsive'` and no audible warning.
         if (this.listenMode) {
             this.silenceHandler?.setEnabled(false);
         }
@@ -365,6 +373,42 @@ export class ConversationRelaySession {
         );
         this.activeTtsLanguage = code;
         this.sendResponse({ type: 'language', ttsLanguage: code });
+    }
+
+    /**
+     * Breach `count` of continuous silence. Breaches 1..n speak reminder n;
+     * breach n+1 ends the call. The ResponseService may reword a reminder but
+     * cannot skip it or change when the call ends.
+     */
+    private async onSilence(count: number): Promise<void> {
+        const fallback = this.silenceMessages[count - 1];
+        if (fallback === undefined) {
+            if (count !== this.silenceMessages.length + 1) return;
+            logOut('Session', `${this.logPrefix} Silence terminal — ending call`);
+            this.endCall({ reasonCode: 'unresponsive', reason: 'The caller was not speaking' });
+            return;
+        }
+
+        let reminder = fallback;
+        let timer: NodeJS.Timeout | undefined;
+        try {
+            const timeout = new Promise<null>(resolve => {
+                timer = setTimeout(() => resolve(null), SILENCE_WORDING_TIMEOUT_MS);
+            });
+            const worded = this.responseService.silenceReminder?.(count) ?? null;
+            reminder = (await Promise.race([worded, timeout])) || fallback;
+        } catch (error) {
+            logError(
+                'Session',
+                `${this.logPrefix} silenceReminder failed, using configured wording: ${
+                    error instanceof Error ? error.message : String(error)
+                }`
+            );
+        } finally {
+            clearTimeout(timer);
+        }
+        logOut('Session', `${this.logPrefix} Silence reminder ${count}: "${reminder}"`);
+        await this.sendText(reminder, true);
     }
 
     switchLanguage(opts: { ttsLanguage?: string; transcriptionLanguage?: string }): void {
