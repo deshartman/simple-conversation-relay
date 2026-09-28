@@ -20,7 +20,6 @@
 
 import { describe, it, expect, beforeEach, afterEach, vi } from 'vitest';
 import { ConversationRelaySession } from '../../../src/services/ConversationRelaySession.js';
-import { ToolRegistry } from '../../../src/tools/tool-registry.js';
 
 function makeFakeResponseService() {
     return {
@@ -28,11 +27,7 @@ function makeFakeResponseService() {
         createResponseHandler(h: any) {
             this.handler = h;
         },
-        generateResponse: vi.fn(async () => {}),
-        insertMessage: vi.fn(async () => {}),
-        interrupt: vi.fn(),
-        updateContext: vi.fn(async () => {}),
-        updateTools: vi.fn(),
+        handleEvent: vi.fn(async (_event: any) => {}),
         cleanup: vi.fn(),
     };
 }
@@ -58,7 +53,6 @@ function makeSession(opts: {
             messages: ['Still there?', 'Just checking you are still there?'],
         },
         initialListenMode: opts.initialListenMode,
-        registry: new ToolRegistry(),
         send: (frame: any) => sent.push(frame),
         declaredLanguages: opts.declaredLanguages,
         initialTtsLanguage: opts.initialTtsLanguage,
@@ -156,7 +150,10 @@ describe('ConversationRelaySession', () => {
         });
 
         it('never terminates the call while starting in listen mode', async () => {
-            const { session, sent } = makeSession({ initialListenMode: true, silenceEnabled: true });
+            const { session, sent } = makeSession({
+                initialListenMode: true,
+                silenceEnabled: true,
+            });
             sessions.push(session);
 
             await session.setup();
@@ -309,6 +306,162 @@ describe('ConversationRelaySession', () => {
             await say(session, 'fr');
 
             expect(ttsFrames(sent)).toEqual([]);
+        });
+    });
+
+    describe('silence (transport owns policy, service may reword)', () => {
+        const texts = (frames: any[]) => frames.filter(f => f.type === 'text').map(f => f.token);
+
+        it('speaks the configured reminders, then ends the call as unresponsive', async () => {
+            const { session, sent } = makeSession({ initialListenMode: false });
+            sessions.push(session);
+
+            await session.setup();
+            await vi.advanceTimersByTimeAsync(61_000);
+
+            expect(typesOf(sent)).toEqual(['text', 'text', 'end']);
+            expect(texts(sent)).toEqual(['Still there?', 'Just checking you are still there?']);
+            expect(JSON.parse(sent[2].handoffData)).toEqual({
+                reasonCode: 'unresponsive',
+                reason: 'The caller was not speaking',
+            });
+        });
+
+        it('uses the service wording when it supplies one', async () => {
+            const { session, sent, responseService } = makeSession({ initialListenMode: false });
+            (responseService as any).silenceReminder = vi.fn(async (n: number) =>
+                n === 1 ? 'Kia ora, still there?' : null
+            );
+            sessions.push(session);
+
+            await session.setup();
+            await vi.advanceTimersByTimeAsync(41_000);
+
+            // Reminder 2 falls back to config when the service returns null.
+            expect(texts(sent)).toEqual(['Kia ora, still there?', 'Just checking you are still there?']);
+        });
+
+        it('falls back to the configured wording when the service throws', async () => {
+            const { session, sent, responseService } = makeSession({ initialListenMode: false });
+            (responseService as any).silenceReminder = vi.fn(async () => {
+                throw new Error('down');
+            });
+            sessions.push(session);
+
+            await session.setup();
+            await vi.advanceTimersByTimeAsync(21_000);
+
+            expect(texts(sent)).toEqual(['Still there?']);
+        });
+
+        it('speaks the configured wording after 1.5s when the service never answers', async () => {
+            const { session, sent, responseService } = makeSession({ initialListenMode: false });
+            (responseService as any).silenceReminder = vi.fn(() => new Promise(() => {}));
+            sessions.push(session);
+
+            await session.setup();
+            await vi.advanceTimersByTimeAsync(20_000 + 1_400);
+            expect(texts(sent)).toEqual([]);
+            await vi.advanceTimersByTimeAsync(200);
+            expect(texts(sent)).toEqual(['Still there?']);
+        });
+
+        it('ends the call on schedule whatever the service returns', async () => {
+            const { session, sent, responseService } = makeSession({ initialListenMode: false });
+            (responseService as any).silenceReminder = vi.fn(async () => 'Custom');
+            sessions.push(session);
+
+            await session.setup();
+            await vi.advanceTimersByTimeAsync(61_000);
+
+            expect(typesOf(sent)).toEqual(['text', 'text', 'end']);
+            // Asked for reminders only — never consulted about ending.
+            expect((responseService as any).silenceReminder.mock.calls).toEqual([[1], [2]]);
+        });
+
+        it('restarts from the first reminder when the caller speaks', async () => {
+            const { session, sent } = makeSession({ initialListenMode: false });
+            sessions.push(session);
+
+            await session.setup();
+            await vi.advanceTimersByTimeAsync(21_000);
+            await session.handleIncoming({ type: 'prompt', voicePrompt: 'hi' } as any);
+            await vi.advanceTimersByTimeAsync(21_000);
+
+            expect(texts(sent)).toEqual(['Still there?', 'Still there?']);
+        });
+
+        it('never reports silence to the service as an event', async () => {
+            const { session, responseService } = makeSession({ initialListenMode: false });
+            sessions.push(session);
+
+            await session.setup();
+            await vi.advanceTimersByTimeAsync(61_000);
+
+            const types = responseService.handleEvent.mock.calls.map(c => c[0].type);
+            expect(types).toEqual(['setup']);
+        });
+    });
+
+    describe('call events (transport reports, service decides)', () => {
+        it('reports setup as data, with no prompt text of its own', async () => {
+            const { session, responseService } = makeSession({ initialListenMode: false });
+            sessions.push(session);
+
+            await session.setup();
+
+            expect(responseService.handleEvent).toHaveBeenCalledWith({
+                type: 'setup',
+                setup: { callSid: 'CAtest0000000000000000000000000000' },
+                parameters: {},
+            });
+            expect(Object.keys(responseService)).not.toContain('insertMessage');
+        });
+
+        it('maps prompt, dtmf and interrupt frames onto events', async () => {
+            const { session, responseService } = makeSession({ initialListenMode: false });
+            sessions.push(session);
+
+            await session.handleIncoming({ type: 'prompt', voicePrompt: 'hi', lang: 'en-US' } as any);
+            await session.handleIncoming({ type: 'dtmf', digit: '5' } as any);
+            await session.handleIncoming({ type: 'interrupt', utteranceUntilInterrupt: 'Hel' } as any);
+
+            expect(responseService.handleEvent.mock.calls.map(c => c[0])).toEqual([
+                { type: 'prompt', text: 'hi', lang: 'en-US' },
+                { type: 'dtmf', digit: '5' },
+                { type: 'interrupt', heard: 'Hel' },
+            ]);
+        });
+
+        it('reports a status callback as an event', async () => {
+            const { session, responseService } = makeSession({ initialListenMode: false });
+            sessions.push(session);
+
+            await session.handleStatus({ callStatus: 'completed' });
+
+            expect(responseService.handleEvent).toHaveBeenCalledWith({
+                type: 'status',
+                status: { callStatus: 'completed' },
+            });
+        });
+
+        it('relays an operator context switch as an event', async () => {
+            const { session, responseService } = makeSession({ initialListenMode: false });
+            sessions.push(session);
+
+            await session.switchContext('campaign');
+
+            expect(responseService.handleEvent).toHaveBeenCalledWith({ type: 'context', key: 'campaign' });
+        });
+
+        it('does not forward info or error frames to the service', async () => {
+            const { session, responseService } = makeSession({ initialListenMode: false });
+            sessions.push(session);
+
+            await session.handleIncoming({ type: 'info' } as any);
+            await session.handleIncoming({ type: 'error', description: 'x' } as any);
+
+            expect(responseService.handleEvent).not.toHaveBeenCalled();
         });
     });
 });

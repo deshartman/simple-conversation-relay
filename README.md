@@ -69,7 +69,7 @@ See the [CHANGELOG.md](./CHANGELOG.md) for detailed release history.
 │   ├── tsconfig.json     # TypeScript configuration
 │   ├── assets/
 │   │   ├── defaultContext.md    # Default LLM system prompt (markdown)
-│   │   ├── serverConfig.json    # TwiML config, silence detection, active context key
+│   │   ├── serverConfig.json    # TwiML config, silence detection, listen mode
 │   │   └── legs/                # Optional per-leg context.md overrides
 │   └── src/
 │       ├── server.ts                    # Express + WebSocket entrypoint
@@ -277,7 +277,7 @@ Context documents are `.md` files in `server/assets/`, keyed by filename:
 
 ### Tools (v4.12: in-code registry)
 
-Tools are defined in code under `server/src/tools/` using the `defineTool({ name, description, parameters, handler })` factory. The `defaultToolManifest.json` / `legs/*/toolManifest.json` files have been removed — schema (what OpenAI sees) and handler (what runs) are now co-located in each tool file. `buildDefaultRegistry(config, cache)` in `server/src/tools/index.ts` registers all tools once at startup, and the same `ToolRegistry` is handed to every `ConversationRelaySession`.
+Tools are defined in code under `server/src/tools/` using the `defineTool({ name, description, parameters, handler })` factory. The `defaultToolManifest.json` / `legs/*/toolManifest.json` files have been removed — schema (what OpenAI sees) and handler (what runs) are now co-located in each tool file. `buildDefaultRegistry(config, contexts)` in `server/src/tools/index.ts` registers all tools once at startup, and the same `ToolRegistry` is handed to every `OpenAIResponseService`. Tools belong to the ResponseService, not the transport: a handler receives `(args, ctx)`, where `ctx` is the service's `ToolContext` (currently `changeContext(context, summary)`), never the session. Tools affect the call only through the fields they return.
 
 **Available Tools (9 total, all registered by default):**
 1. `end-call` — Gracefully terminates the current call
@@ -288,7 +288,7 @@ Tools are defined in code under `server/src/tools/` using the `defineTool({ name
 6. `play-media` — Plays audio media from URLs
 7. `set-listen-mode` — Toggles outbound text/play/language suppression for listen-only mode
 8. `set-silence-detection` — Enables/disables the silence reminder timer mid-call
-9. `change-context` — Switches the LLM's system prompt mid-call (factory: captures `CachedAssetsService`)
+9. `change-context` — Switches the LLM's system prompt mid-call (factory: captures `ContextStore`; applies via `ctx.changeContext`)
 
 **Adding a new tool:**
 1. Create `server/src/tools/my-tool.ts` that exports a `defineTool({...})` record (or a factory returning one, if it needs DI).
@@ -369,14 +369,14 @@ curl -X POST '/updateResponseService' \
 # 1. Start the server (automatically creates defaults)
 npm run dev
 
-# 2. Make a test call (uses defaultContext and defaultToolManifest automatically)
+# 2. Make a test call (OpenAI mode uses defaultContext.md automatically)
 # No additional setup required!
 ```
 
 **Adding a Custom Context:**
 
-1. Drop a new `.md` file into `server/assets/` (or `server/assets/legs/`). Contexts are discovered at startup by the `FileAssetLoader`.
-2. Either set it as the default by editing `serverConfig.json`'s `AssetLoader.activeContextKey`, or switch to it at runtime via `POST /updateResponseService` with `contextKey`.
+1. Drop a new `<key>.md` file into `server/assets/`. It is read on first use by `ContextStore` (OpenAI mode only).
+2. Select it per call with `customParameters.contextKey`, or switch an active call via `POST /updateResponseService` with `contextKey`. The default is always `defaultContext.md`.
 
 **Configuration Examples by Use Case:**
 
@@ -455,59 +455,32 @@ The system requires the following Twilio services to be enabled in your account:
 - **Voice** - For handling phone calls and conversation relay
 - **SMS** (optional) - For send-sms tool functionality
 
-## Asset Loading System (v4.6.0)
+## Asset Loading System
 
-Contexts and configuration are loaded from local files. (Twilio Sync loading was removed; `"file"` is the only supported loader.)
+Two kinds of asset, owned by different layers:
 
-### 🔧 Asset Loading Options
+- **Server config** — `server/assets/serverConfig.json`. Loaded at startup by
+  `CachedAssetsService` (via `FileAssetLoader`) for the ConversationRelay side:
+  TwiML attributes, `<Language>`s, silence detection and listen mode.
+- **Contexts (LLM prompts)** — `server/assets/<key>.md`. SCR does **not** load
+  these. Only a ResponseService that owns its prompt reads them, through
+  `ContextStore`, on first use:
+  - `OpenAIResponseService` uses `defaultContext.md`, or the file named by
+    `customParameters.contextKey` on the call's setup.
 
-**Configure in `server/assets/serverConfig.json`:**
 ```json
 {
   "AssetLoader": {
-    "assetLoaderType": "file",
-    "context": "defaultContext",
-    "manifest": "defaultToolManifest"
+    "assetLoaderType": "file"
   }
 }
 ```
 
-### 📁 File-Based Loading
+`"file"` is the only supported loader (Twilio Sync loading was removed); any
+other value fails at startup.
 
-**Perfect for**: Development, testing, simple deployments, getting started
-
-**Setup Steps:**
-1. Set `"assetLoaderType": "file"` in `serverConfig.json`
-2. Place your asset files in `server/assets/`
-3. Start the server - no external dependencies required!
-
-**Required Files:**
-- `server/assets/serverConfig.json` - Main configuration
-- `server/assets/defaultContext.md` - Conversation context
-- `server/assets/defaultToolManifest.json` - Tool definitions
-
-**Benefits:**
-- ✅ Perfect for development and testing
-- ✅ Simple deployment
-- ✅ Version control friendly
-- ✅ No external dependencies
-
-### 🔄 How Asset Loading Works
-
-**File-Based Loading:**
-1. **Direct File Access**: Reads assets directly from `server/assets/` folder
-2. **In-Memory Caching**: Loads into CachedAssetsService for high performance
-3. **Session Independence**: Each conversation gets independent asset copies
-
-### Configuration Keys
-
-**Default Keys:**
-- `defaultContext` - Default conversation context document
-- `defaultToolManifest` - Default tool definitions object
-
-**Custom Keys:**
-- Any custom key can be used to store and retrieve specialized configurations
-- Keys are specified via `contextKey` and `manifestKey` parameters in WebSocket setup
+Context keys must be plain names (`A-Z a-z 0-9 _ -`) and map to
+`server/assets/<key>.md`.
 
 ### Dynamic Configuration Loading
 
@@ -516,8 +489,7 @@ Contexts and configuration are loaded from local files. (Twilio Sync loading was
 {
   "type": "setup",
   "customParameters": {
-    "contextKey": "customerServiceContext",
-    "manifestKey": "customerServiceTools"
+    "contextKey": "customerServiceContext"
   }
 }
 ```
@@ -529,8 +501,7 @@ curl -X POST 'https://your-server/updateResponseService' \
   --header 'Content-Type: application/json' \
   --data-raw '{
     "callSid": "CA1234...",
-    "contextKey": "newContext",
-    "manifestKey": "newManifest"
+    "contextKey": "newContext"
   }'
 ```
 
@@ -556,8 +527,6 @@ Silence detection is configured through the `ConversationRelay.SilenceDetection`
     }
   },
   "AssetLoader": {
-    "context": "defaultContext",
-    "manifest": "defaultToolManifest",
     "assetLoaderType": "file"
   }
 }
@@ -585,6 +554,14 @@ Silence detection is configured through the `ConversationRelay.SilenceDetection`
 3. **Escalation**: Subsequent silence periods trigger next messages in sequence
 4. **Conversation Reset**: Valid user responses reset message index to beginning
 5. **Call Termination**: After all messages exhausted, call ends with "unresponsive" reason
+
+**Who owns what:** the policy — when to remind, how many reminders, when to end —
+belongs to ConversationRelay (`ConversationRelaySession`) and applies whichever
+ResponseService is active. Only the *wording* may come from the service, via the
+optional `silenceReminder(count)`; if it returns nothing, or doesn't answer within
+1.5s, the configured `messages[count-1]` is spoken. A service can reword a
+reminder but cannot skip it or change when the call ends. `OpenAIResponseService`
+uses the configured messages.
 
 ### Dynamic Silence Detection Control (v4.9.7)
 
@@ -728,8 +705,6 @@ Listen mode is configured through the `Server.ListenMode` object in `serverConfi
     "Languages": []
   },
   "AssetLoader": {
-    "context": "defaultContext",
-    "manifest": "defaultToolManifest",
     "assetLoaderType": "file"
   },
   "Server": {

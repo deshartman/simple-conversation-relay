@@ -21,6 +21,7 @@ import { ConversationRelaySession } from './services/ConversationRelaySession.js
 import { OpenAIResponseService } from './services/OpenAIResponseService.js';
 import { TwilioService } from './services/TwilioService.js';
 import { CachedAssetsService } from './services/CachedAssetsService.js';
+import { ContextStore, ContextNotFoundError } from './services/ContextStore.js';
 import { ServerConfig } from './config/ServerConfig.js';
 import type { SessionData } from './interfaces/ConversationRelay.js';
 import { buildDefaultRegistry, ToolRegistry } from './tools/index.js';
@@ -120,6 +121,8 @@ const PARAMETER_DATA_TTL_MS = 60 * 60 * 1000;
 let conversationSessionMap = new Map<string, OpenAIResponseService>();
 let twilioService: TwilioService;
 let cachedAssetsService: CachedAssetsService | null = null;
+/** LLM prompts, read by the response service (the transport loads none). */
+let contextStore: ContextStore;
 let serverConfig: ServerConfig;
 let toolRegistry: ToolRegistry;
 
@@ -194,7 +197,8 @@ async function initializeServices(): Promise<void> {
         await twilioService.initialize();
         logOut('Server', 'TwilioService initialized');
 
-        toolRegistry = buildDefaultRegistry(serverConfig, cachedAssetsService);
+        contextStore = new ContextStore();
+        toolRegistry = buildDefaultRegistry(serverConfig, contextStore);
         logOut('Server', `ToolRegistry built with ${toolRegistry.size()} tools`);
 
         logOut('Server', 'All services initialized');
@@ -285,30 +289,9 @@ app.ws('/conversation-relay', (ws: any, req: express.Request) => {
 
                 const activeAssets = cachedAssetsService.getActiveAssets();
 
-                // Per-call context selection. Without this the active context is
-                // global, so an outbound campaign prompt would also be served to
-                // inbound callers. `contextKey` was previously honoured only by
-                // POST /updateResponseService, i.e. after the call had started.
-                let context = activeAssets.context;
-                const contextKeyParam = message.customParameters?.contextKey;
-                if (contextKeyParam) {
-                    const override = cachedAssetsService.getContext(contextKeyParam);
-                    if (override) {
-                        context = override;
-                        logOut('WS', `Using context '${contextKeyParam}' for this call`);
-                    } else {
-                        logError(
-                            'WS',
-                            `contextKey '${contextKeyParam}' not found — falling back to the active context`
-                        );
-                    }
-                }
-
-                const responseService = new OpenAIResponseService(
-                    context,
-                    toolRegistry,
-                    serverConfig
-                );
+                // The service owns its prompt (incl. contextKey) from the setup
+                // event; the transport loads none.
+                const responseService = new OpenAIResponseService(contextStore, toolRegistry, serverConfig);
 
                 // The declared <Language> codes double as the allow-list for
                 // automatic TTS switching, so the session resolves a detected
@@ -319,7 +302,6 @@ app.ws('/conversation-relay', (ws: any, req: express.Request) => {
                     sessionData,
                     silenceConfig: activeAssets.silenceDetection,
                     initialListenMode: activeAssets.listenMode.enabled,
-                    registry: toolRegistry,
                     send,
                     declaredLanguages: Object.keys(cachedAssetsService.getLanguages() ?? {}),
                     initialTtsLanguage: crConfig?.ttsLanguage,
@@ -475,7 +457,7 @@ app.post('/twilioStatusCallback', validateTwilioSignature, async (req: express.R
     if (wsSession) {
         const evaluated = await twilioService.evaluateStatusCallback(statusCallBack);
         if (evaluated) {
-            await wsSession.session.insertMessage('system', JSON.stringify(evaluated));
+            await wsSession.session.handleStatus(evaluated);
         }
     }
     res.json({ success: true });
@@ -489,10 +471,6 @@ app.post('/conversation', async (req: express.Request, res: express.Response) =>
             res.status(400).json({ success: false, error: 'Message is required' });
             return;
         }
-        if (!cachedAssetsService) {
-            res.status(500).json({ success: false, error: 'CachedAssetsService not initialized' });
-            return;
-        }
 
         let responseService: OpenAIResponseService;
         let currentSessionId: string;
@@ -503,12 +481,7 @@ app.post('/conversation', async (req: express.Request, res: express.Response) =>
             logOut('Server', `/conversation: Using existing session ${currentSessionId}`);
         } else {
             currentSessionId = crypto.randomUUID();
-            const activeAssets = cachedAssetsService.getActiveAssets();
-            responseService = new OpenAIResponseService(
-                activeAssets.context,
-                toolRegistry,
-                serverConfig
-            );
+            responseService = new OpenAIResponseService(contextStore, toolRegistry, serverConfig);
             conversationSessionMap.set(currentSessionId, responseService);
             logOut('Server', `/conversation: Created new session ${currentSessionId}`);
         }
@@ -554,10 +527,6 @@ app.post('/updateResponseService', async (req: express.Request, res: express.Res
     );
 
     try {
-        if (!cachedAssetsService) {
-            res.status(500).json({ success: false, error: 'CachedAssetsService not initialized' });
-            return;
-        }
 
         const { callSid, contextKey, manifestKey } = requestData;
 
@@ -582,15 +551,14 @@ app.post('/updateResponseService', async (req: express.Request, res: express.Res
             return;
         }
 
-        const cachedContext = cachedAssetsService.getContext(contextKey);
-        if (!cachedContext) {
-            res.status(400).json({ success: false, error: `Context not found for key: ${contextKey}` });
-            return;
-        }
-
-        await wsSession.session.updateContext(cachedContext);
+        // The service resolves and applies the key; the transport only relays it.
+        await wsSession.session.switchContext(contextKey);
         res.json({ success: true });
     } catch (error) {
+        if (error instanceof ContextNotFoundError) {
+            res.status(400).json({ success: false, error: error.message });
+            return;
+        }
         logError(
             'Server',
             `Error updating response service: ${error instanceof Error ? error.message : String(error)}`

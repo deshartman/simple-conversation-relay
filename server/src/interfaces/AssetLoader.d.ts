@@ -1,6 +1,6 @@
 /**
  * Interface for asset loading implementations
- * Abstracts the source of contexts, manifests, and configuration data
+ * Abstracts the source of the server configuration
  */
 
 import type { SilenceDetectionConfig } from '../services/SilenceHandler.js';
@@ -20,7 +20,6 @@ export interface ServerConfig {
         SilenceDetection: SilenceDetectionConfig;
     };
     AssetLoader: {
-        activeContextKey: string;
         /** @deprecated v4.12: tools are registered in code; this field is ignored. */
         activeManifestKey?: string;
         assetLoaderType: AssetLoaderConfig;
@@ -43,23 +42,9 @@ export interface AssetLoader {
     initialize?(): Promise<void>;
 
     /**
-     * Loads the server configuration that determines default context and manifest
+     * Loads the server configuration (CR/TwiML settings, languages, silence, listen mode)
      * @returns Promise resolving to the server configuration object
      */
     loadServerConfig(): Promise<ServerConfig>;
-
-    /**
-     * Loads specific contexts by keys
-     * @param keys Array of context keys to load
-     * @returns Promise resolving to a Map of context keys to context content
-     */
-    loadContexts(keys: string[]): Promise<Map<string, string>>;
-
-    /**
-     * @deprecated v4.12: tools are now registered in code, not via JSON
-     * manifests. Kept in the interface (optional) for back-compat with
-     * the existing `FileAssetLoader` implementation.
-     */
-    loadManifests?(keys: string[]): Promise<Map<string, object>>;
 
 }

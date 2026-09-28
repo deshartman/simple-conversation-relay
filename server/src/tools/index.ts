@@ -1,13 +1,13 @@
 /**
  * buildDefaultRegistry — called once at server startup to produce the
- * ToolRegistry that every ConversationRelaySession will share. Registers
+ * ToolRegistry that every OpenAIResponseService will share. Registers
  * all 9 tools defined under `server/src/tools/`, with Phase 1 IoC factory
  * invocation for the two tools that require dependencies (`send-sms`,
  * `change-context`).
  */
 
 import type { ServerConfig } from '../config/ServerConfig.js';
-import type { CachedAssetsService } from '../services/CachedAssetsService.js';
+import type { ContextSource } from '../services/ContextStore.js';
 import { ToolRegistry } from './tool-registry.js';
 import { endCallTool } from './end-call.js';
 import { liveAgentHandoffTool } from './live-agent-handoff.js';
@@ -21,7 +21,7 @@ import { createChangeContextTool } from './change-context.js';
 
 export function buildDefaultRegistry(
     config: ServerConfig,
-    cache: CachedAssetsService
+    contexts: ContextSource
 ): ToolRegistry {
     return new ToolRegistry()
         .register(endCallTool)
@@ -32,7 +32,7 @@ export function buildDefaultRegistry(
         .register(setListenModeTool)
         .register(setSilenceDetectionTool)
         .register(createSendSMSTool(config))
-        .register(createChangeContextTool(cache));
+        .register(createChangeContextTool(contexts));
 }
 
 export { ToolRegistry } from './tool-registry.js';
@@ -42,4 +42,5 @@ export type {
     ToolParameters,
     ToolResult,
     ToolHandler,
+    ToolContext,
 } from './define-tool.js';

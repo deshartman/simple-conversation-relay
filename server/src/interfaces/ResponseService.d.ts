@@ -62,6 +62,41 @@ export interface ToolResult {
 }
 
 /**
+ * Call events the transport (ConversationRelaySession) reports to the service.
+ * These are SCR's own events, not raw CR frames: `info`/`error` frames are
+ * transport noise, and `status` is not a CR frame at all.
+ */
+export type CallEvent =
+    | {
+          type: 'setup';
+          /** The CR setup frame: callSid, from, to, direction, customParameters, … */
+          setup: { callSid?: string; from?: string; customParameters?: Record<string, string>; [key: string]: any };
+          /** Request data stored for SCR-originated outbound calls (callReference). */
+          parameters: Record<string, any>;
+      }
+    | { type: 'prompt'; text: string; lang?: string }
+    | { type: 'dtmf'; digit: string }
+    | {
+          type: 'interrupt';
+          /** CR's `utteranceUntilInterrupt` — what the caller actually heard. */
+          heard?: string;
+      }
+    | {
+          type: 'status';
+          /** Evaluated Twilio status callback (see TwilioService.evaluateStatusCallback). */
+          status: unknown;
+      }
+    | {
+          type: 'context';
+          /**
+           * Operator request (POST /updateResponseService) to switch this call's
+           * prompt. The service resolves the key; services that don't own a
+           * prompt ignore it.
+           */
+          key: string;
+      };
+
+/**
  * Interface that all Response Service implementations must follow
  * Uses dependency injection with unified response handler for better type safety
  */
@@ -73,44 +108,19 @@ export interface ResponseService {
          */
         createResponseHandler(handler: ResponseHandler): void;
         /**
-         * Generates a streaming response from the LLM service
-         * 
-         * @param role - Message role ('user' or 'system')
-         * @param prompt - Input message content
-         * @returns Promise that resolves when response generation starts
+         * Single entry point for call events, mirroring the transport's switch
+         * on CR frame type. The service decides what each event means for the
+         * conversation (prompt, context, tools); the transport only reports.
          */
-        generateResponse(role: 'user' | 'system', prompt: string): Promise<void>;
+        handleEvent(event: CallEvent): Promise<void>;
 
         /**
-         * Inserts a message into conversation context without generating a response
-         * 
-         * @param role - Message role ('system', 'user', or 'assistant')
-         * @param message - Message content to add to context
-         * @returns Promise that resolves when message is inserted
+         * Optional wording for the transport's silence reminder `count` (1-based).
+         * The transport owns the policy — when to remind and when to end the
+         * call — so this only supplies words. Return null (or omit the method)
+         * to use the configured `SilenceDetection.messages`.
          */
-        insertMessage(role: 'system' | 'user' | 'assistant', message: string): Promise<void>;
-
-        /**
-         * Interrupts current response generation
-         * Used when user interrupts AI during response to stop streaming
-         */
-        interrupt(): void;
-
-        /**
-         * Updates the context for the response service
-         * 
-         * @param context - New context content string
-         * @returns Promise that resolves when update is complete
-         */
-        updateContext(context: string): Promise<void>;
-
-        /**
-         * Updates the tool registry for the response service.
-         * v4.12: replaced the `object` (JSON manifest) arg with a
-         * `ToolRegistry`. Typed as `any` in this declaration file to avoid a
-         * cross-layer import; implementations narrow it.
-         */
-        updateTools(registry: any): void;
+        silenceReminder?(count: number): Promise<string | null>;
 
         /**
          * Performs cleanup of service resources

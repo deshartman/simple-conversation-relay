@@ -25,8 +25,6 @@ import { logOut, logError } from '../utils/logger.js';
 import { SilenceHandler } from './SilenceHandler.js';
 import type { SilenceDetectionConfig } from './SilenceHandler.js';
 import type { ResponseService, ResponseHandler, ContentResponse, ToolResultEvent } from '../interfaces/ResponseService.js';
-import type { OpenAIResponseService } from './OpenAIResponseService.js';
-import type { ToolRegistry } from '../tools/tool-registry.js';
 import type { SessionData, IncomingMessage } from '../interfaces/ConversationRelay.js';
 import {
     OutgoingFrameSchema,
@@ -38,6 +36,13 @@ import {
  * `sendDigits` and `end` are deliberately excluded — DTMF navigation and
  * call termination must always work.
  */
+/**
+ * How long a silence reminder waits for service wording before the configured
+ * wording is spoken. Enforced here, not trusted to the service: the caller is
+ * already waiting, and a hung service must not swallow the reminder.
+ */
+const SILENCE_WORDING_TIMEOUT_MS = 1500;
+
 const LISTEN_MODE_GATED: ReadonlySet<OutgoingFrame['type']> = new Set(['text', 'play', 'language']);
 
 export interface ConversationRelaySessionOptions {
@@ -45,7 +50,6 @@ export interface ConversationRelaySessionOptions {
     sessionData: SessionData;
     silenceConfig: SilenceDetectionConfig;
     initialListenMode: boolean;
-    registry: ToolRegistry;
     /** Inject the ws.send wrapper. The session never touches `ws` directly. */
     send: (frame: OutgoingFrame) => void;
     /**
@@ -61,9 +65,10 @@ export interface ConversationRelaySessionOptions {
 export class ConversationRelaySession {
     private readonly responseService: ResponseService;
     private readonly sessionData: SessionData;
-    private readonly registry: ToolRegistry;
     private readonly send: (frame: OutgoingFrame) => void;
     private readonly silenceHandler: SilenceHandler | null;
+    /** Default reminder wording; its length is the number of reminders before ending. */
+    private readonly silenceMessages: string[];
     private readonly logPrefix: string;
 
     /** Detected primary tag (`fr`) -> declared code (`fr-FR`). First declaration wins. */
@@ -80,7 +85,6 @@ export class ConversationRelaySession {
     constructor(opts: ConversationRelaySessionOptions) {
         this.responseService = opts.responseService;
         this.sessionData = opts.sessionData;
-        this.registry = opts.registry;
         this.send = opts.send;
         this.listenMode = opts.initialListenMode;
         this.logPrefix = `Call SID: ${this.sessionData.setupData.callSid ?? 'unknown'}]`;
@@ -92,23 +96,18 @@ export class ConversationRelaySession {
         }
         this.activeTtsLanguage = opts.initialTtsLanguage ?? null;
 
+        // Silence policy is the transport's, whatever the back end: remind once
+        // per configured message, then end the call. Only the words may come
+        // from the ResponseService.
+        this.silenceMessages = opts.silenceConfig.messages ?? [];
         this.silenceHandler = opts.silenceConfig.enabled
             ? new SilenceHandler({
                   enabled: true,
                   secondsThreshold: opts.silenceConfig.secondsThreshold,
-                  messages: opts.silenceConfig.messages,
-                  onReminder: reminder => {
-                      logOut('Session', `${this.logPrefix} Silence reminder: "${reminder}"`);
-                      this.sendText(reminder, true).catch(err =>
-                          logError('Session', `Reminder sendText failed: ${err.message}`)
+                  onBreach: count => {
+                      this.onSilence(count).catch(err =>
+                          logError('Session', `${this.logPrefix} silence handling failed: ${err.message}`)
                       );
-                  },
-                  onTerminate: () => {
-                      logOut('Session', `${this.logPrefix} Silence terminal — ending call`);
-                      this.endCall({
-                          reasonCode: 'unresponsive',
-                          reason: 'The caller was not speaking',
-                      });
                   },
               })
             : null;
@@ -123,13 +122,6 @@ export class ConversationRelaySession {
         }
 
         this.responseService.createResponseHandler(this.buildResponseHandler());
-        // Hand ourselves to the response service so tool handlers can
-        // receive the session reference. Not all ResponseService
-        // implementations have `setSession`, so guard the call.
-        const maybeWithSession = this.responseService as unknown as Partial<OpenAIResponseService>;
-        if (typeof maybeWithSession.setSession === 'function') {
-            maybeWithSession.setSession(this);
-        }
 
         logOut(
             'Session',
@@ -155,22 +147,25 @@ export class ConversationRelaySession {
     // Lifecycle
     // =========================================================================
 
-    /** Called from the server WS handler on first `setup` frame. */
+    /**
+     * Called from the server WS handler on first `setup` frame. Reports the
+     * setup to the service, which owns what (if anything) the model is told.
+     */
     async setup(): Promise<void> {
         const { parameterData, setupData } = this.sessionData;
-        const initialMessage = `These are all the details of the call: ${JSON.stringify(
-            setupData,
-            null,
-            4
-        )} and the parameter data needed to complete your objective: ${JSON.stringify(
-            parameterData,
-            null,
-            4
-        )}. Use this to complete your objective`;
-        await this.responseService.insertMessage('system', initialMessage);
+        await this.responseService.handleEvent({
+            type: 'setup',
+            setup: setupData,
+            parameters: parameterData,
+        });
 
         this.silenceHandler?.start();
         logOut('Session', `${this.logPrefix} Setup complete`);
+    }
+
+    /** Evaluated Twilio status callback for this call, reported to the service. */
+    async handleStatus(status: unknown): Promise<void> {
+        await this.responseService.handleEvent({ type: 'status', status });
     }
 
     /** Called from the server WS handler for every validated incoming frame (post-setup). */
@@ -191,10 +186,15 @@ export class ConversationRelaySession {
                 case 'prompt':
                     logOut('Session', `${this.logPrefix} PROMPT: ${message.voicePrompt}`);
                     this.autoSwitchTtsLanguage(message.lang);
-                    await this.responseService.generateResponse('user', message.voicePrompt || '');
+                    await this.responseService.handleEvent({
+                        type: 'prompt',
+                        text: message.voicePrompt || '',
+                        lang: message.lang,
+                    });
                     break;
                 case 'dtmf':
                     logOut('Session', `${this.logPrefix} DTMF: ${message.digit}`);
+                    await this.responseService.handleEvent({ type: 'dtmf', digit: message.digit });
                     break;
                 case 'interrupt':
                     logOut(
@@ -205,7 +205,10 @@ export class ConversationRelaySession {
                     //     'Session',
                     //     `${this.logPrefix} INTERRUPT: ${JSON.stringify(message, null, 2)}`
                     // );
-                    this.responseService.interrupt();
+                    await this.responseService.handleEvent({
+                        type: 'interrupt',
+                        heard: message.utteranceUntilInterrupt,
+                    });
                     break;
                 case 'info':
                     // Intentionally quiet — info frames are frequent.
@@ -335,6 +338,42 @@ export class ConversationRelaySession {
         this.sendResponse({ type: 'language', ttsLanguage: code });
     }
 
+    /**
+     * Breach `count` of continuous silence. Breaches 1..n speak reminder n;
+     * breach n+1 ends the call. The ResponseService may reword a reminder but
+     * cannot skip it or change when the call ends.
+     */
+    private async onSilence(count: number): Promise<void> {
+        const fallback = this.silenceMessages[count - 1];
+        if (fallback === undefined) {
+            if (count !== this.silenceMessages.length + 1) return;
+            logOut('Session', `${this.logPrefix} Silence terminal — ending call`);
+            this.endCall({ reasonCode: 'unresponsive', reason: 'The caller was not speaking' });
+            return;
+        }
+
+        let reminder = fallback;
+        let timer: NodeJS.Timeout | undefined;
+        try {
+            const timeout = new Promise<null>(resolve => {
+                timer = setTimeout(() => resolve(null), SILENCE_WORDING_TIMEOUT_MS);
+            });
+            const worded = this.responseService.silenceReminder?.(count) ?? null;
+            reminder = (await Promise.race([worded, timeout])) || fallback;
+        } catch (error) {
+            logError(
+                'Session',
+                `${this.logPrefix} silenceReminder failed, using configured wording: ${
+                    error instanceof Error ? error.message : String(error)
+                }`
+            );
+        } finally {
+            clearTimeout(timer);
+        }
+        logOut('Session', `${this.logPrefix} Silence reminder ${count}: "${reminder}"`);
+        await this.sendText(reminder, true);
+    }
+
     switchLanguage(opts: { ttsLanguage?: string; transcriptionLanguage?: string }): void {
         // An explicit switch (the switch-language tool — i.e. the caller asked)
         // wins for the rest of the call. Without this latch, automatic
@@ -398,26 +437,9 @@ export class ConversationRelaySession {
         }
     }
 
-    // =========================================================================
-    // Proxies for HTTP endpoints (/twilioStatusCallback, /updateResponseService)
-    // =========================================================================
-
-    async insertMessage(role: 'system' | 'user' | 'assistant', content: string): Promise<void> {
-        await this.responseService.insertMessage(role, content);
-    }
-
-    async updateContext(context: string): Promise<void> {
-        await this.responseService.updateContext(context);
-    }
-
-    /**
-     * Accept a new `ToolRegistry` for this session. In v4.12 the registry is
-     * process-wide and identical for every session (all-tools-all-legs), so
-     * this is effectively a no-op unless a caller wants to swap in a subset
-     * registry. Kept for forward compatibility.
-     */
-    async updateTools(registry: ToolRegistry): Promise<void> {
-        this.responseService.updateTools(registry);
+    /** Operator request to switch this call's prompt; the service resolves `key`. */
+    async switchContext(key: string): Promise<void> {
+        await this.responseService.handleEvent({ type: 'context', key });
     }
 
     // =========================================================================

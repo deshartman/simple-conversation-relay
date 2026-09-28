@@ -5,14 +5,12 @@
  * v4.12 changes:
  *  - Replaced `loadedTools: Record<string, Function>` + `manifest` with a
  *    single `ToolRegistry`. Schema and handler now co-located in tool files.
- *  - `executeToolCall()` looks up via `registry.get(name).handler(args, session)`.
- *    The session is threaded through at construction for tools that need it
- *    (e.g. `change-context`, which calls `session.updateContext`).
+ *  - `executeToolCall()` looks up via `registry.get(name).handler(args, ctx)`.
+ *    `ctx` is this service's `ToolContext` — tools never see the transport
+ *    session (e.g. `change-context` calls `ctx.changeContext`).
  *  - Calls `responseHandler.toolCallStart?(promise)` so the session can
  *    track in-flight tool promises (lets `sendText(last=true)` await them
  *    before emitting the terminal text — closes the farewell/end race).
- *  - `updateTools(registry)` accepts a `ToolRegistry` instead of a JSON
- *    manifest.
  */
 
 import dotenv from 'dotenv';
@@ -29,10 +27,12 @@ import type {
     ToolResult as IToolResult,
     ToolResultEvent,
     ResponseHandler,
+    CallEvent,
 } from '../interfaces/ResponseService.js';
 import type { ServerConfig } from '../config/ServerConfig.js';
 import type { ToolRegistry } from '../tools/tool-registry.js';
-import type { ConversationRelaySession } from './ConversationRelaySession.js';
+import type { ToolContext } from '../tools/define-tool.js';
+import { ContextNotFoundError, type ContextSource } from './ContextStore.js';
 
 dotenv.config();
 
@@ -48,7 +48,8 @@ class OpenAIResponseService implements ResponseService {
     protected openai: OpenAI;
     protected model: string;
     protected currentResponseId: string | null;
-    protected instructions: string;
+    /** Null until loaded: on setup (default or contextKey), or on first use. */
+    protected instructions: string | null;
     protected isInterrupted: boolean;
     protected registry: ToolRegistry;
     protected inputMessages: ResponseInput;
@@ -60,42 +61,99 @@ class OpenAIResponseService implements ResponseService {
      * tokens mid-sentence on the wire.
      */
     protected generation = 0;
-    /** Set by `setSession()` — required before `generateResponse()` is called via a session. */
-    protected session: ConversationRelaySession | null = null;
-
     private responseHandler!: ResponseHandler;
 
+    /** Where this service reads its prompt from; nothing is loaded until needed. */
+    private readonly contexts: ContextSource;
     constructor(
-        context: string,
+        contexts: ContextSource,
         registry: ToolRegistry,
         config: ServerConfig
     ) {
+        this.contexts = contexts;
         this.openai = new OpenAI();
         this.model = config.openaiModel;
         this.currentResponseId = null;
-        this.instructions = context;
+        this.instructions = null;
         this.isInterrupted = false;
         this.registry = registry;
         this.inputMessages = [];
     }
 
-    /**
-     * Inject the session reference. Called once by
-     * `ConversationRelaySession` after it constructs the service — the
-     * session reference is needed by tool handlers that mutate session
-     * state (e.g. `change-context`).
-     *
-     * The `/conversation` HTTP endpoint doesn't use a session; tools that
-     * require one will fail gracefully if called without it (which is
-     * fine — that endpoint is for non-call LLM exchanges).
-     */
-    setSession(session: ConversationRelaySession): void {
-        this.session = session;
-    }
-
     createResponseHandler(handler: ResponseHandler): void {
         this.responseHandler = handler;
     }
+
+    /**
+     * The service, not the transport, decides what each call event means for
+     * the conversation: which context applies, what the model is told about
+     * the call, and what DTMF and status updates contribute.
+     */
+    async handleEvent(event: CallEvent): Promise<void> {
+        switch (event.type) {
+            case 'setup': {
+                // Per-call context selection. Without this the active context is
+                // global, so an outbound campaign prompt would also be served to
+                // inbound callers.
+                const contextKey = event.setup.customParameters?.contextKey;
+                if (contextKey) {
+                    const override = await this.contexts.get(contextKey);
+                    if (override) {
+                        this.instructions = override;
+                        logOut('OpenAIResponseService', `Using context '${contextKey}' for this call`);
+                    } else {
+                        logError(
+                            'OpenAIResponseService',
+                            `contextKey '${contextKey}' not found — falling back to the default context`
+                        );
+                    }
+                }
+                await this.insertMessage(
+                    'system',
+                    `These are all the details of the call: ${JSON.stringify(
+                        event.setup,
+                        null,
+                        4
+                    )} and the parameter data needed to complete your objective: ${JSON.stringify(
+                        event.parameters,
+                        null,
+                        4
+                    )}. Use this to complete your objective`
+                );
+                break;
+            }
+            case 'prompt':
+                await this.generateResponse('user', event.text);
+                break;
+            case 'interrupt':
+                this.interrupt();
+                break;
+            case 'dtmf':
+                // Unchanged behaviour: the model is not told about key presses.
+                logOut('OpenAIResponseService', `DTMF '${event.digit}' ignored`);
+                break;
+            case 'status':
+                await this.insertMessage('system', JSON.stringify(event.status));
+                break;
+            case 'context': {
+                const context = await this.contexts.get(event.key);
+                if (!context) throw new ContextNotFoundError(event.key);
+                await this.updateContext(context);
+                break;
+            }
+        }
+    }
+
+    /**
+     * What tools may do to this conversation. Same object for the voice path
+     * and /conversation, so a tool works identically with or without a call.
+     */
+    private readonly toolContext: ToolContext = {
+        changeContext: async (context, handoffSummary) => {
+            await this.updateContext(context);
+            await this.insertMessage('system', `Context handoff summary: ${handoffSummary}`);
+        },
+    };
 
     /**
      * Execute a tool call via the registry. Notifies
@@ -111,13 +169,7 @@ class OpenAIResponseService implements ResponseService {
             }
 
             const toolArgs = JSON.parse(tool.arguments);
-            // The registry's handler expects a session. For the HTTP
-            // `/conversation` path (no session), pass a placeholder `any`
-            // — tools that need the session (e.g. `change-context`) will
-            // throw; that's the correct behavior for a session-less context.
-            const sessionArg = this.session as unknown as ConversationRelaySession;
-
-            const promise = Promise.resolve(registered.handler(toolArgs, sessionArg));
+            const promise = Promise.resolve(registered.handler(toolArgs, this.toolContext));
             // Track the in-flight tool promise before awaiting so the
             // session can include it in any concurrent sendText(last=true)
             // await set.
@@ -167,7 +219,7 @@ class OpenAIResponseService implements ResponseService {
         try {
             switch (role) {
                 case 'system':
-                    this.instructions += `\n\n${message}`;
+                    this.instructions = `${await this.loadInstructions()}\n\n${message}`;
                     break;
                 case 'user':
                 case 'assistant':
@@ -193,18 +245,6 @@ class OpenAIResponseService implements ResponseService {
         this.currentResponseId = null;
         this.inputMessages = [];
         logOut('OpenAIResponseService', `Updated context (${context.length} characters)`);
-    }
-
-    /**
-     * Replace the tool registry. Typed as `any` in the `ResponseService`
-     * interface to avoid a cross-layer import; narrowed here.
-     */
-    updateTools(registry: ToolRegistry): void {
-        this.registry = registry;
-        logOut(
-            'OpenAIResponseService',
-            `Updated tool registry (${registry.size()} tools)`
-        );
     }
 
     cleanup(): void {
@@ -308,7 +348,7 @@ class OpenAIResponseService implements ResponseService {
                                         tools:
                                             tools.length > 0 ? (tools as unknown as any) : undefined,
                                         stream: true,
-                                        instructions: this.instructions,
+                                        instructions: await this.loadInstructions(),
                                     });
                                     await this.processStream(followUpStream, generation);
                                 }
@@ -351,6 +391,12 @@ class OpenAIResponseService implements ResponseService {
         }
     }
 
+    /** The current instructions, loading the default context on first use. */
+    private async loadInstructions(): Promise<string> {
+        if (this.instructions === null) this.instructions = await this.contexts.getDefault();
+        return this.instructions;
+    }
+
     async generateResponse(role: 'user' | 'system' = 'user', prompt: string): Promise<void> {
         // Cancel-previous: a newer prompt supersedes whatever is in flight.
         // Claiming the next generation is what stops the older stream.
@@ -369,7 +415,7 @@ class OpenAIResponseService implements ResponseService {
                 input: this.inputMessages,
                 stream: true,
                 tools: tools.length > 0 ? (tools as unknown as any) : undefined,
-                instructions: this.instructions,
+                instructions: await this.loadInstructions(),
             });
 
             await this.processStream(stream, generation);
