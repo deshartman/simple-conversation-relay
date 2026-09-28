@@ -1,8 +1,7 @@
 /**
  * FileAssetLoader - Loads assets from local file system
  *
- * This implementation loads contexts and manifests directly from the assets folder
- * without any interaction with Twilio Sync service.
+ * Loads contexts and server config directly from the assets folder.
  */
 
 import { promises as fs } from 'fs';
