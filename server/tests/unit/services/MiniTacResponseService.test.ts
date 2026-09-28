@@ -26,7 +26,7 @@ function setup(respondLines: object[] = [{ token: 'Hi' }, { token: ' there' }, {
             body: init.body ? JSON.parse(init.body as string) : undefined,
             auth: (init.headers as Record<string, string>).Authorization ?? null,
         });
-        if (url.endsWith('/sessions')) return Response.json({ key: 'CA1', isNew: true, name: null });
+        if (url.endsWith('/sessions')) return Response.json({ key: 'CA1' });
         if (url.endsWith('/respond')) return ndjson(respondLines);
         if (init.method === 'DELETE') return new Response(null, { status: 202 });
         return Response.json({ ok: true });

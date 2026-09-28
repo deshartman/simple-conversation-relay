@@ -74,9 +74,8 @@ class MiniTacResponseService implements ResponseService {
                     channel: 'voice',
                     setup: event.setup,
                     parameters: event.parameters,
-                }).then(async res => {
-                    const body = await res.json();
-                    logOut('MiniTacResponseService', `Session ${this.key} ready (isNew=${body.isNew}, name=${body.name ?? '-'})`);
+                }).then(() => {
+                    logOut('MiniTacResponseService', `Session ${this.key} ready`);
                 });
                 // Surface creation failures here, not as an unhandled rejection;
                 // later calls still see the rejection through `ready`.
