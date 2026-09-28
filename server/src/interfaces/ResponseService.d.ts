@@ -56,7 +56,7 @@ export interface ToolResultEvent {
  * Something a service asks the transport to do to the call. The service's
  * tools decide *when*; the transport owns *what it means* on the wire (which
  * frame, and that `endCall` waits for the farewell). Services never build CR
- * frames themselves.
+ * frames themselves. `endCall` is the only action that ends the call.
  */
 export type CallAction =
     | { type: 'endCall'; handoffData?: string }

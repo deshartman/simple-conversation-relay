@@ -479,9 +479,7 @@ export class ConversationRelaySession {
 
     /**
      * Bridge from `ResponseService` (streaming tokens, tool results) to the
-     * session's outgoing methods. Applies a tool result's `action` (or the
-     * legacy `silenceEnabled` / `listenMode` / `outgoingMessage` fields) to
-     * the call.
+     * session's outgoing methods. Applies a tool result's `action` to the call.
      */
     private buildResponseHandler(): ResponseHandler {
         return {
@@ -514,26 +512,6 @@ export class ConversationRelaySession {
 
                 if (toolData.action) {
                     this.applyAction(toolData.action, toolType);
-                    return;
-                }
-
-                // Legacy result fields, accepted until every tool returns `action`.
-
-                // Priority 1: silence-detection toggle.
-                if (typeof toolData.silenceEnabled === 'boolean') {
-                    this.setSilenceDetection(toolData.silenceEnabled);
-                    return;
-                }
-
-                // Priority 2: listen-mode toggle.
-                if (typeof toolData.listenMode === 'boolean') {
-                    this.setListenMode(toolData.listenMode);
-                    return;
-                }
-
-                // Priority 3: outgoing frame from the tool.
-                if (toolData.outgoingMessage) {
-                    this.applyToolFrame(toolData.outgoingMessage, toolType);
                 }
             },
 

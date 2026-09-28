@@ -28,6 +28,7 @@ import type {
     ToolResultEvent,
     ResponseHandler,
     CallEvent,
+    CallAction,
 } from '../interfaces/ResponseService.js';
 import type { ServerConfig } from '../config/ServerConfig.js';
 import type { ToolRegistry } from '../tools/tool-registry.js';
@@ -332,8 +333,8 @@ class OpenAIResponseService implements ResponseService {
                                 // defers the terminal frame until the final text
                                 // token. Skip that and the call never hangs up.
                                 const isTerminal =
-                                    (toolResult as { outgoingMessage?: { type?: string } })
-                                        .outgoingMessage?.type === 'end';
+                                    (toolResult as { action?: CallAction }).action?.type ===
+                                    'endCall';
 
                                 if (isTerminal) {
                                     logOut(

@@ -14,6 +14,8 @@
  * connect-typescript PR #54.
  */
 
+import type { CallAction } from '../interfaces/ResponseService.js';
+
 /**
  * JSON-schema-lite shape for parameter declarations. Matches OpenAI's
  * function-calling parameter format.
@@ -26,13 +28,9 @@ export interface ToolParameters {
 }
 
 /**
- * Optional side-effect fields a tool handler can return. The session's
- * tool-result router reads these and applies state changes / ships frames.
- *
- * - `outgoingMessage`: a validated outgoing CR frame, shipped on the wire
- *   immediately (or deferred to post-farewell for `end` frames).
- * - `listenMode`: toggle suppress-outgoing-text-and-media state.
- * - `silenceEnabled`: toggle silence-reminder timer.
+ * What a tool handler returns. `action` asks the transport to do something to
+ * the call (send digits, end it, …); the transport builds the CR frame, so
+ * tools never know frame shapes.
  *
  * Any additional fields on the result are preserved and passed back to the
  * LLM as the function-call output. This is how you return normal data to the
@@ -41,9 +39,7 @@ export interface ToolParameters {
 export interface ToolResultBase {
     success: boolean;
     message: string;
-    outgoingMessage?: unknown;
-    listenMode?: boolean;
-    silenceEnabled?: boolean;
+    action?: CallAction;
 }
 
 export type ToolResult = ToolResultBase & Record<string, unknown>;
@@ -51,7 +47,7 @@ export type ToolResult = ToolResultBase & Record<string, unknown>;
 /**
  * What a tool may touch of the conversation it runs in. Provided by the
  * ResponseService, never the transport: tools affect the call only through
- * the fields they return (`outgoingMessage`, `listenMode`, `silenceEnabled`).
+ * the `action` they return.
  */
 export interface ToolContext {
     /** Replace the system prompt, keeping a summary so the model has continuity. */

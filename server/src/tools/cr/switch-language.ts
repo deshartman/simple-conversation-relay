@@ -1,6 +1,6 @@
-import { logOut } from '../utils/logger.js';
-import { defineTool } from './define-tool.js';
-import type { LanguageFrame } from '../types/crelay.js';
+import { logOut } from '../../utils/logger.js';
+import { defineTool } from '../define-tool.js';
+import type { CallAction } from '../../interfaces/ResponseService.js';
 
 interface SwitchLanguageArgs {
     ttsLanguage?: string;
@@ -12,7 +12,7 @@ interface SwitchLanguageResult {
     message: string;
     ttsLanguage?: string;
     transcriptionLanguage?: string;
-    outgoingMessage?: LanguageFrame;
+    action?: CallAction;
     [key: string]: unknown;
 }
 
@@ -39,8 +39,8 @@ export const switchLanguageTool = defineTool<SwitchLanguageArgs, SwitchLanguageR
         logOut('SwitchLanguage', `Called with: ${JSON.stringify(args)}`);
 
         if (!args.ttsLanguage && !args.transcriptionLanguage) {
-            // Pre-validation guard: an empty `language` frame is not useful
-            // and would fail Zod refinement on the outgoing path. Return a
+            // Pre-validation guard: an empty `language` action is not useful
+            // and its frame would fail Zod refinement on the outgoing path. Return a
             // loud failure to the LLM instead of shipping nothing.
             return {
                 success: false,
@@ -49,14 +49,14 @@ export const switchLanguageTool = defineTool<SwitchLanguageArgs, SwitchLanguageR
             };
         }
 
-        const frame: LanguageFrame = { type: 'language' };
-        if (args.ttsLanguage) frame.ttsLanguage = args.ttsLanguage;
-        if (args.transcriptionLanguage) frame.transcriptionLanguage = args.transcriptionLanguage;
+        const action: CallAction & { type: 'language' } = { type: 'language' };
+        if (args.ttsLanguage) action.ttsLanguage = args.ttsLanguage;
+        if (args.transcriptionLanguage) action.transcriptionLanguage = args.transcriptionLanguage;
 
         const result: SwitchLanguageResult = {
             success: true,
             message: 'Language switched successfully',
-            outgoingMessage: frame,
+            action,
         };
         if (args.ttsLanguage) result.ttsLanguage = args.ttsLanguage;
         if (args.transcriptionLanguage) result.transcriptionLanguage = args.transcriptionLanguage;

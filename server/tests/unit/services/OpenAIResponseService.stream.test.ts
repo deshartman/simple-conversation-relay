@@ -75,7 +75,7 @@ const terminalTool = defineTool<any, any>({
     handler: () => ({
         success: true,
         message: 'Call ended successfully',
-        outgoingMessage: { type: 'end', handoffData: '{}' },
+        action: { type: 'endCall', handoffData: '{}' },
     }),
 });
 
@@ -83,7 +83,7 @@ const plainTool = defineTool<any, any>({
     name: 'set-listen-mode',
     description: 'toggles listen mode',
     parameters: { type: 'object', properties: {}, required: [] },
-    handler: () => ({ success: true, message: 'ok', listenMode: false }),
+    handler: () => ({ success: true, message: 'ok', action: { type: 'listenMode', enabled: false } }),
 });
 
 describe('OpenAIResponseService — stream handling', () => {

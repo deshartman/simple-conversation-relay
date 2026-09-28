@@ -10,9 +10,9 @@
  * v4.12). If per-leg tool scoping is ever needed again, it belongs here.
  */
 
-import { logOut, logError } from '../utils/logger.js';
-import type { ContextSource } from '../services/ContextStore.js';
-import { defineTool, type ConversationRelayTool } from './define-tool.js';
+import { logOut, logError } from '../../utils/logger.js';
+import type { ContextSource } from '../../services/ContextStore.js';
+import { defineTool, type ConversationRelayTool } from '../define-tool.js';
 
 interface ChangeContextArgs {
     newContext: string;

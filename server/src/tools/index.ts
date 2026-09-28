@@ -9,15 +9,15 @@
 import type { ServerConfig } from '../config/ServerConfig.js';
 import type { ContextSource } from '../services/ContextStore.js';
 import { ToolRegistry } from './tool-registry.js';
-import { endCallTool } from './end-call.js';
-import { liveAgentHandoffTool } from './live-agent-handoff.js';
-import { sendDtmfTool } from './send-dtmf.js';
-import { playMediaTool } from './play-media.js';
-import { switchLanguageTool } from './switch-language.js';
-import { setListenModeTool } from './set-listen-mode.js';
-import { setSilenceDetectionTool } from './set-silence-detection.js';
-import { createSendSMSTool } from './send-sms.js';
-import { createChangeContextTool } from './change-context.js';
+import { endCallTool } from './cr/end-call.js';
+import { liveAgentHandoffTool } from './cr/live-agent-handoff.js';
+import { sendDtmfTool } from './cr/send-dtmf.js';
+import { playMediaTool } from './cr/play-media.js';
+import { switchLanguageTool } from './cr/switch-language.js';
+import { setListenModeTool } from './cr/set-listen-mode.js';
+import { setSilenceDetectionTool } from './cr/set-silence-detection.js';
+import { createSendSMSTool } from './llm/send-sms.js';
+import { createChangeContextTool } from './llm/change-context.js';
 
 export function buildDefaultRegistry(
     config: ServerConfig,

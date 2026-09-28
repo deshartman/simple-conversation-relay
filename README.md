@@ -277,7 +277,13 @@ Context documents are `.md` files in `server/assets/`, keyed by filename:
 
 ### Tools (v4.12: in-code registry)
 
-Tools are defined in code under `server/src/tools/` using the `defineTool({ name, description, parameters, handler })` factory. The `defaultToolManifest.json` / `legs/*/toolManifest.json` files have been removed — schema (what OpenAI sees) and handler (what runs) are now co-located in each tool file. `buildDefaultRegistry(config, contexts)` in `server/src/tools/index.ts` registers all tools once at startup, and the same `ToolRegistry` is handed to every `OpenAIResponseService`. Tools belong to the ResponseService, not the transport: a handler receives `(args, ctx)`, where `ctx` is the service's `ToolContext` (currently `changeContext(context, summary)`), never the session. Tools affect the call only through the fields they return.
+Tools are defined in code under `server/src/tools/` using the `defineTool({ name, description, parameters, handler })` factory. The `defaultToolManifest.json` / `legs/*/toolManifest.json` files have been removed — schema (what OpenAI sees) and handler (what runs) are now co-located in each tool file. `buildDefaultRegistry(config, contexts)` in `server/src/tools/index.ts` registers all tools once at startup, and the same `ToolRegistry` is handed to every `OpenAIResponseService`. Tools belong to the ResponseService, not the transport: a handler receives `(args, ctx)`, where `ctx` is the service's `ToolContext` (currently `changeContext(context, summary)`), never the session. Tools affect the call only through the `action` they return.
+
+Tools are split by what they touch:
+- `server/src/tools/cr/` — call-control tools. Each only *requests* a call action (`endCall`, `sendDigits`, `play`, `language`, `listenMode`, `silence`); `ConversationRelaySession` owns what the action means on the wire (which frame, and that `endCall` waits for the farewell). No tool builds a CR frame.
+- `server/src/tools/llm/` — tools that don't act on the call (`send-sms`, `change-context`).
+
+Other back ends use the same actions: MINI-TAC's handoff streams `{"handoff": "<handoffData>"}`, which SCR maps to `endCall`.
 
 **Available Tools (9 total, all registered by default):**
 1. `end-call` — Gracefully terminates the current call
@@ -291,15 +297,13 @@ Tools are defined in code under `server/src/tools/` using the `defineTool({ name
 9. `change-context` — Switches the LLM's system prompt mid-call (factory: captures `ContextStore`; applies via `ctx.changeContext`)
 
 **Adding a new tool:**
-1. Create `server/src/tools/my-tool.ts` that exports a `defineTool({...})` record (or a factory returning one, if it needs DI).
+1. Create `server/src/tools/cr/my-tool.ts` (acts on the call) or `server/src/tools/llm/my-tool.ts` that exports a `defineTool({...})` record (or a factory returning one, if it needs DI).
 2. Add one `.register(myTool)` line in `server/src/tools/index.ts`.
 
 No JSON editing, no filename/manifest-name coupling. Type parameters on `defineTool<TArgs, TResult>` tie the handler's args type to the declared schema — a mismatch fails at compile time.
 
-**Tool-result side-effect conventions:** handlers can return any combination of:
-- `outgoingMessage: { type: 'end' | 'sendDigits' | 'play' | 'language' | 'text', ... }` — Zod-validated and shipped to Twilio (or deferred for terminal `end` frames).
-- `listenMode: boolean` — toggles session listen-mode suppression.
-- `silenceEnabled: boolean` — toggles session silence detection.
+**Tool-result conventions:** handlers return `{ success, message }` plus:
+- `action` (optional) — a `CallAction` the transport applies: `endCall {handoffData?}` (deferred until after the farewell; the only action that ends the call), `sendDigits {digits}`, `play {source, loop?, …}`, `language {ttsLanguage?, transcriptionLanguage?}`, `listenMode {enabled}`, `silence {enabled}`. Invalid actions are dropped by the transport's frame validation.
 - Any other fields — passed back to the LLM as the function-call output.
 
 ### Language Switching Example
@@ -1152,7 +1156,7 @@ The TwilioService follows a specific architectural pattern to maintain clean sep
 - Creating LLM tools in the `src/tools/` directory
 - Tools should call the Twilio API directly for self-contained execution
 - This ensures tools remain portable and don't depend on service layer coupling
-- **Example**: `src/tools/send-sms.ts` uses direct `twilio.messages.create()` call instead of TwilioService
+- **Example**: `src/tools/llm/send-sms.ts` uses direct `twilio.messages.create()` call instead of TwilioService
 
 This architectural decision ensures LLM tools remain self-contained and portable, avoiding unnecessary service layer dependencies while complex business logic resides appropriately in the service layer.
 
