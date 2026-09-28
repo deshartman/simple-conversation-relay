@@ -9,7 +9,7 @@ import type { ConversationRelayConfig } from './ConversationRelay.js';
 /**
  * Configuration type for asset loader selection
  */
-export type AssetLoaderConfig = 'sync' | 'file' | 'j2';
+export type AssetLoaderConfig = 'file';
 
 /**
  * ServerConfig structure for server configuration
@@ -37,7 +37,7 @@ export interface ServerConfig {
  */
 export interface AssetLoader {
     /**
-     * Initializes the asset loader (creates services/maps/documents for sync loader)
+     * Initializes the asset loader, if it needs any setup
      * @returns Promise that resolves when initialization is complete
      */
     initialize?(): Promise<void>;
@@ -58,7 +58,7 @@ export interface AssetLoader {
     /**
      * @deprecated v4.12: tools are now registered in code, not via JSON
      * manifests. Kept in the interface (optional) for back-compat with
-     * existing `FileAssetLoader` / `SyncAssetLoader` implementations.
+     * the existing `FileAssetLoader` implementation.
      */
     loadManifests?(keys: string[]): Promise<Map<string, object>>;
 

@@ -19,7 +19,6 @@ import { fileURLToPath } from 'url';
 import { logOut, logError } from '../utils/logger.js';
 import type { AssetLoader, ServerConfig as AssetServerConfig, AssetLoaderConfig } from '../interfaces/AssetLoader.js';
 import type { SilenceDetectionConfig } from './SilenceHandler.js';
-import { SyncAssetLoader } from './SyncAssetLoader.js';
 import { FileAssetLoader } from './FileAssetLoader.js';
 import { ServerConfig } from '../config/ServerConfig.js';
 
@@ -214,20 +213,12 @@ class CachedAssetsService {
             const assetLoaderType = await this.readAssetLoaderConfig();
             logOut('CachedAssetsService', `Creating ${assetLoaderType} asset loader`);
 
-            switch (assetLoaderType) {
-                case 'sync':
-                    return new SyncAssetLoader();
-                case 'file':
-                    return new FileAssetLoader();
-                case 'j2':
-                    throw new Error('J2 asset loader not yet implemented');
-                default:
-                    logError(
-                        'CachedAssetsService',
-                        `Unknown asset loader type: ${assetLoaderType}, defaulting to sync`
-                    );
-                    return new SyncAssetLoader();
+            if (assetLoaderType !== 'file') {
+                throw new Error(
+                    `Unsupported asset loader type '${assetLoaderType}' — only 'file' is supported (Twilio Sync loading was removed)`
+                );
             }
+            return new FileAssetLoader();
         } catch (error) {
             logError(
                 'CachedAssetsService',
@@ -245,13 +236,13 @@ class CachedAssetsService {
             const configPath = join(serverDir, 'assets', 'serverConfig.json');
             const configContent = await fs.readFile(configPath, 'utf-8');
             const config = JSON.parse(configContent);
-            return config.AssetLoader?.assetLoaderType || 'sync';
+            return config.AssetLoader?.assetLoaderType || 'file';
         } catch (error) {
             logError(
                 'CachedAssetsService',
-                `Failed to read asset loader config: ${error instanceof Error ? error.message : String(error)}, defaulting to sync`
+                `Failed to read asset loader config: ${error instanceof Error ? error.message : String(error)}, defaulting to file`
             );
-            return 'sync';
+            return 'file';
         }
     }
 
