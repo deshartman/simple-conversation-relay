@@ -19,7 +19,7 @@ import path from 'path';
 
 import { ConversationRelaySession, resolveCallLanguages } from './services/ConversationRelaySession.js';
 import { OpenAIResponseService } from './services/OpenAIResponseService.js';
-import { MiniTacResponseService } from './services/MiniTacResponseService.js';
+import { SimpleTacResponseService } from './services/SimpleTacResponseService.js';
 import type { ResponseService } from './interfaces/ResponseService.js';
 import { TwilioService } from './services/TwilioService.js';
 import { CachedAssetsService } from './services/CachedAssetsService.js';
@@ -123,7 +123,7 @@ const PARAMETER_DATA_TTL_MS = 60 * 60 * 1000;
 let conversationSessionMap = new Map<string, OpenAIResponseService>();
 let twilioService: TwilioService;
 let cachedAssetsService: CachedAssetsService | null = null;
-/** LLM prompts, read only by response services that own one (not mini-tac). */
+/** LLM prompts, read only by response services that own one (not simple-tac). */
 let contextStore: ContextStore;
 let serverConfig: ServerConfig;
 let toolRegistry: ToolRegistry;
@@ -479,10 +479,10 @@ app.post('/twilioStatusCallback', validateTwilioSignature, async (req: express.R
  * Pick the voice back end from RESPONSE_SERVICE_TYPE.
  */
 function createResponseService(): ResponseService {
-    return serverConfig.responseService === 'mini-tac'
-        ? new MiniTacResponseService({
-              baseUrl: serverConfig.miniTacUrl,
-              apiKey: serverConfig.miniTacApiKey!,
+    return serverConfig.responseService === 'simple-tac'
+        ? new SimpleTacResponseService({
+              baseUrl: serverConfig.simpleTacUrl,
+              apiKey: serverConfig.simpleTacApiKey!,
           })
         : new OpenAIResponseService(contextStore, toolRegistry, serverConfig);
 }

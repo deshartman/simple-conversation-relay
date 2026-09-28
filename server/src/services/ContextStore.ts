@@ -1,7 +1,7 @@
 /**
  * ContextStore — the LLM prompt (context) source for response services that
  * need one. SCR's transport never loads a context; only a ResponseService that
- * owns its prompt (OpenAI) reads from here, so mini-tac mode reads nothing.
+ * owns its prompt (OpenAI) reads from here, so simple-tac mode reads nothing.
  *
  * Contexts are `server/assets/<key>.md`, read on first use and then cached.
  */

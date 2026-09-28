@@ -73,7 +73,7 @@ writes the TwiML tells the session via two `<Parameter>`s:
 ```
 
 SCR's own TwiML emits these automatically. A TwiML written elsewhere (e.g.
-MINI-TAC's) should emit them for its own `<Language>`s. When they are absent,
+SIMPLE-TAC's) should emit them for its own `<Language>`s. When they are absent,
 the session falls back to SCR's `languages` config — correct only if the two
 match. The startup of each call logs which source was used:
 

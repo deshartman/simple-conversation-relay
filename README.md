@@ -283,7 +283,7 @@ Tools are split by what they touch:
 - `server/src/tools/cr/` — call-control tools. Each only *requests* a call action (`endCall`, `sendDigits`, `play`, `language`, `listenMode`, `silence`); `ConversationRelaySession` owns what the action means on the wire (which frame, and that `endCall` waits for the farewell). No tool builds a CR frame.
 - `server/src/tools/llm/` — tools that don't act on the call (`send-sms`, `change-context`).
 
-Other back ends use the same actions: MINI-TAC's handoff streams `{"handoff": "<handoffData>"}`, which SCR maps to `endCall`.
+Other back ends use the same actions: SIMPLE-TAC's handoff streams `{"handoff": "<handoffData>"}`, which SCR maps to `endCall`.
 
 **Available Tools (9 total, all registered by default):**
 1. `end-call` — Gracefully terminates the current call
@@ -471,7 +471,7 @@ Two kinds of asset, owned by different layers:
   `ContextStore`, on first use:
   - `OpenAIResponseService` uses `defaultContext.md`, or the file named by
     `customParameters.contextKey` on the call's setup.
-  - `MiniTacResponseService` reads none — MINI-TAC owns its prompt.
+  - `SimpleTacResponseService` reads none — SIMPLE-TAC owns its prompt.
 
 ```json
 {
@@ -566,7 +566,7 @@ ResponseService is active. Only the *wording* may come from the service, via the
 optional `silenceReminder(count)`; if it returns nothing, or doesn't answer within
 1.5s, the configured `messages[count-1]` is spoken. A service can reword a
 reminder but cannot skip it or change when the call ends. `OpenAIResponseService`
-uses the configured messages; `MiniTacResponseService` asks MINI-TAC
+uses the configured messages; `SimpleTacResponseService` asks SIMPLE-TAC
 (`POST /sessions/:key/events {type:'silence', count}` → optional `{ text }`).
 
 ### Dynamic Silence Detection Control (v4.9.7)

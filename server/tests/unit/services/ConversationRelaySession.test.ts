@@ -407,7 +407,7 @@ describe('ConversationRelaySession', () => {
     });
 
     /**
-     * The allow-list must describe the call's TwiML. When another app (MINI-TAC)
+     * The allow-list must describe the call's TwiML. When another app (SIMPLE-TAC)
      * writes the TwiML, SCR's own config is the wrong source.
      */
     describe('resolveCallLanguages (whoever writes the TwiML owns the languages)', () => {

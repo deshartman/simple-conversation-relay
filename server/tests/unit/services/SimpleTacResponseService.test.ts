@@ -1,5 +1,5 @@
 /**
- * MiniTacResponseService — HTTP adapter to a MINI-TAC agent.
+ * SimpleTacResponseService — HTTP adapter to a SIMPLE-TAC agent.
  *
  * fetch is stubbed so the tests pin the wire contract: session creation on
  * the setup event, NDJSON token mapping, interrupt semantics, dtmf/status
@@ -7,7 +7,7 @@
  */
 
 import { describe, it, expect, beforeEach, afterEach, vi } from 'vitest';
-import { MiniTacResponseService } from '../../../src/services/MiniTacResponseService.js';
+import { SimpleTacResponseService } from '../../../src/services/SimpleTacResponseService.js';
 
 type Call = { method: string; url: string; body: any; auth: string | null };
 
@@ -32,7 +32,7 @@ function setup(respondLines: object[] = [{ token: 'Hi' }, { token: ' there' }, {
         return Response.json({ ok: true });
     }));
 
-    const service = new MiniTacResponseService({ baseUrl: 'http://localhost:8000/', apiKey: 'secret' });
+    const service = new SimpleTacResponseService({ baseUrl: 'http://localhost:8000/', apiKey: 'secret' });
     const content: { token: string; last: boolean }[] = [];
     const toolResults: any[] = [];
     service.createResponseHandler({
@@ -55,7 +55,7 @@ async function started(respondLines?: object[]) {
 
 const flush = () => new Promise(r => setTimeout(r, 0));
 
-describe('MiniTacResponseService', () => {
+describe('SimpleTacResponseService', () => {
     beforeEach(() => vi.restoreAllMocks());
     afterEach(() => vi.unstubAllGlobals());
 
@@ -89,7 +89,7 @@ describe('MiniTacResponseService', () => {
         ]);
     });
 
-    it('does not emit last:true when MINI-TAC reports the turn interrupted', async () => {
+    it('does not emit last:true when SIMPLE-TAC reports the turn interrupted', async () => {
         const { service, content } = await started([{ token: 'Hi' }, { last: true, interrupted: true }]);
         await service.handleEvent({ type: 'prompt', text: 'hello' });
 
@@ -116,7 +116,7 @@ describe('MiniTacResponseService', () => {
             );
         }
 
-        it('asks /events for wording and returns MINI-TAC text', async () => {
+        it('asks /events for wording and returns SIMPLE-TAC text', async () => {
             const { service } = await started();
             let asked: unknown;
             eventsReply(async init => {
@@ -128,7 +128,7 @@ describe('MiniTacResponseService', () => {
             expect(asked).toEqual({ type: 'silence', count: 1 });
         });
 
-        it('returns null when MINI-TAC has no wording ({ok:true})', async () => {
+        it('returns null when SIMPLE-TAC has no wording ({ok:true})', async () => {
             const { service } = await started();
             eventsReply(async () => Response.json({ ok: true }));
 
@@ -142,7 +142,7 @@ describe('MiniTacResponseService', () => {
             expect(await service.silenceReminder(2)).toBeNull();
         });
 
-        it('gives up after 1.5s so a slow MINI-TAC cannot delay the reminder', async () => {
+        it('gives up after 1.5s so a slow SIMPLE-TAC cannot delay the reminder', async () => {
             const { service } = await started();
             eventsReply(
                 init =>
@@ -159,14 +159,14 @@ describe('MiniTacResponseService', () => {
         });
     });
 
-    it('ignores a context event — MINI-TAC owns its prompt', async () => {
+    it('ignores a context event — SIMPLE-TAC owns its prompt', async () => {
         const { service, calls } = await started();
         await service.handleEvent({ type: 'context', key: 'campaign' });
 
         expect(calls).toHaveLength(1); // just /sessions
     });
 
-    it('makes no MINI-TAC calls before the setup event', async () => {
+    it('makes no SIMPLE-TAC calls before the setup event', async () => {
         const { service, calls } = setup();
         await service.handleEvent({ type: 'dtmf', digit: '1' });
 
@@ -190,7 +190,7 @@ describe('MiniTacResponseService', () => {
 
         expect(toolResults).toEqual([{
             toolType: 'handoff',
-            toolData: { success: true, message: 'from MINI-TAC', action: { type: 'endCall', handoffData } },
+            toolData: { success: true, message: 'from SIMPLE-TAC', action: { type: 'endCall', handoffData } },
         }]);
         expect(order).toEqual(['token', 'handoff', 'last']);
     });
@@ -204,7 +204,7 @@ describe('MiniTacResponseService', () => {
         expect(interrupt.body).toEqual({ heard: 'Hi th' });
     });
 
-    it('deletes the session on cleanup so MINI-TAC can consolidate memory', async () => {
+    it('deletes the session on cleanup so SIMPLE-TAC can consolidate memory', async () => {
         const { service, calls } = await started();
         service.cleanup();
         await flush();

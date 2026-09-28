@@ -54,14 +54,14 @@ export class ServerConfig {
     public readonly validateWsSignature: boolean;
     /**
      * Token for the account whose TwiML opens the WebSocket. That can be another
-     * account (MINI-TAC's), so CR_SIGNING_AUTH_TOKEN overrides AUTH_TOKEN.
+     * account (SIMPLE-TAC's), so CR_SIGNING_AUTH_TOKEN overrides AUTH_TOKEN.
      */
     public readonly crSigningAuthToken: string;
 
-    /** Voice-call response back end: 'openai' (default) or 'mini-tac'. */
+    /** Voice-call response back end: 'openai' (default) or 'simple-tac'. */
     public readonly responseService: string;
-    public readonly miniTacUrl: string;
-    public readonly miniTacApiKey?: string;
+    public readonly simpleTacUrl: string;
+    public readonly simpleTacApiKey?: string;
 
     constructor(data: {
         port: number;
@@ -81,8 +81,8 @@ export class ServerConfig {
         validateWsSignature: boolean;
         crSigningAuthToken: string;
         responseService: string;
-        miniTacUrl: string;
-        miniTacApiKey?: string;
+        simpleTacUrl: string;
+        simpleTacApiKey?: string;
     }) {
         this.port = data.port;
         this.serverBaseUrl = data.serverBaseUrl;
@@ -101,8 +101,8 @@ export class ServerConfig {
         this.validateWsSignature = data.validateWsSignature;
         this.crSigningAuthToken = data.crSigningAuthToken;
         this.responseService = data.responseService;
-        this.miniTacUrl = data.miniTacUrl;
-        this.miniTacApiKey = data.miniTacApiKey;
+        this.simpleTacUrl = data.simpleTacUrl;
+        this.simpleTacApiKey = data.simpleTacApiKey;
     }
 
     /**
@@ -134,7 +134,7 @@ export class ServerConfig {
         ];
 
         const responseService = process.env.RESPONSE_SERVICE_TYPE || 'openai';
-        if (responseService === 'mini-tac') required.push('MINI_TAC_API_KEY');
+        if (responseService === 'simple-tac') required.push('SIMPLE_TAC_API_KEY');
 
         const missing = required.filter(key => !process.env[key]);
         if (missing.length > 0) {
@@ -166,8 +166,8 @@ export class ServerConfig {
             validateWsSignature: process.env.VALIDATE_WS_SIGNATURE !== 'false',
             crSigningAuthToken: process.env.CR_SIGNING_AUTH_TOKEN || process.env.AUTH_TOKEN!,
             responseService,
-            miniTacUrl: process.env.MINI_TAC_URL || 'http://localhost:8000',
-            miniTacApiKey: process.env.MINI_TAC_API_KEY
+            simpleTacUrl: process.env.SIMPLE_TAC_URL || 'http://localhost:8000',
+            simpleTacApiKey: process.env.SIMPLE_TAC_API_KEY
         });
     }
 
@@ -191,7 +191,7 @@ export class ServerConfig {
             validateWsSignature: false,
             crSigningAuthToken: 'test-twilio-token',
             responseService: 'openai',
-            miniTacUrl: 'http://localhost:8000',
+            simpleTacUrl: 'http://localhost:8000',
             ...overrides as any
         });
     }
