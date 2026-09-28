@@ -17,7 +17,7 @@ import { fileURLToPath } from 'url';
 import { existsSync } from 'fs';
 import path from 'path';
 
-import { ConversationRelaySession } from './services/ConversationRelaySession.js';
+import { ConversationRelaySession, resolveCallLanguages } from './services/ConversationRelaySession.js';
 import { OpenAIResponseService } from './services/OpenAIResponseService.js';
 import { MiniTacResponseService } from './services/MiniTacResponseService.js';
 import type { ResponseService } from './interfaces/ResponseService.js';
@@ -297,17 +297,26 @@ app.ws('/conversation-relay', (ws: any, req: express.Request) => {
                 const responseService = createResponseService();
 
                 // The declared <Language> codes double as the allow-list for
-                // automatic TTS switching, so the session resolves a detected
-                // language against exactly what the TwiML advertised.
+                // automatic TTS switching, so the session must resolve against
+                // what *this call's* TwiML advertised. Whoever wrote the TwiML
+                // says so via <Parameter>s; SCR's config is only the fallback.
                 const crConfig = cachedAssetsService.getConversationRelayConfig();
+                const callLanguages = resolveCallLanguages(message.customParameters, {
+                    languages: Object.keys(cachedAssetsService.getLanguages() ?? {}),
+                    ttsLanguage: crConfig?.ttsLanguage,
+                });
+                logOut(
+                    'WS',
+                    `Languages from ${callLanguages.source}: ${callLanguages.languages.join(',') || '(none)'} (tts=${callLanguages.ttsLanguage ?? '-'})`
+                );
                 session = new ConversationRelaySession({
                     responseService,
                     sessionData,
                     silenceConfig: activeAssets.silenceDetection,
                     initialListenMode: activeAssets.listenMode.enabled,
                     send,
-                    declaredLanguages: Object.keys(cachedAssetsService.getLanguages() ?? {}),
-                    initialTtsLanguage: crConfig?.ttsLanguage,
+                    declaredLanguages: callLanguages.languages,
+                    initialTtsLanguage: callLanguages.ttsLanguage,
                 });
 
                 if (message.callSid) {

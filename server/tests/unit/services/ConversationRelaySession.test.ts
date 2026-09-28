@@ -19,7 +19,7 @@
  */
 
 import { describe, it, expect, beforeEach, afterEach, vi } from 'vitest';
-import { ConversationRelaySession } from '../../../src/services/ConversationRelaySession.js';
+import { ConversationRelaySession, resolveCallLanguages } from '../../../src/services/ConversationRelaySession.js';
 
 function makeFakeResponseService() {
     return {
@@ -428,6 +428,51 @@ describe('ConversationRelaySession', () => {
 
             const types = responseService.handleEvent.mock.calls.map(c => c[0].type);
             expect(types).toEqual(['setup']);
+        });
+    });
+
+    /**
+     * The allow-list must describe the call's TwiML. When another app (MINI-TAC)
+     * writes the TwiML, SCR's own config is the wrong source.
+     */
+    describe('resolveCallLanguages (whoever writes the TwiML owns the languages)', () => {
+        const config = { languages: ['en-AU', 'en-NZ', 'fr-FR', 'es-ES'], ttsLanguage: 'multi' };
+
+        it("uses the call's <Parameter>s when present", () => {
+            expect(
+                resolveCallLanguages({ crLanguages: 'en-GB, de-DE', crTtsLanguage: 'en-GB' }, config)
+            ).toEqual({ languages: ['en-GB', 'de-DE'], ttsLanguage: 'en-GB', source: 'call' });
+        });
+
+        it("falls back to config ttsLanguage when the call gives languages only", () => {
+            expect(resolveCallLanguages({ crLanguages: 'en-GB' }, config)).toEqual({
+                languages: ['en-GB'],
+                ttsLanguage: 'multi',
+                source: 'call',
+            });
+        });
+
+        it('falls back to config when the call says nothing (or an empty list)', () => {
+            expect(resolveCallLanguages(undefined, config)).toEqual({ ...config, source: 'config' });
+            expect(resolveCallLanguages({ crLanguages: ' , ' }, config)).toEqual({ ...config, source: 'config' });
+        });
+
+        it("drives the session's switching: an undeclared-by-the-call language is left alone", async () => {
+            const langs = resolveCallLanguages({ crLanguages: 'en-GB,de-DE' }, config);
+            const { session, sent } = makeSession({
+                initialListenMode: false,
+                silenceEnabled: false,
+                declaredLanguages: langs.languages,
+                initialTtsLanguage: 'multi',
+            });
+            sessions.push(session);
+
+            await session.handleIncoming({ type: 'prompt', voicePrompt: 'bonjour', lang: 'fr' } as any);
+            await session.handleIncoming({ type: 'prompt', voicePrompt: 'hallo', lang: 'de' } as any);
+
+            // fr-FR is in SCR's config but not this call's TwiML, so no switch;
+            // de resolves to the call's own de-DE.
+            expect(sent.filter(f => f.type === 'language').map(f => f.ttsLanguage)).toEqual(['de-DE']);
         });
     });
 

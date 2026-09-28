@@ -62,7 +62,26 @@ Non-negotiable pairings — getting these wrong sends an error frame and **disco
 | `transcriptionProvider` / `speechModel` | must be a valid pair (e.g. Deepgram + `nova-3-general`) |
 | `ttsProvider` / `voice` | must be a valid pair |
 
-### The `languages` array is the allow-list
+### The allow-list comes from the call, not SCR's config
+
+The setup frame does not say which `<Language>`s the TwiML declared, so whoever
+writes the TwiML tells the session via two `<Parameter>`s:
+
+```xml
+<Parameter name="crLanguages"   value="en-AU,en-NZ,fr-FR,es-ES"/>
+<Parameter name="crTtsLanguage" value="multi"/>
+```
+
+SCR's own TwiML emits these automatically. A TwiML written elsewhere (e.g.
+MINI-TAC's) should emit them for its own `<Language>`s. When they are absent,
+the session falls back to SCR's `languages` config — correct only if the two
+match. The startup of each call logs which source was used:
+
+```
+[WS] Languages from call: en-AU,fr-FR (tts=multi)
+```
+
+### The `languages` array is the allow-list (for SCR's own TwiML)
 
 It serves two purposes, and the second one is this server's own convention rather than a platform behaviour:
 
@@ -76,7 +95,8 @@ Only the parent `<ConversationRelay>` attributes decide what is active at the st
 | Step | Location |
 |---|---|
 | Renders `<Language>` children from `languages` | `src/services/TwilioService.ts` — `connectConversationRelay()` |
-| Supplies declared codes + opening `ttsLanguage` to the session | `src/server.ts` — the `new ConversationRelaySession({...})` call |
+| Advertises its declared codes + opening `ttsLanguage` as `<Parameter name="crLanguages">` / `crTtsLanguage` | `src/services/TwilioService.ts` — `connectConversationRelay()` |
+| Resolves the call's codes (its `<Parameter>`s, else SCR config) for the session | `src/services/ConversationRelaySession.ts` — `resolveCallLanguages()`, called from `src/server.ts` |
 | Builds the `primary tag -> declared code` map | `src/services/ConversationRelaySession.ts` — constructor |
 | Reads `lang` off each prompt and switches TTS | `src/services/ConversationRelaySession.ts` — `autoSwitchTtsLanguage()` |
 | Explicit caller-requested switch (LLM tool) | `src/tools/switch-language.ts` -> `ConversationRelaySession.switchLanguage()` |

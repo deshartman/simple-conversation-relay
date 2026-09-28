@@ -45,6 +45,37 @@ const SILENCE_WORDING_TIMEOUT_MS = 1500;
 
 const LISTEN_MODE_GATED: ReadonlySet<OutgoingFrame['type']> = new Set(['text', 'play', 'language']);
 
+/**
+ * `<Parameter>` names the TwiML author uses to tell the session which
+ * `<Language>` codes and opening `ttsLanguage` the call was set up with. The
+ * setup frame carries neither, so without these the session could only guess
+ * from its own config — which drifts when someone else writes the TwiML.
+ */
+export const CALL_LANGUAGES_PARAM = 'crLanguages';
+export const CALL_TTS_LANGUAGE_PARAM = 'crTtsLanguage';
+
+/**
+ * The call's declared languages and opening TTS language: from the TwiML's
+ * `<Parameter>`s when present, otherwise the transport's own config.
+ */
+export function resolveCallLanguages(
+    customParameters: Record<string, string> | undefined,
+    fallback: { languages: string[]; ttsLanguage?: string }
+): { languages: string[]; ttsLanguage?: string; source: 'call' | 'config' } {
+    const declared = customParameters?.[CALL_LANGUAGES_PARAM]
+        ?.split(',')
+        .map(code => code.trim())
+        .filter(Boolean);
+    if (declared?.length) {
+        return {
+            languages: declared,
+            ttsLanguage: customParameters?.[CALL_TTS_LANGUAGE_PARAM] || fallback.ttsLanguage,
+            source: 'call',
+        };
+    }
+    return { ...fallback, source: 'config' };
+}
+
 export interface ConversationRelaySessionOptions {
     responseService: ResponseService;
     sessionData: SessionData;
