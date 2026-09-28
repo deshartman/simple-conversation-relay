@@ -6,7 +6,7 @@
  * built with the SDK's own `getExpectedTwilioSignature`.
  */
 
-import type { RequestHandler } from 'express';
+import type { Request, RequestHandler } from 'express';
 import twilio from 'twilio';
 import { logOut } from '../utils/logger.js';
 
@@ -57,4 +57,24 @@ export function createTwilioSignatureValidator(opts: TwilioSignatureOptions): Re
         protocol: 'https',
         host: opts.host,
     }) as RequestHandler;
+}
+
+/**
+ * Verify `X-Twilio-Signature` on a ConversationRelay WebSocket upgrade.
+ *
+ * Twilio signs the wss:// URL it was given (query string included, no body
+ * params). The public URL is rebuilt from X-Forwarded-Proto/Host, falling back
+ * to Host, since behind a tunnel the socket itself is plain http on localhost.
+ */
+export function isValidWsUpgrade(req: Request, authToken: string): boolean {
+    const signature = req.headers['x-twilio-signature'];
+    if (typeof signature !== 'string' || !authToken) return false;
+
+    const forwardedProto = String(req.headers['x-forwarded-proto'] ?? 'https').split(',')[0].trim();
+    const proto = forwardedProto === 'http' || forwardedProto === 'ws' ? 'ws' : 'wss';
+    const host = String(req.headers['x-forwarded-host'] ?? req.headers.host ?? '').split(',')[0].trim();
+    // express-ws rewrites the URL to `<path>/.websocket?<query>`; undo that.
+    const pathAndQuery = req.originalUrl.replace('/.websocket', '');
+
+    return twilio.validateRequest(authToken, signature, `${proto}://${host}${pathAndQuery}`, {});
 }
