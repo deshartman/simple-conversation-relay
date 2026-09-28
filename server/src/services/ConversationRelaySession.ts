@@ -86,7 +86,8 @@ export interface ConversationRelaySessionOptions {
     /**
      * Language codes declared as <Language> children in the TwiML, e.g.
      * ['en-AU', 'fr-FR']. Doubles as the allow-list for automatic TTS
-     * switching: a detected language with no declared entry is left alone.
+     * switching (a detected language with no declared entry is left alone)
+     * and for `language` actions (Twilio rejects an undeclared code).
      */
     declaredLanguages?: string[];
     /** ttsLanguage the TwiML opened on, so an already-active code isn't re-sent. */
@@ -104,6 +105,7 @@ export class ConversationRelaySession {
 
     /** Detected primary tag (`fr`) -> declared code (`fr-FR`). First declaration wins. */
     private readonly ttsLanguageByTag: Map<string, string>;
+    private readonly declaredLanguages: ReadonlySet<string>;
     private activeTtsLanguage: string | null;
     private manualLanguageOverride = false;
 
@@ -120,6 +122,7 @@ export class ConversationRelaySession {
         this.listenMode = opts.initialListenMode;
         this.logPrefix = `Call SID: ${this.sessionData.setupData.callSid ?? 'unknown'}]`;
 
+        this.declaredLanguages = new Set(opts.declaredLanguages ?? []);
         this.ttsLanguageByTag = new Map();
         for (const code of opts.declaredLanguages ?? []) {
             const tag = code.split('-')[0].toLowerCase();
@@ -541,10 +544,22 @@ export class ConversationRelaySession {
             case 'silence':
                 this.setSilenceDetection(action.enabled);
                 return;
+            case 'language': {
+                // Twilio rejects a code the TwiML didn't declare, so resolve
+                // each one against the declared list (same lookup as the
+                // auto-switch: `en-US` -> the declared `en-AU`).
+                const ttsLanguage = this.resolveDeclaredLanguage(action.ttsLanguage, toolType);
+                const transcriptionLanguage = this.resolveDeclaredLanguage(action.transcriptionLanguage, toolType);
+                if (ttsLanguage === null || transcriptionLanguage === null) return;
+                const frame: CallAction = { type: 'language' };
+                if (ttsLanguage) frame.ttsLanguage = ttsLanguage;
+                if (transcriptionLanguage) frame.transcriptionLanguage = transcriptionLanguage;
+                this.applyToolFrame(frame, toolType);
+                return;
+            }
             case 'endCall':
             case 'sendDigits':
-            case 'play':
-            case 'language': {
+            case 'play': {
                 const { type, ...fields } = action;
                 const frameType = type === 'endCall' ? 'end' : type;
                 this.applyToolFrame({ type: frameType, ...fields }, toolType);
@@ -556,6 +571,27 @@ export class ConversationRelaySession {
                     `${this.logPrefix} Tool '${toolType}' requested unknown action: ${JSON.stringify(action)}`
                 );
         }
+    }
+
+    /**
+     * A declared code for `code`: itself if declared, else the declared code
+     * with the same primary tag. `undefined` passes through; null means no
+     * declared match, so the action is dropped. With no declared list, every
+     * code passes.
+     */
+    private resolveDeclaredLanguage(code: string | undefined, toolType: string): string | undefined | null {
+        if (code === undefined || code === 'multi' || this.declaredLanguages.size === 0) return code;
+        if (this.declaredLanguages.has(code)) return code;
+        const match = this.ttsLanguageByTag.get(code.split('-')[0].toLowerCase());
+        if (match) {
+            logOut('Session', `${this.logPrefix} Tool '${toolType}' asked for ${code} — using declared ${match}`);
+            return match;
+        }
+        logError(
+            'Session',
+            `${this.logPrefix} Tool '${toolType}' asked for undeclared language ${code} — declared: ${[...this.declaredLanguages].join(', ')}`
+        );
+        return null;
     }
 
     private applyToolFrame(outgoing: unknown, toolType: string): void {

@@ -489,6 +489,34 @@ describe('ConversationRelaySession', () => {
             expect(session.isListenMode()).toBe(true);
         });
 
+        it('maps an undeclared code to the declared one with the same tag', () => {
+            const { session, sent, responseService } = makeSession({
+                initialListenMode: false,
+                declaredLanguages: ['en-AU', 'fr-FR'],
+            });
+            sessions.push(session);
+
+            act(responseService, { type: 'language', ttsLanguage: 'en-US', transcriptionLanguage: 'en-GB' });
+            act(responseService, { type: 'language', ttsLanguage: 'fr-FR', transcriptionLanguage: 'multi' });
+
+            expect(sent).toEqual([
+                { type: 'language', ttsLanguage: 'en-AU', transcriptionLanguage: 'en-AU' },
+                { type: 'language', ttsLanguage: 'fr-FR', transcriptionLanguage: 'multi' },
+            ]);
+        });
+
+        it('drops a language action with no declared match', () => {
+            const { session, sent, responseService } = makeSession({
+                initialListenMode: false,
+                declaredLanguages: ['en-AU', 'fr-FR'],
+            });
+            sessions.push(session);
+
+            act(responseService, { type: 'language', ttsLanguage: 'de-DE' });
+
+            expect(sent).toEqual([]);
+        });
+
         it('drops an action whose frame is invalid', () => {
             const { session, sent, responseService } = makeSession({ initialListenMode: false });
             sessions.push(session);
