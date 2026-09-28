@@ -3,12 +3,12 @@
  *
  * Tests for the send-sms tool factory and execution.
  * v4.12: factory returns a `ConversationRelayTool` record; tests call
- * `tool.handler(args, session)` instead of `tool(args, responseService)`.
+ * `tool.handler(args, ctx)` instead of `tool(args, responseService)`.
  */
 
 import { describe, it, expect, beforeEach, vi } from 'vitest';
-import { createSendSMSTool } from '../../../src/tools/send-sms.js';
-import { ServerConfig } from '../../../src/config/ServerConfig.js';
+import { createSendSMSTool } from '../../../../src/tools/llm/send-sms.js';
+import { ServerConfig } from '../../../../src/config/ServerConfig.js';
 
 // Mock the twilio module
 const mockCreate = vi.fn();
@@ -24,7 +24,7 @@ vi.mock('twilio', () => {
 
 import twilio from 'twilio';
 
-// A minimal session stand-in. send-sms doesn't touch the session, so an empty
+// A minimal ToolContext stand-in. send-sms doesn't touch it, so an empty
 // object satisfies the handler signature at runtime.
 const stubSession = {} as any;
 

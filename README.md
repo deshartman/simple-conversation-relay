@@ -69,7 +69,7 @@ See the [CHANGELOG.md](./CHANGELOG.md) for detailed release history.
 │   ├── tsconfig.json     # TypeScript configuration
 │   ├── assets/
 │   │   ├── defaultContext.md    # Default LLM system prompt (markdown)
-│   │   ├── serverConfig.json    # TwiML config, silence detection, active context key
+│   │   ├── serverConfig.json    # TwiML config, silence detection, listen mode
 │   │   └── legs/                # Optional per-leg context.md overrides
 │   └── src/
 │       ├── server.ts                    # Express + WebSocket entrypoint
@@ -85,7 +85,6 @@ See the [CHANGELOG.md](./CHANGELOG.md) for detailed release history.
 │       │   ├── OpenAIResponseService.ts     # OpenAI Responses API + ToolRegistry
 │       │   ├── CachedAssetsService.ts       # Context cache + server config (v4.12 slim)
 │       │   ├── FileAssetLoader.ts           # Load assets from disk
-│       │   ├── SyncAssetLoader.ts           # Load assets from Twilio Sync
 │       │   ├── SilenceHandler.ts            # Progressive-timeout silence detection (v4.12)
 │       │   └── TwilioService.ts             # TwiML + outbound + status callback
 │       ├── tools/                       # CR tools (v4.12: defineTool + ToolRegistry)
@@ -186,31 +185,27 @@ ngrok http --domain server-yourdomain.ngrok.dev 3007
 
 ### TwiML Configuration
 
-The server **dynamically generates TwiML** using configuration stored in Twilio Sync Maps. Instead of hardcoded values, all conversation relay parameters are loaded from your Sync configuration:
+The server **dynamically generates TwiML** from `server/assets/serverConfig.json`. Instead of hardcoded values, all conversation relay parameters are loaded from that configuration:
 
 ```typescript
-// TwiML is generated dynamically from Sync Maps configuration
-const config = await this.getConversationRelayConfig(); // Loads from Sync Maps
+// TwiML is generated dynamically from serverConfig.json
+const config = await this.getConversationRelayConfig(); // Loads from serverConfig.json
 const languages = await this.getLanguages(); // Loads language settings
 
 const conversationRelay = connect.conversationRelay({
     url: `wss://${serverBaseUrl}/conversation-relay`,
-    transcriptionProvider: config.transcriptionProvider,  // From Sync Maps
-    speechModel: config.speechModel,                      // From Sync Maps
-    interruptible: config.interruptible,                  // From Sync Maps
-    ttsProvider: config.ttsProvider,                      // From Sync Maps
-    voice: config.voice,                                  // From Sync Maps
-    dtmfDetection: config.dtmfDetection,                  // From Sync Maps
-    welcomeGreeting: config.welcomeGreeting               // From Sync Maps
+    transcriptionProvider: config.transcriptionProvider,  // From serverConfig.json
+    speechModel: config.speechModel,                      // From serverConfig.json
+    interruptible: config.interruptible,                  // From serverConfig.json
+    ttsProvider: config.ttsProvider,                      // From serverConfig.json
+    voice: config.voice,                                  // From serverConfig.json
+    dtmfDetection: config.dtmfDetection,                  // From serverConfig.json
+    welcomeGreeting: config.welcomeGreeting               // From serverConfig.json
 });
 ```
 
 **Configuration Management:**
-- **File Mode (`"assetLoaderType": "file"`)**: Configuration loaded from `serverConfig.json`
-- **Sync Mode (`"assetLoaderType": "sync"`)**:
-  - Configuration stored in Sync `serverConfig` document
-  - Local `serverConfig.json` automatically synced to Sync on startup
-  - Configuration can be updated via Sync API without server restarts
+- **Source**: Configuration loaded from `serverConfig.json` at startup
 - **Language Support**: Languages array nested in `ConversationRelay.Configuration.languages[]`
 - **Enhanced Properties**: Full Twilio ConversationRelay TwiML properties supported
 
@@ -238,7 +233,7 @@ TWILIO_REGION=au1       # Region code (e.g., au1, ie1, us1)
 **Important Notes:**
 - Both `TWILIO_EDGE` and `TWILIO_REGION` must be specified together
 - If not configured, the system defaults to Twilio's global low-latency routing
-- Edge routing applies to all Twilio API calls (voice, SMS, Sync, etc.)
+- Edge routing applies to all Twilio API calls (voice, SMS, etc.)
 
 **When to Use:**
 - Your infrastructure is deployed in a specific region (e.g., hosting in Australia)
@@ -254,24 +249,18 @@ TWILIO_REGION=au1       # Region code (e.g., au1, ie1, us1)
 
 ## OpenAI Context Configuration
 
-The server supports flexible context and manifest management through both local files and Twilio Sync storage:
+Contexts are loaded from local files in `server/assets/`:
 
 ### Asset Loading Approaches
 
-**File-Based Loading (`"assetLoaderType": "file"`):**
+**File-Based Loading (`"assetLoaderType": "file"`, the only supported loader):**
 - **Contexts**: All `.md` files and files containing "context" in the name
 - **Manifests**: All `.json` files containing "manifest" or "tool" in the name (excluding `serverConfig.json`)
 - **Best for**: Development, version control of assets, simple deployments
 
-**Sync-Based Loading (`"assetLoaderType": "sync"`):**
-- **Hybrid Approach**: Local files automatically synced to Twilio Sync on startup
-- **Runtime Management**: Contexts and manifests can be managed directly in Sync
-- **Persistence**: Sync-managed content preserved between server restarts
-- **Best for**: Production deployments, dynamic asset management, multi-environment setups
-
 ### Context Documents
 
-Context documents are stored as **string content** in Sync Maps with unique keys:
+Context documents are `.md` files in `server/assets/`, keyed by filename:
 
 **Context Structure:**
 - **AI Assistant Persona** - Define the AI's role and personality
@@ -288,7 +277,13 @@ Context documents are stored as **string content** in Sync Maps with unique keys
 
 ### Tools (v4.12: in-code registry)
 
-Tools are defined in code under `server/src/tools/` using the `defineTool({ name, description, parameters, handler })` factory. The `defaultToolManifest.json` / `legs/*/toolManifest.json` files have been removed — schema (what OpenAI sees) and handler (what runs) are now co-located in each tool file. `buildDefaultRegistry(config, cache)` in `server/src/tools/index.ts` registers all tools once at startup, and the same `ToolRegistry` is handed to every `ConversationRelaySession`.
+Tools are defined in code under `server/src/tools/` using the `defineTool({ name, description, parameters, handler })` factory. The `defaultToolManifest.json` / `legs/*/toolManifest.json` files have been removed — schema (what OpenAI sees) and handler (what runs) are now co-located in each tool file. `buildDefaultRegistry(config, contexts)` in `server/src/tools/index.ts` registers all tools once at startup, and the same `ToolRegistry` is handed to every `OpenAIResponseService`. Tools belong to the ResponseService, not the transport: a handler receives `(args, ctx)`, where `ctx` is the service's `ToolContext` (currently `changeContext(context, summary)`), never the session. Tools affect the call only through the `action` they return.
+
+Tools are split by what they touch:
+- `server/src/tools/cr/` — call-control tools. Each only *requests* a call action (`endCall`, `sendDigits`, `play`, `language`, `listenMode`, `silence`); `ConversationRelaySession` owns what the action means on the wire (which frame, and that `endCall` waits for the farewell). No tool builds a CR frame.
+- `server/src/tools/llm/` — tools that don't act on the call (`send-sms`, `change-context`).
+
+Any other ResponseService uses the same actions: it passes `toolData.action` to `toolResult` and gets back an `ActionOutcome`.
 
 **Available Tools (9 total, all registered by default):**
 1. `end-call` — Gracefully terminates the current call
@@ -299,18 +294,16 @@ Tools are defined in code under `server/src/tools/` using the `defineTool({ name
 6. `play-media` — Plays audio media from URLs
 7. `set-listen-mode` — Toggles outbound text/play/language suppression for listen-only mode
 8. `set-silence-detection` — Enables/disables the silence reminder timer mid-call
-9. `change-context` — Switches the LLM's system prompt mid-call (factory: captures `CachedAssetsService`)
+9. `change-context` — Switches the LLM's system prompt mid-call (factory: captures `ContextStore`; applies via `ctx.changeContext`)
 
 **Adding a new tool:**
-1. Create `server/src/tools/my-tool.ts` that exports a `defineTool({...})` record (or a factory returning one, if it needs DI).
+1. Create `server/src/tools/cr/my-tool.ts` (acts on the call) or `server/src/tools/llm/my-tool.ts` that exports a `defineTool({...})` record (or a factory returning one, if it needs DI).
 2. Add one `.register(myTool)` line in `server/src/tools/index.ts`.
 
 No JSON editing, no filename/manifest-name coupling. Type parameters on `defineTool<TArgs, TResult>` tie the handler's args type to the declared schema — a mismatch fails at compile time.
 
-**Tool-result side-effect conventions:** handlers can return any combination of:
-- `outgoingMessage: { type: 'end' | 'sendDigits' | 'play' | 'language' | 'text', ... }` — Zod-validated and shipped to Twilio (or deferred for terminal `end` frames).
-- `listenMode: boolean` — toggles session listen-mode suppression.
-- `silenceEnabled: boolean` — toggles session silence detection.
+**Tool-result conventions:** handlers return `{ success, message }` plus:
+- `action` (optional) — a `CallAction` the transport applies: `endCall {handoffData?}` (deferred until after the farewell; the only action that ends the call), `sendDigits {digits}`, `play {source, loop?, …}`, `language {ttsLanguage?, transcriptionLanguage?}`, `listenMode {enabled}`, `silence {enabled}`. Invalid actions are dropped by the transport's frame validation. `language` codes are resolved against the call's declared `<Language>`s (`en-GB` → `en-AU`; no match → dropped), and an applied switch stops automatic language detection for the rest of the call. The transport returns an `ActionOutcome {applied, terminal, detail?}` from `toolResult`; `OpenAIResponseService` puts that in the function output so the model hears what really happened, and uses `terminal` to skip a second farewell.
 - Any other fields — passed back to the LLM as the function-call output.
 
 ### Language Switching Example
@@ -380,14 +373,14 @@ curl -X POST '/updateResponseService' \
 # 1. Start the server (automatically creates defaults)
 npm run dev
 
-# 2. Make a test call (uses defaultContext and defaultToolManifest automatically)
+# 2. Make a test call (OpenAI mode uses defaultContext.md automatically)
 # No additional setup required!
 ```
 
 **Adding a Custom Context:**
 
-1. Drop a new `.md` file into `server/assets/` (or `server/assets/legs/`). Contexts are discovered at startup by the `FileAssetLoader`.
-2. Either set it as the default by editing `serverConfig.json`'s `AssetLoader.activeContextKey`, or switch to it at runtime via `POST /updateResponseService` with `contextKey`.
+1. Drop a new `<key>.md` file into `server/assets/`. It is read on first use by `ContextStore` (OpenAI mode only).
+2. Select it per call with `customParameters.contextKey`, or switch an active call via `POST /updateResponseService` with `contextKey`. The default is always `defaultContext.md`.
 
 **Configuration Examples by Use Case:**
 
@@ -445,8 +438,8 @@ SERVER_BASE_URL=your_server_url              # Base URL for your server (e.g., n
 OPENAI_API_KEY=your_openai_api_key          # OpenAI API key for GPT integration
 OPENAI_MODEL=gpt-4o                         # OpenAI model to use for conversations
 
-# Twilio Configuration (required for Sync Maps and voice services)
-ACCOUNT_SID=your_twilio_account_sid         # Twilio Account SID for Sync and voice operations
+# Twilio Configuration (required for voice services)
+ACCOUNT_SID=your_twilio_account_sid         # Twilio Account SID for voice operations
 AUTH_TOKEN=your_twilio_auth_token           # Twilio Auth Token for authentication
 API_KEY=your_twilio_api_key                 # Twilio API Key for enhanced authentication
 API_SECRET=your_twilio_api_secret           # Twilio API Secret for enhanced authentication
@@ -464,91 +457,34 @@ If any required variables are missing, the server will fail fast with a clear er
 
 The system requires the following Twilio services to be enabled in your account:
 - **Voice** - For handling phone calls and conversation relay
-- **Sync** - For storing and retrieving configuration data (context documents and tool manifests)
 - **SMS** (optional) - For send-sms tool functionality
 
-## Asset Loading System (v4.6.0)
+## Asset Loading System
 
-The system now supports **flexible asset loading** with two distinct approaches to manage contexts, manifests, and configuration. Choose the approach that best fits your deployment scenario.
+Two kinds of asset, owned by different layers:
 
-### 🔧 Asset Loading Options
+- **Server config** — `server/assets/serverConfig.json`. Loaded at startup by
+  `CachedAssetsService` (via `FileAssetLoader`) for the ConversationRelay side:
+  TwiML attributes, `<Language>`s, silence detection and listen mode.
+- **Contexts (LLM prompts)** — `server/assets/<key>.md`. SCR does **not** load
+  these. Only a ResponseService that owns its prompt reads them, through
+  `ContextStore`, on first use:
+  - `OpenAIResponseService` uses `defaultContext.md`, or the file named by
+    `customParameters.contextKey` on the call's setup.
 
-**Configure in `server/assets/serverConfig.json`:**
 ```json
 {
   "AssetLoader": {
-    "assetLoaderType": "file",  // or "sync"
-    "context": "defaultContext",
-    "manifest": "defaultToolManifest"
+    "assetLoaderType": "file"
   }
 }
 ```
 
-### 📁 Option 1: File-Based Loading (Recommended for Development)
+`"file"` is the only supported loader (Twilio Sync loading was removed); any
+other value fails at startup.
 
-**Perfect for**: Development, testing, simple deployments, getting started
-
-**Setup Steps:**
-1. Set `"assetLoaderType": "file"` in `serverConfig.json`
-2. Place your asset files in `server/assets/`
-3. Start the server - no external dependencies required!
-
-**Required Files:**
-- `server/assets/serverConfig.json` - Main configuration
-- `server/assets/defaultContext.md` - Conversation context
-- `server/assets/defaultToolManifest.json` - Tool definitions
-
-**Benefits:**
-- ✅ No Twilio Sync required
-- ✅ Perfect for development and testing
-- ✅ Simple deployment
-- ✅ Version control friendly
-- ✅ No external dependencies
-
-### ☁️ Option 2: Sync-Based Loading (Recommended for Production)
-
-**Perfect for**: Production deployments, centralized configuration, multiple servers
-
-**Setup Steps:**
-1. Set `"assetLoaderType": "sync"` in `serverConfig.json`
-2. Configure Twilio credentials in `.env`
-3. Start the server - Sync infrastructure is created automatically!
-
-**Automatic Setup Process:**
-1. **Service Creation**: Creates ConversationRelay Sync service automatically
-2. **Map Creation**: Creates Contexts, Manifests, Configuration, Languages maps
-3. **Document Creation**: Creates ServerConfig document
-4. **Asset Population**: Loads initial data from `serverConfig.json`
-
-**Benefits:**
-- ✅ Centralized configuration management
-- ✅ Real-time updates without server restart
-- ✅ Multi-server deployments
-- ✅ Automatic infrastructure creation
-- ✅ Cloud-based persistence
-
-### 🔄 How Asset Loading Works
-
-**File-Based Loading:**
-1. **Direct File Access**: Reads assets directly from `server/assets/` folder
-2. **In-Memory Caching**: Loads into CachedAssetsService for high performance
-3. **Session Independence**: Each conversation gets independent asset copies
-
-**Sync-Based Loading:**
-1. **Sync API Access**: Retrieves assets from Twilio Sync services/maps/documents
-2. **Automatic Infrastructure**: Creates missing Sync resources on startup
-3. **In-Memory Caching**: Caches in CachedAssetsService for performance
-4. **Dynamic Updates**: Changes in Sync are available immediately
-
-### Configuration Keys
-
-**Default Keys:**
-- `defaultContext` - Default conversation context document
-- `defaultToolManifest` - Default tool definitions object
-
-**Custom Keys:**
-- Any custom key can be used to store and retrieve specialized configurations
-- Keys are specified via `contextKey` and `manifestKey` parameters in WebSocket setup
+Context keys must be plain names (`A-Z a-z 0-9 _ -`) and map to
+`server/assets/<key>.md`.
 
 ### Dynamic Configuration Loading
 
@@ -557,8 +493,7 @@ The system now supports **flexible asset loading** with two distinct approaches 
 {
   "type": "setup",
   "customParameters": {
-    "contextKey": "customerServiceContext",
-    "manifestKey": "customerServiceTools"
+    "contextKey": "customerServiceContext"
   }
 }
 ```
@@ -570,146 +505,9 @@ curl -X POST 'https://your-server/updateResponseService' \
   --header 'Content-Type: application/json' \
   --data-raw '{
     "callSid": "CA1234...",
-    "contextKey": "newContext",
-    "manifestKey": "newManifest"
+    "contextKey": "newContext"
   }'
 ```
-
-### Sync Maps Structure
-
-**Context Documents** (stored as strings):
-- `defaultContext`: Default conversation context
-- `customerServiceContext`: Customer service specific context
-- `salesContext`: Sales conversation context
-
-**Tool Manifests** (stored as objects):
-- `defaultToolManifest`: Standard tool set
-- `customerServiceTools`: Customer service specific tools
-- `salesTools`: Sales specific tools
-
-### Managing Additional Configurations
-
-**🔧 Adding Custom Contexts and Manifests:** The system provides default configurations out-of-the-box, but you must add your own custom contexts and manifests directly to Twilio Sync to meet your specific business requirements.
-
-#### Required Setup for Custom Configurations
-
-**IMPORTANT**: The system includes only basic default files for demonstration. For production use, you must upload your own context documents and tool manifests to Twilio Sync Maps:
-
-1. **Upload Your Custom Context**: Add your business-specific context documents to Sync
-   ```bash
-   curl -X POST 'https://your-server/api/sync/context' \
-     --header 'Content-Type: application/json' \
-     --data-raw '{"myBusinessContext": "Your custom context content here..."}'
-   ```
-
-2. **Upload Your Custom Manifest**: Add your custom tool configurations to Sync
-   ```bash
-   curl -X POST 'https://your-server/api/sync/toolmanifest' \
-     --header 'Content-Type: application/json' \
-     --data-raw '{"myBusinessTools": {"tools": [...]}}'
-   ```
-
-3. **Set as Active Configuration**: Configure the system to use your custom configurations
-   ```bash
-   curl -X POST 'https://your-server/api/sync/serverconfig' \
-     --data-raw '{"AssetLoader": {"context": "myBusinessContext", "manifest": "myBusinessTools"}}'
-   ```
-
-4. **Verify Configuration**: Confirm your configurations are loaded
-   ```bash
-   curl 'https://your-server/api/sync/serverconfig'
-   ```
-
-#### Configuration Management Architecture
-
-**📋 How Configuration Works:**
-- **Default Files**: Basic `defaultContext.md` and `defaultToolManifest.json` included for initial setup only
-- **Sync Maps Storage**: All configurations stored in Twilio Sync Maps for cloud access
-- **In-Memory Caching**: CachedAssetsService provides high-performance access after startup
-- **Direct Upload Required**: You must upload your own contexts/manifests to Sync for production use
-- **Per-Call Override**: Individual calls can specify custom `contextKey`/`manifestKey` via WebSocket parameters
-- **Runtime Updates**: Active calls can be updated using the `/updateResponseService` endpoint
-
-### Benefits of Sync Maps Configuration
-
-- **Cloud-Native**: Leverages Twilio's enterprise infrastructure
-- **Real-Time Updates**: Configuration changes available immediately
-- **Dynamic Loading**: Different configurations per call without restarts
-- **Centralized Management**: Single source of truth across all instances
-- **Key-Based Access**: Simple key lookup for configuration retrieval
-- **Scalable Storage**: No local file dependencies or management overhead
-- **Automatic Setup**: Default configurations loaded automatically from local files
-
-## Asset Upload Utility
-
-The system includes a convenient utility script for manually uploading asset files to Twilio Sync. This utility accepts any file path and provides a simple way to upload individual context documents and tool manifests without using the server's API endpoints.
-
-### Usage
-
-```bash
-# From the server directory
-node scripts/upload-assets.js <filepath>
-```
-
-### Supported File Types
-
-- **`.md` files** → Uploaded to Context map (with content wrapper)
-- **`.json` files** → Uploaded to ToolManifest map
-
-### Examples
-
-```bash
-# Upload files using relative paths
-node scripts/upload-assets.js ./assets/customerServiceContext.md
-node scripts/upload-assets.js ./assets/customTools.json
-
-# Upload files from current directory
-node scripts/upload-assets.js myContext.md
-node scripts/upload-assets.js myManifest.json
-
-# Upload files using absolute paths
-node scripts/upload-assets.js /path/to/specialContext.md
-```
-
-### How It Works
-
-1. **File Path Resolution**: Accepts any file path (relative or absolute) and resolves it correctly
-2. **File Validation**: Checks that the file exists at the specified path and has a supported extension
-3. **JSON Parsing**: For `.json` files, validates JSON syntax before upload
-4. **Automatic Naming**: Uses filename (without extension) as the Sync map key
-5. **Update or Create**: Updates existing Sync map items or creates new ones
-6. **Detailed Logging**: Provides clear feedback on upload success/failure
-
-### Asset Naming Convention
-
-The utility automatically derives the Sync map key from the filename:
-
-- `customerServiceContext.md` → Context map key: `customerServiceContext`
-- `customTools.json` → ToolManifest map key: `customTools`
-- `specializedContext.md` → Context map key: `specializedContext`
-
-### Prerequisites
-
-- Twilio credentials must be configured in your `.env` file (`ACCOUNT_SID` and `AUTH_TOKEN`)
-- Server must be built (`npm run build`) to generate compiled JavaScript files
-- Asset files must exist at the specified file path
-
-### Error Handling
-
-The utility provides clear error messages for common issues:
-
-- **Missing file**: `Error: File not found: /path/to/file`
-- **Invalid extension**: `Error: Only .md and .json files are supported`
-- **Invalid JSON**: `Error: Invalid JSON in filename.json`
-- **Missing credentials**: `Error: Missing Twilio credentials`
-
-This utility is perfect for:
-- **Development workflow**: Quick asset synchronization during development
-- **Configuration updates**: Push changes to existing custom assets
-- **Custom deployments**: Upload your specialized contexts and manifests
-- **Testing scenarios**: Easily upload different configurations for testing
-
-**Note**: Default assets (`defaultContext.md`, `defaultToolManifest.json`) are automatically uploaded on server startup, so manual upload is only needed for custom assets.
 
 ## Silence Detection Configuration
 
@@ -733,8 +531,6 @@ Silence detection is configured through the `ConversationRelay.SilenceDetection`
     }
   },
   "AssetLoader": {
-    "context": "defaultContext",
-    "manifest": "defaultToolManifest",
     "assetLoaderType": "file"
   }
 }
@@ -762,6 +558,14 @@ Silence detection is configured through the `ConversationRelay.SilenceDetection`
 3. **Escalation**: Subsequent silence periods trigger next messages in sequence
 4. **Conversation Reset**: Valid user responses reset message index to beginning
 5. **Call Termination**: After all messages exhausted, call ends with "unresponsive" reason
+
+**Who owns what:** the policy — when to remind, how many reminders, when to end —
+belongs to ConversationRelay (`ConversationRelaySession`) and applies whichever
+ResponseService is active. Only the *wording* may come from the service, via the
+optional `silenceReminder(count)`; if it returns nothing, or doesn't answer within
+1.5s, the configured `messages[count-1]` is spoken. A service can reword a
+reminder but cannot skip it or change when the call ends. `OpenAIResponseService`
+uses the configured messages.
 
 ### Dynamic Silence Detection Control (v4.9.7)
 
@@ -905,8 +709,6 @@ Listen mode is configured through the `Server.ListenMode` object in `serverConfi
     "Languages": []
   },
   "AssetLoader": {
-    "context": "defaultContext",
-    "manifest": "defaultToolManifest",
     "assetLoaderType": "file"
   },
   "Server": {
@@ -990,7 +792,7 @@ toolCall('set-listen-mode', { enabled: false });
 
 Listen mode integrates seamlessly with the existing architecture:
 
-- **CachedAssetsService**: Loads listen mode configuration from Sync Maps
+- **CachedAssetsService**: Loads listen mode configuration from `serverConfig.json`
 - **OpenAIResponseService**: Implements early break pattern to skip text processing
 - **Tool Integration**: All tools continue to function normally in listen mode
 - **Runtime Control**: Dynamic switching through standard tool calling patterns
@@ -1352,7 +1154,7 @@ The TwilioService follows a specific architectural pattern to maintain clean sep
 - Creating LLM tools in the `src/tools/` directory
 - Tools should call the Twilio API directly for self-contained execution
 - This ensures tools remain portable and don't depend on service layer coupling
-- **Example**: `src/tools/send-sms.ts` uses direct `twilio.messages.create()` call instead of TwilioService
+- **Example**: `src/tools/llm/send-sms.ts` uses direct `twilio.messages.create()` call instead of TwilioService
 
 This architectural decision ensures LLM tools remain self-contained and portable, avoiding unnecessary service layer dependencies while complex business logic resides appropriately in the service layer.
 

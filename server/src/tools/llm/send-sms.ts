@@ -8,9 +8,9 @@
  */
 
 import twilio from 'twilio';
-import type { ServerConfig } from '../config/ServerConfig.js';
-import { logOut, logError } from '../utils/logger.js';
-import { defineTool, type ConversationRelayTool } from './define-tool.js';
+import type { ServerConfig } from '../../config/ServerConfig.js';
+import { logOut, logError } from '../../utils/logger.js';
+import { defineTool, type ConversationRelayTool } from '../define-tool.js';
 
 interface SendSMSArgs {
     to: string;

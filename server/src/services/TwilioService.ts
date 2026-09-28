@@ -3,6 +3,7 @@ import { EventEmitter } from 'events';
 import { logOut, logError } from '../utils/logger.js';
 import VoiceResponse from 'twilio/lib/twiml/VoiceResponse.js';
 import { CachedAssetsService } from './CachedAssetsService.js';
+import { CALL_LANGUAGES_PARAM, CALL_TTS_LANGUAGE_PARAM } from './ConversationRelaySession.js';
 import { ConversationRelayConfig } from '../interfaces/ConversationRelay.js';
 import { ServerConfig } from '../config/ServerConfig.js';
 
@@ -27,7 +28,7 @@ interface StatusCallback {
  * **Don't use TwilioService (use direct Twilio API) when:**
  * - Creating LLM tools in src/tools/ directory
  * - Tools should call Twilio API directly for self-contained execution
- * - Example: src/tools/send-sms.ts uses direct twilio.messages.create() call
+ * - Example: src/tools/llm/send-sms.ts uses direct twilio.messages.create() call
  *
  * @class
  * @property {string} accountSid - Twilio account SID from environment variables
@@ -192,6 +193,21 @@ class TwilioService extends EventEmitter {
                         if (langConfig[attr]) attributes[attr] = langConfig[attr];
                     });
                     conversationRelay.language(attributes);
+                });
+            }
+
+            // Tell the session what this TwiML declared, so its language
+            // allow-list matches the call rather than SCR's config.
+            if (languages && Object.keys(languages).length > 0) {
+                conversationRelay.parameter({
+                    name: CALL_LANGUAGES_PARAM,
+                    value: Object.keys(languages).join(','),
+                });
+            }
+            if (conversationRelayAttributes.ttsLanguage) {
+                conversationRelay.parameter({
+                    name: CALL_TTS_LANGUAGE_PARAM,
+                    value: conversationRelayAttributes.ttsLanguage,
                 });
             }
 

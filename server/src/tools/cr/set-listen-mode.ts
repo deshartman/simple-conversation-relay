@@ -1,5 +1,6 @@
-import { logOut } from '../utils/logger.js';
-import { defineTool } from './define-tool.js';
+import { logOut } from '../../utils/logger.js';
+import { defineTool } from '../define-tool.js';
+import type { CallAction } from '../../interfaces/ResponseService.js';
 
 interface SetListenModeArgs {
     enabled: boolean;
@@ -8,7 +9,7 @@ interface SetListenModeArgs {
 interface SetListenModeResult {
     success: boolean;
     message: string;
-    listenMode: boolean;
+    action?: CallAction;
     [key: string]: unknown;
 }
 
@@ -34,7 +35,6 @@ export const setListenModeTool = defineTool<SetListenModeArgs, SetListenModeResu
             return {
                 success: false,
                 message: 'enabled parameter is required and must be boolean',
-                listenMode: false,
             };
         }
 
@@ -45,7 +45,7 @@ export const setListenModeTool = defineTool<SetListenModeArgs, SetListenModeResu
         return {
             success: true,
             message: `Listen mode set to ${args.enabled ? 'enabled' : 'disabled'}. ${modeDescription}`,
-            listenMode: args.enabled,
+            action: { type: 'listenMode', enabled: args.enabled },
         };
     },
 });

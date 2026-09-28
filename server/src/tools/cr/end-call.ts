@@ -1,6 +1,6 @@
-import { logOut } from '../utils/logger.js';
-import { defineTool } from './define-tool.js';
-import type { EndFrame } from '../types/crelay.js';
+import { logOut } from '../../utils/logger.js';
+import { defineTool } from '../define-tool.js';
+import type { CallAction } from '../../interfaces/ResponseService.js';
 
 interface EndCallArgs {
     conversationSummary: string;
@@ -10,7 +10,7 @@ interface EndCallResult {
     success: boolean;
     message: string;
     summary: string;
-    outgoingMessage: EndFrame;
+    action: CallAction;
     [key: string]: unknown;
 }
 
@@ -34,8 +34,8 @@ export const endCallTool = defineTool<EndCallArgs, EndCallResult>({
             success: true,
             message: 'Call ended successfully',
             summary: args.conversationSummary,
-            outgoingMessage: {
-                type: 'end',
+            action: {
+                type: 'endCall',
                 handoffData: JSON.stringify({
                     reasonCode: 'end-call',
                     reason: 'Ending the call',
