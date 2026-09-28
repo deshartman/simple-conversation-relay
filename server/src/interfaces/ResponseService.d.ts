@@ -11,7 +11,7 @@ export type ContentHandler = (response: ContentResponse) => void;
 /**
  * Handler function type for tool result events from LLM services
  */
-export type ToolResultHandler = (toolResult: ToolResultEvent) => void;
+export type ToolResultHandler = (toolResult: ToolResultEvent) => ActionOutcome | void;
 
 /**
  * Handler function type for error events from LLM services
@@ -23,7 +23,12 @@ export type ErrorHandler = (error: Error) => void;
  */
 export interface ResponseHandler {
     content(response: ContentResponse): void;
-    toolResult(toolResult: ToolResultEvent): void;
+    /**
+     * Returns what the transport did with the result's `action`, so the
+     * service can tell the model the truth. Handlers with no call (e.g.
+     * `/conversation`) return nothing.
+     */
+    toolResult(toolResult: ToolResultEvent): ActionOutcome | void;
     error(error: Error): void;
     callSid(callSid: string, responseMessage: any): void;
     /**
@@ -49,7 +54,31 @@ export interface ContentResponse {
  */
 export interface ToolResultEvent {
     toolType: string;  // The tool name (e.g., "send-dtmf", "live-agent-handoff", "send-sms")
-    toolData: ToolResult; // The complete tool result including outgoingMessage for CRelay tools
+    toolData: ToolResult; // The complete tool result, incl. `action` for tools that act on the call
+}
+
+/**
+ * Something a service asks the transport to do to the call. The service's
+ * tools decide *when*; the transport owns *what it means* on the wire (which
+ * frame, and that `endCall` waits for the farewell). Services never build CR
+ * frames themselves.
+ */
+export type CallAction =
+    | { type: 'endCall'; handoffData?: string }
+    | { type: 'sendDigits'; digits: string }
+    | { type: 'play'; source: string; loop?: number; interruptible?: boolean; preemptible?: boolean }
+    | { type: 'language'; ttsLanguage?: string; transcriptionLanguage?: string }
+    | { type: 'listenMode'; enabled: boolean }
+    | { type: 'silence'; enabled: boolean };
+
+/** What the transport did with a requested action. */
+export interface ActionOutcome {
+    /** False when the action was dropped (e.g. an undeclared language). */
+    applied: boolean;
+    /** True when the action ends the call — nothing more should be said. */
+    terminal: boolean;
+    /** Why it wasn't applied, or what was substituted. */
+    detail?: string;
 }
 
 /**
@@ -58,8 +87,45 @@ export interface ToolResultEvent {
 export interface ToolResult {
     success: boolean;
     message: string;
+    /** Applied to the call by the transport. */
+    action?: CallAction;
     [key: string]: any; // Allows additional properties like digits, recipient, summary, etc.
 }
+
+/**
+ * Call events the transport (ConversationRelaySession) reports to the service.
+ * These are SCR's own events, not raw CR frames: `info`/`error` frames are
+ * transport noise, and `status` is not a CR frame at all.
+ */
+export type CallEvent =
+    | {
+          type: 'setup';
+          /** The CR setup frame: callSid, from, to, direction, customParameters, … */
+          setup: { callSid?: string; from?: string; customParameters?: Record<string, string>; [key: string]: any };
+          /** Request data stored for SCR-originated outbound calls (callReference). */
+          parameters: Record<string, any>;
+      }
+    | { type: 'prompt'; text: string; lang?: string }
+    | { type: 'dtmf'; digit: string }
+    | {
+          type: 'interrupt';
+          /** CR's `utteranceUntilInterrupt` — what the caller actually heard. */
+          heard?: string;
+      }
+    | {
+          type: 'status';
+          /** Evaluated Twilio status callback (see TwilioService.evaluateStatusCallback). */
+          status: unknown;
+      }
+    | {
+          type: 'context';
+          /**
+           * Operator request (POST /updateResponseService) to switch this call's
+           * prompt. The service resolves the key; services that don't own a
+           * prompt ignore it.
+           */
+          key: string;
+      };
 
 /**
  * Interface that all Response Service implementations must follow
@@ -73,44 +139,19 @@ export interface ResponseService {
          */
         createResponseHandler(handler: ResponseHandler): void;
         /**
-         * Generates a streaming response from the LLM service
-         * 
-         * @param role - Message role ('user' or 'system')
-         * @param prompt - Input message content
-         * @returns Promise that resolves when response generation starts
+         * Single entry point for call events, mirroring the transport's switch
+         * on CR frame type. The service decides what each event means for the
+         * conversation (prompt, context, tools); the transport only reports.
          */
-        generateResponse(role: 'user' | 'system', prompt: string): Promise<void>;
+        handleEvent(event: CallEvent): Promise<void>;
 
         /**
-         * Inserts a message into conversation context without generating a response
-         * 
-         * @param role - Message role ('system', 'user', or 'assistant')
-         * @param message - Message content to add to context
-         * @returns Promise that resolves when message is inserted
+         * Optional wording for the transport's silence reminder `count` (1-based).
+         * The transport owns the policy — when to remind and when to end the
+         * call — so this only supplies words. Return null (or omit the method)
+         * to use the configured `SilenceDetection.messages`.
          */
-        insertMessage(role: 'system' | 'user' | 'assistant', message: string): Promise<void>;
-
-        /**
-         * Interrupts current response generation
-         * Used when user interrupts AI during response to stop streaming
-         */
-        interrupt(): void;
-
-        /**
-         * Updates the context for the response service
-         * 
-         * @param context - New context content string
-         * @returns Promise that resolves when update is complete
-         */
-        updateContext(context: string): Promise<void>;
-
-        /**
-         * Updates the tool registry for the response service.
-         * v4.12: replaced the `object` (JSON manifest) arg with a
-         * `ToolRegistry`. Typed as `any` in this declaration file to avoid a
-         * cross-layer import; implementations narrow it.
-         */
-        updateTools(registry: any): void;
+        silenceReminder?(count: number): Promise<string | null>;
 
         /**
          * Performs cleanup of service resources

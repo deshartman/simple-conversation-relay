@@ -3,6 +3,7 @@ import { EventEmitter } from 'events';
 import { logOut, logError } from '../utils/logger.js';
 import VoiceResponse from 'twilio/lib/twiml/VoiceResponse.js';
 import { CachedAssetsService } from './CachedAssetsService.js';
+import { CALL_LANGUAGES_PARAM, CALL_TTS_LANGUAGE_PARAM } from './ConversationRelaySession.js';
 import { ConversationRelayConfig } from '../interfaces/ConversationRelay.js';
 import { ServerConfig } from '../config/ServerConfig.js';
 
@@ -27,7 +28,7 @@ interface StatusCallback {
  * **Don't use TwilioService (use direct Twilio API) when:**
  * - Creating LLM tools in src/tools/ directory
  * - Tools should call Twilio API directly for self-contained execution
- * - Example: src/tools/send-sms.ts uses direct twilio.messages.create() call
+ * - Example: src/tools/llm/send-sms.ts uses direct twilio.messages.create() call
  *
  * @class
  * @property {string} accountSid - Twilio account SID from environment variables
@@ -102,9 +103,12 @@ class TwilioService extends EventEmitter {
             // Outbound calls start in listen mode: the agent stays silent so
             // the LLM can work out whether it reached a human, an IVR tree or
             // voicemail before it says anything. An explicit caller-supplied
-            // `listenMode` wins, so a campaign can opt out per call.
+            // `listenMode` wins, so a campaign can opt out per call. The
+            // outbound prompt is chosen per call the same way (`contextKey`),
+            // so inbound callers keep the default context.
             const callParameters: Record<string, string> = {
                 listenMode: 'true',
+                contextKey: 'outboundContext',
                 ...parameters,
             };
 
@@ -197,17 +201,47 @@ class TwilioService extends EventEmitter {
                 ...conversationRelayAttributes
             } as any);
 
-            // Add language configurations if available
+            // Add language configurations if available. Every attribute the
+            // config declares has to reach the TwiML: <Language> is the lookup
+            // table a `language` switch frame resolves against, so dropping
+            // transcriptionProvider/speechModel here would silently fall a
+            // switched-to language back to the parent's settings. Attributes
+            // left unset inherit from <ConversationRelay> by design, so emit
+            // whatever is present rather than requiring ttsProvider + voice.
+            // Keyed off the SDK type on purpose: crelay.ts's drift guard is
+            // deliberately narrow because it assumes this builder site carries
+            // the SDK types, so a renamed LanguageAttributes field must fail
+            // `tsc` here rather than slip through as an untyped object.
+            const LANGUAGE_ATTRS: readonly (keyof VoiceResponse.LanguageAttributes)[] = [
+                'ttsProvider',
+                'voice',
+                'transcriptionProvider',
+                'speechModel',
+            ];
             if (languages) {
                 Object.keys(languages).forEach(langCode => {
                     const langConfig = languages[langCode];
-                    if (langConfig && langConfig.ttsProvider && langConfig.voice) {
-                        conversationRelay.language({
-                            code: langCode,
-                            ttsProvider: langConfig.ttsProvider,
-                            voice: langConfig.voice,
-                        });
-                    }
+                    if (!langConfig) return;
+                    const attributes: VoiceResponse.LanguageAttributes = { code: langCode };
+                    LANGUAGE_ATTRS.forEach(attr => {
+                        if (langConfig[attr]) attributes[attr] = langConfig[attr];
+                    });
+                    conversationRelay.language(attributes);
+                });
+            }
+
+            // Tell the session what this TwiML declared, so its language
+            // allow-list matches the call rather than SCR's config.
+            if (languages && Object.keys(languages).length > 0) {
+                conversationRelay.parameter({
+                    name: CALL_LANGUAGES_PARAM,
+                    value: Object.keys(languages).join(','),
+                });
+            }
+            if (conversationRelayAttributes.ttsLanguage) {
+                conversationRelay.parameter({
+                    name: CALL_TTS_LANGUAGE_PARAM,
+                    value: conversationRelayAttributes.ttsLanguage,
                 });
             }
 

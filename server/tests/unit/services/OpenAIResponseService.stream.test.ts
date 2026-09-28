@@ -52,7 +52,8 @@ const textEvents = (...tokens: string[]) => [
 ];
 
 function makeService(registry: ToolRegistry) {
-    const service = new OpenAIResponseService('ctx', registry, ServerConfig.forTesting());
+    const contexts = { get: async () => null, getDefault: async () => 'ctx' };
+    const service = new OpenAIResponseService(contexts, registry, ServerConfig.forTesting());
     const tokens: string[] = [];
     const lastFlags: boolean[] = [];
     service.createResponseHandler({
@@ -60,7 +61,8 @@ function makeService(registry: ToolRegistry) {
             if (r.token) tokens.push(r.token);
             lastFlags.push(r.last);
         },
-        toolResult: () => {},
+        // Stands in for the transport: only endCall ends the call.
+        toolResult: e => ({ applied: true, terminal: e.toolData.action?.type === 'endCall' }),
         error: () => {},
         callSid: () => {},
     });
@@ -74,7 +76,7 @@ const terminalTool = defineTool<any, any>({
     handler: () => ({
         success: true,
         message: 'Call ended successfully',
-        outgoingMessage: { type: 'end', handoffData: '{}' },
+        action: { type: 'endCall', handoffData: '{}' },
     }),
 });
 
@@ -82,7 +84,7 @@ const plainTool = defineTool<any, any>({
     name: 'set-listen-mode',
     description: 'toggles listen mode',
     parameters: { type: 'object', properties: {}, required: [] },
-    handler: () => ({ success: true, message: 'ok', listenMode: false }),
+    handler: () => ({ success: true, message: 'ok', action: { type: 'listenMode', enabled: false } }),
 });
 
 describe('OpenAIResponseService — stream handling', () => {
@@ -144,6 +146,29 @@ describe('OpenAIResponseService — stream handling', () => {
             // The follow-up is how a tool-then-speak turn produces its speech.
             expect(createMock).toHaveBeenCalledTimes(2);
             expect(tokens.join('')).toBe('Hello there.');
+        });
+    });
+
+    describe('the model is told what the transport did', () => {
+        it('reports a dropped action as a failure in the function output', async () => {
+            createMock
+                .mockReturnValueOnce(fakeStream(toolCallEvents('set-listen-mode')))
+                .mockReturnValueOnce(fakeStream(textEvents('Sorry.')));
+            const { service } = makeService(registry);
+            (service as any).responseHandler.toolResult = () => ({
+                applied: false,
+                terminal: false,
+                detail: 'This call only supports: en-AU, fr-FR',
+            });
+
+            await service.generateResponse('user', 'German please');
+
+            const followUpInput = createMock.mock.calls[1][0].input;
+            const output = followUpInput.find((m: any) => m.type === 'function_call_output');
+            expect(JSON.parse(output.output)).toMatchObject({
+                success: false,
+                message: 'This call only supports: en-AU, fr-FR',
+            });
         });
     });
 

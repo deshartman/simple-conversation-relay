@@ -140,6 +140,20 @@ describe('TwilioService — outbound TwiML', () => {
             expect(twiml).toContain('value="false"');
         });
 
+        it('selects the outbound context per call, overridable by the caller', async () => {
+            const create = (service as any).twilioClient.calls.create;
+
+            await service.makeOutboundCall('example.test', '+61411111111', assets.service);
+            await service.makeOutboundCall('example.test', '+61411111111', assets.service, {
+                contextKey: 'campaign',
+            });
+
+            const byDefault = create.mock.calls[0][0].twiml.toString();
+            const overridden = create.mock.calls[1][0].twiml.toString();
+            expect(byDefault).toContain('name="contextKey" value="outboundContext"');
+            expect(overridden).toContain('name="contextKey" value="campaign"');
+        });
+
         it('dials the requested number from the configured number', async () => {
             const create = (service as any).twilioClient.calls.create;
 

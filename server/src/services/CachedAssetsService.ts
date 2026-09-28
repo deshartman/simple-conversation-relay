@@ -1,16 +1,13 @@
 /**
- * CachedAssetsService — in-memory cache for contexts and server config.
+ * CachedAssetsService — in-memory cache of the transport's server config.
  *
- * v4.12 slims this down. Previously it also loaded `defaultToolManifest.json`
- * and dynamically imported tool modules. Tools are now defined in code via
- * `defineTool` + `ToolRegistry` (see `server/src/tools/`) and registered
- * once at startup — the cache no longer touches them.
- *
- * What's left:
- *  - Context caching from `.md` files (for `change-context` and the
- *    `/updateResponseService` endpoint).
- *  - Server config + language config (for TwilioService TwiML generation).
+ * Holds only ConversationRelay-side configuration:
+ *  - Server config + language config (for TwilioService TwiML generation and
+ *    the session's TTS auto-switch allow-list).
  *  - Silence detection + listen-mode defaults (for session construction).
+ *
+ * LLM contexts are not loaded here: a ResponseService that owns its prompt
+ * reads them from `ContextStore`.
  */
 
 import { promises as fs } from 'fs';
@@ -19,25 +16,21 @@ import { fileURLToPath } from 'url';
 import { logOut, logError } from '../utils/logger.js';
 import type { AssetLoader, ServerConfig as AssetServerConfig, AssetLoaderConfig } from '../interfaces/AssetLoader.js';
 import type { SilenceDetectionConfig } from './SilenceHandler.js';
-import { SyncAssetLoader } from './SyncAssetLoader.js';
 import { FileAssetLoader } from './FileAssetLoader.js';
 import { ServerConfig } from '../config/ServerConfig.js';
 
 interface CachedAssets {
-    contexts: Map<string, string>;
     serverConfig: AssetServerConfig;
     conversationRelayConfig: any;
     languages: Map<string, any>;
 }
 
 export interface ActiveAssets {
-    context: string;
     silenceDetection: SilenceDetectionConfig;
     listenMode: { enabled: boolean };
 }
 
 export interface CacheStats {
-    contexts: number;
     initialized: boolean;
 }
 
@@ -61,21 +54,7 @@ class CachedAssetsService {
                 logOut('CachedAssetsService', 'Asset loader initialized');
             }
 
-            const contextKeys =
-                (this.assetLoader as any).scanContextFiles?.() ||
-                (this.assetLoader as any).scanContextKeys?.() ||
-                [];
-            const resolvedContextKeys = await Promise.resolve(contextKeys);
-
-            logOut(
-                'CachedAssetsService',
-                `Found ${resolvedContextKeys.length} contexts to load`
-            );
-
-            const [serverConfig, contexts] = await Promise.all([
-                this.assetLoader.loadServerConfig(),
-                this.assetLoader.loadContexts(resolvedContextKeys),
-            ]);
+            const serverConfig = await this.assetLoader.loadServerConfig();
 
             const conversationRelayConfig =
                 serverConfig.ConversationRelay?.Configuration || {};
@@ -88,12 +67,12 @@ class CachedAssetsService {
                 });
             }
 
-            this.cache = { contexts, serverConfig, conversationRelayConfig, languages };
+            this.cache = { serverConfig, conversationRelayConfig, languages };
             this.isInitialized = true;
 
             logOut(
                 'CachedAssetsService',
-                `Cache initialized: ${contexts.size} contexts, ${languages.size} languages`
+                `Cache initialized: ${languages.size} languages`
             );
         } catch (error) {
             logError(
@@ -104,15 +83,9 @@ class CachedAssetsService {
         }
     }
 
-    /**
-     * Get the currently active context + non-context defaults for session
-     * construction. (Tools now come from the ToolRegistry, not this cache.)
-     */
+    /** Transport defaults for session construction. */
     getActiveAssets(): ActiveAssets {
         this.ensureInitialized();
-
-        const activeContextKey = this.cache!.serverConfig.AssetLoader.activeContextKey;
-        const context = this.cache!.contexts.get(activeContextKey);
 
         const defaultSilenceConfig: SilenceDetectionConfig = {
             enabled: true,
@@ -122,37 +95,11 @@ class CachedAssetsService {
         const defaultListenMode = { enabled: false };
 
         return {
-            context: context || '',
             silenceDetection:
                 this.cache!.serverConfig.ConversationRelay.SilenceDetection ??
                 defaultSilenceConfig,
             listenMode: this.cache!.serverConfig.Server.ListenMode ?? defaultListenMode,
         };
-    }
-
-    getContext(contextKey: string): string | null {
-        this.ensureInitialized();
-        const context = this.cache!.contexts.get(contextKey);
-        return context !== undefined ? context : null;
-    }
-
-    /**
-     * Assets for a `change-context` tool invocation. Returns just the
-     * context string now (manifest is no longer per-leg in v4.12).
-     */
-    getAssetsForContextSwitch(contextKey: string): { context: string } | null {
-        this.ensureInitialized();
-        const context = this.getContext(contextKey);
-        if (!context) {
-            logError('CachedAssetsService', `Context '${contextKey}' not found in cache`);
-            return null;
-        }
-        return { context };
-    }
-
-    getAvailableContexts(): string[] {
-        this.ensureInitialized();
-        return Array.from(this.cache!.contexts.keys());
     }
 
     getConversationRelayConfig(): any {
@@ -184,29 +131,9 @@ class CachedAssetsService {
 
     getCacheStats(): CacheStats {
         if (!this.isInitialized || !this.cache) {
-            return { contexts: 0, initialized: false };
+            return { initialized: false };
         }
-        return { contexts: this.cache.contexts.size, initialized: this.isInitialized };
-    }
-
-    async loadAndCacheContexts(contextKeys: string[]): Promise<void> {
-        this.ensureInitialized();
-        try {
-            const newContexts = await this.assetLoader!.loadContexts(contextKeys);
-            newContexts.forEach((content, key) => {
-                this.cache!.contexts.set(key, content);
-            });
-            logOut(
-                'CachedAssetsService',
-                `Loaded ${newContexts.size} additional contexts into cache`
-            );
-        } catch (error) {
-            logError(
-                'CachedAssetsService',
-                `Failed to load and cache contexts: ${error instanceof Error ? error.message : String(error)}`
-            );
-            throw error;
-        }
+        return { initialized: this.isInitialized };
     }
 
     private async createAssetLoader(): Promise<AssetLoader> {
@@ -214,20 +141,12 @@ class CachedAssetsService {
             const assetLoaderType = await this.readAssetLoaderConfig();
             logOut('CachedAssetsService', `Creating ${assetLoaderType} asset loader`);
 
-            switch (assetLoaderType) {
-                case 'sync':
-                    return new SyncAssetLoader();
-                case 'file':
-                    return new FileAssetLoader();
-                case 'j2':
-                    throw new Error('J2 asset loader not yet implemented');
-                default:
-                    logError(
-                        'CachedAssetsService',
-                        `Unknown asset loader type: ${assetLoaderType}, defaulting to sync`
-                    );
-                    return new SyncAssetLoader();
+            if (assetLoaderType !== 'file') {
+                throw new Error(
+                    `Unsupported asset loader type '${assetLoaderType}' — only 'file' is supported (Twilio Sync loading was removed)`
+                );
             }
+            return new FileAssetLoader();
         } catch (error) {
             logError(
                 'CachedAssetsService',
@@ -245,13 +164,13 @@ class CachedAssetsService {
             const configPath = join(serverDir, 'assets', 'serverConfig.json');
             const configContent = await fs.readFile(configPath, 'utf-8');
             const config = JSON.parse(configContent);
-            return config.AssetLoader?.assetLoaderType || 'sync';
+            return config.AssetLoader?.assetLoaderType || 'file';
         } catch (error) {
             logError(
                 'CachedAssetsService',
-                `Failed to read asset loader config: ${error instanceof Error ? error.message : String(error)}, defaulting to sync`
+                `Failed to read asset loader config: ${error instanceof Error ? error.message : String(error)}, defaulting to file`
             );
-            return 'sync';
+            return 'file';
         }
     }
 

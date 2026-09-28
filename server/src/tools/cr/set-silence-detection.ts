@@ -1,5 +1,6 @@
-import { logOut } from '../utils/logger.js';
-import { defineTool } from './define-tool.js';
+import { logOut } from '../../utils/logger.js';
+import { defineTool } from '../define-tool.js';
+import type { CallAction } from '../../interfaces/ResponseService.js';
 
 interface SetSilenceDetectionArgs {
     enabled: boolean;
@@ -8,7 +9,7 @@ interface SetSilenceDetectionArgs {
 interface SetSilenceDetectionResult {
     success: boolean;
     message: string;
-    silenceEnabled: boolean;
+    action?: CallAction;
     [key: string]: unknown;
 }
 
@@ -37,7 +38,6 @@ export const setSilenceDetectionTool = defineTool<
             return {
                 success: false,
                 message: 'enabled parameter is required and must be boolean',
-                silenceEnabled: false,
             };
         }
 
@@ -48,7 +48,7 @@ export const setSilenceDetectionTool = defineTool<
         return {
             success: true,
             message: `Silence detection ${modeDescription}`,
-            silenceEnabled: args.enabled,
+            action: { type: 'silence', enabled: args.enabled },
         };
     },
 });

@@ -52,15 +52,3 @@ export type {
     EndFrame as EndSessionMessage,
     OutgoingFrame as OutgoingMessage,
 } from '../types/crelay.js';
-
-// -- Handler interface -------------------------------------------------------
-
-/**
- * Kept for callers that still construct a plain handler object (e.g. the
- * `/conversation` HTTP endpoint). The session class provides a richer
- * internal interface.
- */
-export interface ConversationRelayHandler {
-    outgoingMessage(message: unknown): void;
-    callSid(callSid: string, responseMessage: any): void;
-}
