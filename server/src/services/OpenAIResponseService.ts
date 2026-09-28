@@ -34,6 +34,7 @@ import type {
 import type { ServerConfig } from '../config/ServerConfig.js';
 import type { ToolRegistry } from '../tools/tool-registry.js';
 import type { ConversationRelaySession } from './ConversationRelaySession.js';
+import type { ContextSource } from './ContextStore.js';
 
 dotenv.config();
 
@@ -49,7 +50,8 @@ class OpenAIResponseService implements ResponseService {
     protected openai: OpenAI;
     protected model: string;
     protected currentResponseId: string | null;
-    protected instructions: string;
+    /** Null until loaded: on setup (default or contextKey), or on first use. */
+    protected instructions: string | null;
     protected isInterrupted: boolean;
     protected registry: ToolRegistry;
     protected inputMessages: ResponseInput;
@@ -66,20 +68,19 @@ class OpenAIResponseService implements ResponseService {
 
     private responseHandler!: ResponseHandler;
 
-    /** Resolves `customParameters.contextKey` to a context; absent = no per-call override. */
-    private readonly lookupContext?: (key: string) => string | null;
+    /** Where this service reads its prompt from; nothing is loaded until needed. */
+    private readonly contexts: ContextSource;
 
     constructor(
-        context: string,
+        contexts: ContextSource,
         registry: ToolRegistry,
-        config: ServerConfig,
-        lookupContext?: (key: string) => string | null
+        config: ServerConfig
     ) {
-        this.lookupContext = lookupContext;
+        this.contexts = contexts;
         this.openai = new OpenAI();
         this.model = config.openaiModel;
         this.currentResponseId = null;
-        this.instructions = context;
+        this.instructions = null;
         this.isInterrupted = false;
         this.registry = registry;
         this.inputMessages = [];
@@ -116,14 +117,14 @@ class OpenAIResponseService implements ResponseService {
                 // inbound callers.
                 const contextKey = event.setup.customParameters?.contextKey;
                 if (contextKey) {
-                    const override = this.lookupContext?.(contextKey);
+                    const override = await this.contexts.get(contextKey);
                     if (override) {
                         this.instructions = override;
                         logOut('OpenAIResponseService', `Using context '${contextKey}' for this call`);
                     } else {
                         logError(
                             'OpenAIResponseService',
-                            `contextKey '${contextKey}' not found — falling back to the active context`
+                            `contextKey '${contextKey}' not found — falling back to the default context`
                         );
                     }
                 }
@@ -227,7 +228,7 @@ class OpenAIResponseService implements ResponseService {
         try {
             switch (role) {
                 case 'system':
-                    this.instructions += `\n\n${message}`;
+                    this.instructions = `${await this.loadInstructions()}\n\n${message}`;
                     break;
                 case 'user':
                 case 'assistant':
@@ -368,7 +369,7 @@ class OpenAIResponseService implements ResponseService {
                                         tools:
                                             tools.length > 0 ? (tools as unknown as any) : undefined,
                                         stream: true,
-                                        instructions: this.instructions,
+                                        instructions: await this.loadInstructions(),
                                     });
                                     await this.processStream(followUpStream, generation);
                                 }
@@ -411,6 +412,12 @@ class OpenAIResponseService implements ResponseService {
         }
     }
 
+    /** The current instructions, loading the default context on first use. */
+    private async loadInstructions(): Promise<string> {
+        if (this.instructions === null) this.instructions = await this.contexts.getDefault();
+        return this.instructions;
+    }
+
     async generateResponse(role: 'user' | 'system' = 'user', prompt: string): Promise<void> {
         // Cancel-previous: a newer prompt supersedes whatever is in flight.
         // Claiming the next generation is what stops the older stream.
@@ -429,7 +436,7 @@ class OpenAIResponseService implements ResponseService {
                 input: this.inputMessages,
                 stream: true,
                 tools: tools.length > 0 ? (tools as unknown as any) : undefined,
-                instructions: this.instructions,
+                instructions: await this.loadInstructions(),
             });
 
             await this.processStream(stream, generation);

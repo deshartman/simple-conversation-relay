@@ -52,7 +52,8 @@ const textEvents = (...tokens: string[]) => [
 ];
 
 function makeService(registry: ToolRegistry) {
-    const service = new OpenAIResponseService('ctx', registry, ServerConfig.forTesting());
+    const contexts = { get: async () => null, getDefault: async () => 'ctx' };
+    const service = new OpenAIResponseService(contexts, registry, ServerConfig.forTesting());
     const tokens: string[] = [];
     const lastFlags: boolean[] = [];
     service.createResponseHandler({

@@ -1,8 +1,8 @@
 /**
  * change-context tool — swaps the LLM's system prompt mid-call.
  *
- * Factory captures a `CachedAssetsService` reference for looking up cached
- * context content. The handler uses the session parameter to update the
+ * Factory captures the `ContextSource` the response service reads prompts
+ * from. The handler uses the session parameter to update the
  * live conversation — `session.insertMessage` adds a handoff summary to
  * conversation history, `session.updateContext` replaces the system
  * instructions.
@@ -12,7 +12,7 @@
  */
 
 import { logOut, logError } from '../utils/logger.js';
-import type { CachedAssetsService } from '../services/CachedAssetsService.js';
+import type { ContextSource } from '../services/ContextStore.js';
 import { defineTool, type ConversationRelayTool } from './define-tool.js';
 
 interface ChangeContextArgs {
@@ -29,7 +29,7 @@ interface ChangeContextResult {
 }
 
 export function createChangeContextTool(
-    cache: CachedAssetsService
+    contexts: ContextSource
 ): ConversationRelayTool<ChangeContextArgs, ChangeContextResult> {
     return defineTool<ChangeContextArgs, ChangeContextResult>({
         name: 'change-context',
@@ -84,13 +84,13 @@ export function createChangeContextTool(
             }
 
             try {
-                const assets = cache.getAssetsForContextSwitch(args.newContext);
-                if (!assets) {
-                    throw new Error(`Context '${args.newContext}' not found in cache`);
+                const context = await contexts.get(args.newContext);
+                if (!context) {
+                    throw new Error(`Context '${args.newContext}' not found`);
                 }
 
                 await session.insertMessage('system', `Context handoff summary: ${args.handoffSummary}`);
-                await session.updateContext(assets.context);
+                await session.updateContext(context);
                 // Registry is not per-leg in v4.12 — all tools stay available.
 
                 logOut('ChangeContext', `Switched to context: ${args.newContext}`);

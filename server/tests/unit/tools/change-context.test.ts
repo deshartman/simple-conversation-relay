@@ -6,16 +6,17 @@
  *  - factory returns a `ConversationRelayTool` record; invoke via `.handler`.
  *  - handler's 2nd arg is a `ConversationRelaySession` (not a response
  *    service directly); the session proxies `insertMessage`/`updateContext`.
- *  - v4.12 drops per-leg tool manifests, so `getAssetsForContextSwitch`
- *    returns `{ context }` only (no `manifest`) and the handler no longer
- *    calls `session.updateTools`.
+ *  - v4.12 drops per-leg tool manifests, so the handler no longer calls
+ *    `session.updateTools`.
+ *  - Contexts come from a `ContextSource` (`get(key)` -> string | null),
+ *    not from `CachedAssetsService`.
  */
 
 import { describe, it, expect, beforeEach, vi } from 'vitest';
 import { createChangeContextTool } from '../../../src/tools/change-context.js';
 
-interface MockCachedAssetsService {
-    getAssetsForContextSwitch: ReturnType<typeof vi.fn>;
+interface MockContextSource {
+    get: ReturnType<typeof vi.fn>;
 }
 
 interface MockSession {
@@ -24,12 +25,12 @@ interface MockSession {
 }
 
 describe('change-context Tool', () => {
-    let mockCachedAssetsService: MockCachedAssetsService;
+    let mockContexts: MockContextSource;
     let mockSession: MockSession;
 
     beforeEach(() => {
-        mockCachedAssetsService = {
-            getAssetsForContextSwitch: vi.fn(),
+        mockContexts = {
+            get: vi.fn().mockResolvedValue(null),
         };
 
         mockSession = {
@@ -40,26 +41,24 @@ describe('change-context Tool', () => {
 
     describe('Factory Pattern', () => {
         it('should create a tool record with handler and schema', () => {
-            const tool = createChangeContextTool(mockCachedAssetsService as any);
+            const tool = createChangeContextTool(mockContexts as any);
 
             expect(tool).toBeDefined();
             expect(tool.name).toBe('change-context');
             expect(typeof tool.handler).toBe('function');
         });
 
-        it('should capture cachedAssetsService in closure', async () => {
-            mockCachedAssetsService.getAssetsForContextSwitch.mockReturnValue({
-                context: 'new context content',
-            });
+        it('should capture the context source in closure', async () => {
+            mockContexts.get.mockResolvedValue('new context content');
 
-            const tool = createChangeContextTool(mockCachedAssetsService as any);
+            const tool = createChangeContextTool(mockContexts as any);
 
             await tool.handler(
                 { newContext: 'test-context', handoffSummary: 'Test summary' },
                 mockSession as any
             );
 
-            expect(mockCachedAssetsService.getAssetsForContextSwitch).toHaveBeenCalledWith(
+            expect(mockContexts.get).toHaveBeenCalledWith(
                 'test-context'
             );
         });
@@ -67,7 +66,7 @@ describe('change-context Tool', () => {
 
     describe('Parameter Validation', () => {
         it('should require newContext parameter', async () => {
-            const tool = createChangeContextTool(mockCachedAssetsService as any);
+            const tool = createChangeContextTool(mockContexts as any);
 
             const result = await tool.handler(
                 { newContext: '', handoffSummary: 'Test summary' } as any,
@@ -76,11 +75,11 @@ describe('change-context Tool', () => {
 
             expect(result.success).toBe(false);
             expect(result.message).toContain('newContext parameter is required');
-            expect(mockCachedAssetsService.getAssetsForContextSwitch).not.toHaveBeenCalled();
+            expect(mockContexts.get).not.toHaveBeenCalled();
         });
 
         it('should require handoffSummary parameter', async () => {
-            const tool = createChangeContextTool(mockCachedAssetsService as any);
+            const tool = createChangeContextTool(mockContexts as any);
 
             const result = await tool.handler(
                 { newContext: 'test-context', handoffSummary: '' } as any,
@@ -89,15 +88,13 @@ describe('change-context Tool', () => {
 
             expect(result.success).toBe(false);
             expect(result.message).toContain('handoffSummary parameter is required');
-            expect(mockCachedAssetsService.getAssetsForContextSwitch).not.toHaveBeenCalled();
+            expect(mockContexts.get).not.toHaveBeenCalled();
         });
 
         it('should accept valid parameters', async () => {
-            mockCachedAssetsService.getAssetsForContextSwitch.mockReturnValue({
-                context: 'new context content',
-            });
+            mockContexts.get.mockResolvedValue('new context content');
 
-            const tool = createChangeContextTool(mockCachedAssetsService as any);
+            const tool = createChangeContextTool(mockContexts as any);
 
             const result = await tool.handler(
                 { newContext: 'test-context', handoffSummary: 'Test summary' },
@@ -109,29 +106,25 @@ describe('change-context Tool', () => {
     });
 
     describe('Context Switching', () => {
-        it('should retrieve assets from cachedAssetsService', async () => {
-            mockCachedAssetsService.getAssetsForContextSwitch.mockReturnValue({
-                context: 'new context content',
-            });
+        it('should retrieve the context from the context source', async () => {
+            mockContexts.get.mockResolvedValue('new context content');
 
-            const tool = createChangeContextTool(mockCachedAssetsService as any);
+            const tool = createChangeContextTool(mockContexts as any);
 
             await tool.handler(
                 { newContext: 'support-context', handoffSummary: 'Escalating to support' },
                 mockSession as any
             );
 
-            expect(mockCachedAssetsService.getAssetsForContextSwitch).toHaveBeenCalledWith(
+            expect(mockContexts.get).toHaveBeenCalledWith(
                 'support-context'
             );
         });
 
         it('should call session methods in correct order', async () => {
-            mockCachedAssetsService.getAssetsForContextSwitch.mockReturnValue({
-                context: 'new context content',
-            });
+            mockContexts.get.mockResolvedValue('new context content');
 
-            const tool = createChangeContextTool(mockCachedAssetsService as any);
+            const tool = createChangeContextTool(mockContexts as any);
 
             await tool.handler(
                 { newContext: 'test-context', handoffSummary: 'Test handoff' },
@@ -146,11 +139,9 @@ describe('change-context Tool', () => {
         });
 
         it('should return success response with context details', async () => {
-            mockCachedAssetsService.getAssetsForContextSwitch.mockReturnValue({
-                context: 'new context content',
-            });
+            mockContexts.get.mockResolvedValue('new context content');
 
-            const tool = createChangeContextTool(mockCachedAssetsService as any);
+            const tool = createChangeContextTool(mockContexts as any);
 
             const result = await tool.handler(
                 {
@@ -171,9 +162,9 @@ describe('change-context Tool', () => {
 
     describe('Error Handling', () => {
         it('should handle missing context gracefully', async () => {
-            mockCachedAssetsService.getAssetsForContextSwitch.mockReturnValue(null);
+            mockContexts.get.mockResolvedValue(null);
 
-            const tool = createChangeContextTool(mockCachedAssetsService as any);
+            const tool = createChangeContextTool(mockContexts as any);
 
             const result = await tool.handler(
                 { newContext: 'nonexistent-context', handoffSummary: 'Test' },
@@ -181,17 +172,15 @@ describe('change-context Tool', () => {
             );
 
             expect(result.success).toBe(false);
-            expect(result.message).toContain('not found in cache');
+            expect(result.message).toContain('not found');
             expect(result.newContext).toBe('nonexistent-context');
         });
 
         it('should handle errors during context switch', async () => {
-            mockCachedAssetsService.getAssetsForContextSwitch.mockReturnValue({
-                context: 'new context content',
-            });
+            mockContexts.get.mockResolvedValue('new context content');
             mockSession.updateContext.mockRejectedValue(new Error('Update failed'));
 
-            const tool = createChangeContextTool(mockCachedAssetsService as any);
+            const tool = createChangeContextTool(mockContexts as any);
 
             const result = await tool.handler(
                 { newContext: 'test-context', handoffSummary: 'Test' },
@@ -204,11 +193,9 @@ describe('change-context Tool', () => {
         });
 
         it('should accept extra properties from LLM', async () => {
-            mockCachedAssetsService.getAssetsForContextSwitch.mockReturnValue({
-                context: 'new context content',
-            });
+            mockContexts.get.mockResolvedValue('new context content');
 
-            const tool = createChangeContextTool(mockCachedAssetsService as any);
+            const tool = createChangeContextTool(mockContexts as any);
 
             const result = await tool.handler(
                 {

@@ -23,6 +23,7 @@ import { MiniTacResponseService } from './services/MiniTacResponseService.js';
 import type { ResponseService } from './interfaces/ResponseService.js';
 import { TwilioService } from './services/TwilioService.js';
 import { CachedAssetsService } from './services/CachedAssetsService.js';
+import { ContextStore } from './services/ContextStore.js';
 import { ServerConfig } from './config/ServerConfig.js';
 import type { SessionData } from './interfaces/ConversationRelay.js';
 import { buildDefaultRegistry, ToolRegistry } from './tools/index.js';
@@ -122,6 +123,8 @@ const PARAMETER_DATA_TTL_MS = 60 * 60 * 1000;
 let conversationSessionMap = new Map<string, OpenAIResponseService>();
 let twilioService: TwilioService;
 let cachedAssetsService: CachedAssetsService | null = null;
+/** LLM prompts, read only by response services that own one (not mini-tac). */
+let contextStore: ContextStore;
 let serverConfig: ServerConfig;
 let toolRegistry: ToolRegistry;
 
@@ -196,7 +199,8 @@ async function initializeServices(): Promise<void> {
         await twilioService.initialize();
         logOut('Server', 'TwilioService initialized');
 
-        toolRegistry = buildDefaultRegistry(serverConfig, cachedAssetsService);
+        contextStore = new ContextStore();
+        toolRegistry = buildDefaultRegistry(serverConfig, contextStore);
         logOut('Server', `ToolRegistry built with ${toolRegistry.size()} tools`);
 
         logOut('Server', 'All services initialized');
@@ -287,10 +291,10 @@ app.ws('/conversation-relay', (ws: any, req: express.Request) => {
 
                 const activeAssets = cachedAssetsService.getActiveAssets();
 
-                // The service owns prompt selection (incl. contextKey) from the
-                // setup event; the transport only carries it.
+                // The service owns its prompt (incl. contextKey) from the setup
+                // event; the transport loads none.
                 // /conversation (HTTP chat) stays on OpenAI regardless.
-                const responseService = createResponseService(activeAssets.context);
+                const responseService = createResponseService();
 
                 // The declared <Language> codes double as the allow-list for
                 // automatic TTS switching, so the session resolves a detected
@@ -466,15 +470,13 @@ app.post('/twilioStatusCallback', validateTwilioSignature, async (req: express.R
 /**
  * Pick the voice back end from RESPONSE_SERVICE_TYPE.
  */
-function createResponseService(context: string): ResponseService {
+function createResponseService(): ResponseService {
     return serverConfig.responseService === 'mini-tac'
         ? new MiniTacResponseService({
               baseUrl: serverConfig.miniTacUrl,
               apiKey: serverConfig.miniTacApiKey!,
           })
-        : new OpenAIResponseService(context, toolRegistry, serverConfig, key =>
-              cachedAssetsService!.getContext(key)
-          );
+        : new OpenAIResponseService(contextStore, toolRegistry, serverConfig);
 }
 
 app.post('/conversation', async (req: express.Request, res: express.Response) => {
@@ -483,10 +485,6 @@ app.post('/conversation', async (req: express.Request, res: express.Response) =>
 
         if (!message) {
             res.status(400).json({ success: false, error: 'Message is required' });
-            return;
-        }
-        if (!cachedAssetsService) {
-            res.status(500).json({ success: false, error: 'CachedAssetsService not initialized' });
             return;
         }
 
@@ -499,12 +497,7 @@ app.post('/conversation', async (req: express.Request, res: express.Response) =>
             logOut('Server', `/conversation: Using existing session ${currentSessionId}`);
         } else {
             currentSessionId = crypto.randomUUID();
-            const activeAssets = cachedAssetsService.getActiveAssets();
-            responseService = new OpenAIResponseService(
-                activeAssets.context,
-                toolRegistry,
-                serverConfig
-            );
+            responseService = new OpenAIResponseService(contextStore, toolRegistry, serverConfig);
             conversationSessionMap.set(currentSessionId, responseService);
             logOut('Server', `/conversation: Created new session ${currentSessionId}`);
         }
@@ -550,10 +543,6 @@ app.post('/updateResponseService', async (req: express.Request, res: express.Res
     );
 
     try {
-        if (!cachedAssetsService) {
-            res.status(500).json({ success: false, error: 'CachedAssetsService not initialized' });
-            return;
-        }
 
         const { callSid, contextKey, manifestKey } = requestData;
 
@@ -578,7 +567,7 @@ app.post('/updateResponseService', async (req: express.Request, res: express.Res
             return;
         }
 
-        const cachedContext = cachedAssetsService.getContext(contextKey);
+        const cachedContext = await contextStore.get(contextKey);
         if (!cachedContext) {
             res.status(400).json({ success: false, error: `Context not found for key: ${contextKey}` });
             return;

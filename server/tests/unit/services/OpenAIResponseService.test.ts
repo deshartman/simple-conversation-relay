@@ -28,8 +28,18 @@ vi.mock('openai', () => {
     };
 });
 
+/** In-memory ContextSource: `defaultContext` plus any extra keys. */
+function fakeContexts(extra: Record<string, string> = {}) {
+    const all: Record<string, string> = { defaultContext: 'Test context for conversation', ...extra };
+    return {
+        get: vi.fn(async (key: string) => all[key] ?? null),
+        getDefault: vi.fn(async () => all.defaultContext),
+    };
+}
+
 describe('OpenAIResponseService', () => {
     const mockContext = 'Test context for conversation';
+    let contexts: ReturnType<typeof fakeContexts>;
     let registry: ToolRegistry;
 
     beforeEach(() => {
@@ -37,6 +47,7 @@ describe('OpenAIResponseService', () => {
         delete process.env.OPENAI_API_KEY;
         delete process.env.OPENAI_MODEL;
         registry = new ToolRegistry();
+        contexts = fakeContexts();
     });
 
     describe('Constructor with ServerConfig', () => {
@@ -45,7 +56,7 @@ describe('OpenAIResponseService', () => {
                 openaiModel: 'gpt-4-turbo'
             });
 
-            const service = new OpenAIResponseService(mockContext, registry, config);
+            const service = new OpenAIResponseService(contexts, registry, config);
 
             expect(service).toBeDefined();
             expect((service as any).model).toBe('gpt-4-turbo');
@@ -58,23 +69,24 @@ describe('OpenAIResponseService', () => {
                 openaiModel: 'gpt-4-turbo'
             });
 
-            const service = new OpenAIResponseService(mockContext, registry, config);
+            const service = new OpenAIResponseService(contexts, registry, config);
 
             expect((service as any).model).toBe('gpt-4-turbo');
         });
 
-        it('should store the supplied context as instructions', () => {
+        it('should load no context until it is needed', () => {
             const config = ServerConfig.forTesting();
 
-            const service = new OpenAIResponseService(mockContext, registry, config);
+            const service = new OpenAIResponseService(contexts, registry, config);
 
-            expect((service as any).instructions).toBe(mockContext);
+            expect((service as any).instructions).toBeNull();
+            expect(contexts.getDefault).not.toHaveBeenCalled();
         });
 
         it('should retain the supplied tool registry', () => {
             const config = ServerConfig.forTesting();
 
-            const service = new OpenAIResponseService(mockContext, registry, config);
+            const service = new OpenAIResponseService(contexts, registry, config);
 
             expect((service as any).registry).toBe(registry);
         });
@@ -91,18 +103,17 @@ describe('OpenAIResponseService', () => {
         it('should NOT hold any independent listenMode state', () => {
             const config = ServerConfig.forTesting();
 
-            const service = new OpenAIResponseService(mockContext, registry, config);
+            const service = new OpenAIResponseService(contexts, registry, config);
 
             expect('listenMode' in (service as any)).toBe(false);
             expect((service as any).listenMode).toBeUndefined();
             expect((service as any).setListenMode).toBeUndefined();
         });
 
-        it('should accept exactly four constructor arguments', () => {
+        it('should accept exactly three constructor arguments', () => {
             // Guards against silently reintroducing the removed `listenMode`
             // parameter, which type-checking will not catch in this file.
-            // The fourth is the optional `lookupContext` for per-call contextKey.
-            expect(OpenAIResponseService.length).toBe(4);
+            expect(OpenAIResponseService.length).toBe(3);
         });
     });
 
@@ -111,8 +122,8 @@ describe('OpenAIResponseService', () => {
             const config1 = ServerConfig.forTesting({ openaiModel: 'gpt-4o' });
             const config2 = ServerConfig.forTesting({ openaiModel: 'gpt-4-turbo' });
 
-            const service1 = new OpenAIResponseService(mockContext, registry, config1);
-            const service2 = new OpenAIResponseService(mockContext, registry, config2);
+            const service1 = new OpenAIResponseService(contexts, registry, config1);
+            const service2 = new OpenAIResponseService(contexts, registry, config2);
 
             expect((service1 as any).model).toBe('gpt-4o');
             expect((service2 as any).model).toBe('gpt-4-turbo');
@@ -122,7 +133,7 @@ describe('OpenAIResponseService', () => {
             const config = ServerConfig.forTesting();
             const emptyRegistry = new ToolRegistry();
 
-            const service = new OpenAIResponseService(mockContext, emptyRegistry, config);
+            const service = new OpenAIResponseService(contexts, emptyRegistry, config);
 
             expect(service).toBeDefined();
             expect((service as any).registry.size()).toBe(0);
@@ -131,10 +142,10 @@ describe('OpenAIResponseService', () => {
 
     describe('handleEvent (service owns the prompt)', () => {
         const config = () => ServerConfig.forTesting();
-        const lookup = (key: string) => (key === 'campaign' ? 'Campaign context' : null);
+        const withCampaign = () => fakeContexts({ campaign: 'Campaign context' });
 
         it('appends the call details on setup, as the transport used to', async () => {
-            const service = new OpenAIResponseService(mockContext, registry, config(), lookup);
+            const service = new OpenAIResponseService(withCampaign(), registry, config());
             await service.handleEvent({ type: 'setup', setup: { callSid: 'CA1' }, parameters: { requestData: {} } });
 
             const instructions = (service as any).instructions as string;
@@ -144,7 +155,7 @@ describe('OpenAIResponseService', () => {
         });
 
         it('swaps to the contextKey context before adding call details', async () => {
-            const service = new OpenAIResponseService(mockContext, registry, config(), lookup);
+            const service = new OpenAIResponseService(withCampaign(), registry, config());
             await service.handleEvent({
                 type: 'setup',
                 setup: { callSid: 'CA1', customParameters: { contextKey: 'campaign' } },
@@ -155,7 +166,7 @@ describe('OpenAIResponseService', () => {
         });
 
         it('keeps the default context when the contextKey is unknown', async () => {
-            const service = new OpenAIResponseService(mockContext, registry, config(), lookup);
+            const service = new OpenAIResponseService(withCampaign(), registry, config());
             await service.handleEvent({
                 type: 'setup',
                 setup: { callSid: 'CA1', customParameters: { contextKey: 'nope' } },
@@ -166,14 +177,14 @@ describe('OpenAIResponseService', () => {
         });
 
         it('adds a status event to the instructions', async () => {
-            const service = new OpenAIResponseService(mockContext, registry, config());
+            const service = new OpenAIResponseService(contexts, registry, config());
             await service.handleEvent({ type: 'status', status: { callStatus: 'no-answer' } });
 
             expect((service as any).instructions).toContain('"callStatus":"no-answer"');
         });
 
         it('routes prompt and interrupt events to generateResponse and interrupt', async () => {
-            const service = new OpenAIResponseService(mockContext, registry, config());
+            const service = new OpenAIResponseService(contexts, registry, config());
             const gen = vi.spyOn(service, 'generateResponse').mockResolvedValue();
             const intr = vi.spyOn(service, 'interrupt');
 
@@ -182,6 +193,27 @@ describe('OpenAIResponseService', () => {
 
             expect(gen).toHaveBeenCalledWith('user', 'hello');
             expect(intr).toHaveBeenCalledOnce();
+        });
+
+        it('loads the default context once, on first use', async () => {
+            const service = new OpenAIResponseService(contexts, registry, config());
+            await service.handleEvent({ type: 'status', status: { a: 1 } });
+            await service.handleEvent({ type: 'status', status: { b: 2 } });
+
+            expect(contexts.getDefault).toHaveBeenCalledOnce();
+            expect((service as any).instructions.startsWith(mockContext)).toBe(true);
+        });
+
+        it('does not load the default when setup supplies a known contextKey', async () => {
+            const campaign = withCampaign();
+            const service = new OpenAIResponseService(campaign, registry, config());
+            await service.handleEvent({
+                type: 'setup',
+                setup: { callSid: 'CA1', customParameters: { contextKey: 'campaign' } },
+                parameters: {},
+            });
+
+            expect(campaign.getDefault).not.toHaveBeenCalled();
         });
     });
 });

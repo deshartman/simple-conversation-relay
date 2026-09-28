@@ -7,7 +7,7 @@
  */
 
 import type { ServerConfig } from '../config/ServerConfig.js';
-import type { CachedAssetsService } from '../services/CachedAssetsService.js';
+import type { ContextSource } from '../services/ContextStore.js';
 import { ToolRegistry } from './tool-registry.js';
 import { endCallTool } from './end-call.js';
 import { liveAgentHandoffTool } from './live-agent-handoff.js';
@@ -21,7 +21,7 @@ import { createChangeContextTool } from './change-context.js';
 
 export function buildDefaultRegistry(
     config: ServerConfig,
-    cache: CachedAssetsService
+    contexts: ContextSource
 ): ToolRegistry {
     return new ToolRegistry()
         .register(endCallTool)
@@ -32,7 +32,7 @@ export function buildDefaultRegistry(
         .register(setListenModeTool)
         .register(setSilenceDetectionTool)
         .register(createSendSMSTool(config))
-        .register(createChangeContextTool(cache));
+        .register(createChangeContextTool(contexts));
 }
 
 export { ToolRegistry } from './tool-registry.js';
