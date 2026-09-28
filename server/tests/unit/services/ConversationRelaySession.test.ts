@@ -262,11 +262,14 @@ describe('ConversationRelaySession', () => {
          * speaking French is flipped straight back on the next prompt.
          */
         it('stops switching for the rest of the call once the caller explicitly asks', async () => {
-            const { session, sent } = makeLangSession();
+            const { session, sent, responseService } = makeLangSession();
             sessions.push(session);
 
             await say(session, 'fr');
-            session.switchLanguage({ ttsLanguage: 'en-AU' });
+            (responseService as any).handler.toolResult({
+                toolType: 'switch-language',
+                toolData: { success: true, message: '', action: { type: 'language', ttsLanguage: 'en-AU' } },
+            });
             await say(session, 'fr');
             await say(session, 'fr');
 
@@ -445,6 +448,107 @@ describe('ConversationRelaySession', () => {
             // fr-FR is in SCR's config but not this call's TwiML, so no switch;
             // de resolves to the call's own de-DE.
             expect(sent.filter(f => f.type === 'language').map(f => f.ttsLanguage)).toEqual(['de-DE']);
+        });
+    });
+
+    describe('call actions (service asks, transport builds the frame)', () => {
+        const act = (rs: any, action: any) =>
+            rs.handler.toolResult({ toolType: 't', toolData: { success: true, message: '', action } });
+
+        it('builds sendDigits, play and language frames from actions', () => {
+            const { session, sent, responseService } = makeSession({ initialListenMode: false });
+            sessions.push(session);
+
+            act(responseService, { type: 'sendDigits', digits: '6' });
+            act(responseService, { type: 'play', source: 'https://x/a.mp3', loop: 1 });
+            act(responseService, { type: 'language', ttsLanguage: 'fr-FR' });
+
+            expect(sent).toEqual([
+                { type: 'sendDigits', digits: '6' },
+                { type: 'play', source: 'https://x/a.mp3', loop: 1 },
+                { type: 'language', ttsLanguage: 'fr-FR' },
+            ]);
+        });
+
+        it('holds endCall until the farewell has been spoken', async () => {
+            const { session, sent, responseService } = makeSession({ initialListenMode: false });
+            sessions.push(session);
+
+            act(responseService, { type: 'endCall', handoffData: '{"conversationId":"c1"}' });
+            expect(sent).toEqual([]);
+
+            await session.sendText('Transferring you now', true);
+
+            expect(typesOf(sent)).toEqual(['text', 'end']);
+            expect(sent[1]).toEqual({ type: 'end', handoffData: '{"conversationId":"c1"}' });
+        });
+
+        it('toggles listen mode from an action', () => {
+            const { session, responseService } = makeSession({ initialListenMode: false });
+            sessions.push(session);
+
+            act(responseService, { type: 'listenMode', enabled: true });
+
+            expect(session.isListenMode()).toBe(true);
+        });
+
+        it('maps an undeclared code to the declared one with the same tag', () => {
+            const { session, sent, responseService } = makeSession({
+                initialListenMode: false,
+                declaredLanguages: ['en-AU', 'fr-FR'],
+            });
+            sessions.push(session);
+
+            act(responseService, { type: 'language', ttsLanguage: 'en-US', transcriptionLanguage: 'en-GB' });
+            act(responseService, { type: 'language', ttsLanguage: 'fr-FR', transcriptionLanguage: 'multi' });
+
+            expect(sent).toEqual([
+                { type: 'language', ttsLanguage: 'en-AU', transcriptionLanguage: 'en-AU' },
+                { type: 'language', ttsLanguage: 'fr-FR', transcriptionLanguage: 'multi' },
+            ]);
+        });
+
+        it('drops a language action with no declared match', () => {
+            const { session, sent, responseService } = makeSession({
+                initialListenMode: false,
+                declaredLanguages: ['en-AU', 'fr-FR'],
+            });
+            sessions.push(session);
+
+            act(responseService, { type: 'language', ttsLanguage: 'de-DE' });
+
+            expect(sent).toEqual([]);
+        });
+
+        it('reports what it did: endCall is terminal, a dropped language is not applied', () => {
+            const { session, responseService } = makeSession({
+                initialListenMode: false,
+                declaredLanguages: ['en-AU', 'fr-FR'],
+            });
+            sessions.push(session);
+
+            expect(act(responseService, { type: 'endCall', handoffData: '{}' })).toEqual({ applied: true, terminal: true });
+            expect(act(responseService, { type: 'sendDigits', digits: '6' })).toEqual({ applied: true, terminal: false });
+            expect(act(responseService, { type: 'language', ttsLanguage: 'en-US' })).toEqual({
+                applied: true,
+                terminal: false,
+                detail: "Used the call's language: en-US -> en-AU",
+            });
+            expect(act(responseService, { type: 'language', ttsLanguage: 'de-DE' })).toEqual({
+                applied: false,
+                terminal: false,
+                detail: 'This call only supports: en-AU, fr-FR',
+            });
+            expect(act(responseService, { type: 'sendDigits', digits: 'abc' })).toEqual({ applied: false, terminal: false });
+        });
+
+        it('drops an action whose frame is invalid', () => {
+            const { session, sent, responseService } = makeSession({ initialListenMode: false });
+            sessions.push(session);
+
+            act(responseService, { type: 'sendDigits', digits: 'abc' });
+
+            expect(sent).toEqual([]);
         });
     });
 

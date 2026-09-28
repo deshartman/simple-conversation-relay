@@ -7,8 +7,8 @@
  */
 
 import { describe, it, expect, beforeEach, vi } from 'vitest';
-import { createSendSMSTool } from '../../../src/tools/send-sms.js';
-import { ServerConfig } from '../../../src/config/ServerConfig.js';
+import { createSendSMSTool } from '../../../../src/tools/llm/send-sms.js';
+import { ServerConfig } from '../../../../src/config/ServerConfig.js';
 
 // Mock the twilio module
 const mockCreate = vi.fn();

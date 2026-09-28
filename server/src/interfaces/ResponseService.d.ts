@@ -11,7 +11,7 @@ export type ContentHandler = (response: ContentResponse) => void;
 /**
  * Handler function type for tool result events from LLM services
  */
-export type ToolResultHandler = (toolResult: ToolResultEvent) => void;
+export type ToolResultHandler = (toolResult: ToolResultEvent) => ActionOutcome | void;
 
 /**
  * Handler function type for error events from LLM services
@@ -23,7 +23,12 @@ export type ErrorHandler = (error: Error) => void;
  */
 export interface ResponseHandler {
     content(response: ContentResponse): void;
-    toolResult(toolResult: ToolResultEvent): void;
+    /**
+     * Returns what the transport did with the result's `action`, so the
+     * service can tell the model the truth. Handlers with no call (e.g.
+     * `/conversation`) return nothing.
+     */
+    toolResult(toolResult: ToolResultEvent): ActionOutcome | void;
     error(error: Error): void;
     callSid(callSid: string, responseMessage: any): void;
     /**
@@ -49,7 +54,31 @@ export interface ContentResponse {
  */
 export interface ToolResultEvent {
     toolType: string;  // The tool name (e.g., "send-dtmf", "live-agent-handoff", "send-sms")
-    toolData: ToolResult; // The complete tool result including outgoingMessage for CRelay tools
+    toolData: ToolResult; // The complete tool result, incl. `action` for tools that act on the call
+}
+
+/**
+ * Something a service asks the transport to do to the call. The service's
+ * tools decide *when*; the transport owns *what it means* on the wire (which
+ * frame, and that `endCall` waits for the farewell). Services never build CR
+ * frames themselves.
+ */
+export type CallAction =
+    | { type: 'endCall'; handoffData?: string }
+    | { type: 'sendDigits'; digits: string }
+    | { type: 'play'; source: string; loop?: number; interruptible?: boolean; preemptible?: boolean }
+    | { type: 'language'; ttsLanguage?: string; transcriptionLanguage?: string }
+    | { type: 'listenMode'; enabled: boolean }
+    | { type: 'silence'; enabled: boolean };
+
+/** What the transport did with a requested action. */
+export interface ActionOutcome {
+    /** False when the action was dropped (e.g. an undeclared language). */
+    applied: boolean;
+    /** True when the action ends the call — nothing more should be said. */
+    terminal: boolean;
+    /** Why it wasn't applied, or what was substituted. */
+    detail?: string;
 }
 
 /**
@@ -58,6 +87,8 @@ export interface ToolResultEvent {
 export interface ToolResult {
     success: boolean;
     message: string;
+    /** Applied to the call by the transport. */
+    action?: CallAction;
     [key: string]: any; // Allows additional properties like digits, recipient, summary, etc.
 }
 

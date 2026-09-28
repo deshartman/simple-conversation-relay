@@ -28,7 +28,7 @@ interface StatusCallback {
  * **Don't use TwilioService (use direct Twilio API) when:**
  * - Creating LLM tools in src/tools/ directory
  * - Tools should call Twilio API directly for self-contained execution
- * - Example: src/tools/send-sms.ts uses direct twilio.messages.create() call
+ * - Example: src/tools/llm/send-sms.ts uses direct twilio.messages.create() call
  *
  * @class
  * @property {string} accountSid - Twilio account SID from environment variables

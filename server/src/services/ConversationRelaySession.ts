@@ -24,7 +24,7 @@
 import { logOut, logError } from '../utils/logger.js';
 import { SilenceHandler } from './SilenceHandler.js';
 import type { SilenceDetectionConfig } from './SilenceHandler.js';
-import type { ResponseService, ResponseHandler, ContentResponse, ToolResultEvent } from '../interfaces/ResponseService.js';
+import type { ResponseService, ResponseHandler, ContentResponse, ToolResultEvent, CallAction, ActionOutcome } from '../interfaces/ResponseService.js';
 import type { SessionData, IncomingMessage } from '../interfaces/ConversationRelay.js';
 import {
     OutgoingFrameSchema,
@@ -86,7 +86,8 @@ export interface ConversationRelaySessionOptions {
     /**
      * Language codes declared as <Language> children in the TwiML, e.g.
      * ['en-AU', 'fr-FR']. Doubles as the allow-list for automatic TTS
-     * switching: a detected language with no declared entry is left alone.
+     * switching (a detected language with no declared entry is left alone)
+     * and for `language` actions (Twilio rejects an undeclared code).
      */
     declaredLanguages?: string[];
     /** ttsLanguage the TwiML opened on, so an already-active code isn't re-sent. */
@@ -104,6 +105,7 @@ export class ConversationRelaySession {
 
     /** Detected primary tag (`fr`) -> declared code (`fr-FR`). First declaration wins. */
     private readonly ttsLanguageByTag: Map<string, string>;
+    private readonly declaredLanguages: ReadonlySet<string>;
     private activeTtsLanguage: string | null;
     private manualLanguageOverride = false;
 
@@ -120,6 +122,7 @@ export class ConversationRelaySession {
         this.listenMode = opts.initialListenMode;
         this.logPrefix = `Call SID: ${this.sessionData.setupData.callSid ?? 'unknown'}]`;
 
+        this.declaredLanguages = new Set(opts.declaredLanguages ?? []);
         this.ttsLanguageByTag = new Map();
         for (const code of opts.declaredLanguages ?? []) {
             const tag = code.split('-')[0].toLowerCase();
@@ -405,20 +408,6 @@ export class ConversationRelaySession {
         await this.sendText(reminder, true);
     }
 
-    switchLanguage(opts: { ttsLanguage?: string; transcriptionLanguage?: string }): void {
-        // An explicit switch (the switch-language tool — i.e. the caller asked)
-        // wins for the rest of the call. Without this latch, automatic
-        // detection would flip TTS straight back on the next prompt.
-        this.manualLanguageOverride = true;
-        if (opts.ttsLanguage) this.activeTtsLanguage = opts.ttsLanguage;
-        const frame: OutgoingFrame = { type: 'language' };
-        if (opts.ttsLanguage) (frame as { ttsLanguage?: string }).ttsLanguage = opts.ttsLanguage;
-        if (opts.transcriptionLanguage)
-            (frame as { transcriptionLanguage?: string }).transcriptionLanguage =
-                opts.transcriptionLanguage;
-        this.sendResponse(frame);
-    }
-
     /**
      * End the call immediately. Bypasses listen-mode gating (always sent)
      * and the terminal-deferral path (callers invoking this directly are
@@ -479,9 +468,7 @@ export class ConversationRelaySession {
 
     /**
      * Bridge from `ResponseService` (streaming tokens, tool results) to the
-     * session's outgoing methods. Routes tool-result side-effect fields
-     * (`silenceEnabled`, `listenMode`, `outgoingMessage`) to the right
-     * session method.
+     * session's outgoing methods. Applies a tool result's `action` to the call.
      */
     private buildResponseHandler(): ResponseHandler {
         return {
@@ -506,51 +493,13 @@ export class ConversationRelaySession {
                 );
             },
 
-            toolResult: (event: ToolResultEvent) => {
+            toolResult: (event: ToolResultEvent): ActionOutcome | void => {
                 const { toolType, toolData } = event;
                 logOut('Session', `${this.logPrefix} Tool result: ${toolType}`);
 
-                if (!toolData) return;
-
-                // Priority 1: silence-detection toggle.
-                if (typeof toolData.silenceEnabled === 'boolean') {
-                    this.setSilenceDetection(toolData.silenceEnabled);
-                    return;
+                if (toolData?.action) {
+                    return this.applyAction(toolData.action, toolType);
                 }
-
-                // Priority 2: listen-mode toggle.
-                if (typeof toolData.listenMode === 'boolean') {
-                    this.setListenMode(toolData.listenMode);
-                    return;
-                }
-
-                // Priority 3: outgoing frame from the tool.
-                const outgoing = toolData.outgoingMessage;
-                if (!outgoing) return;
-
-                const parsed = OutgoingFrameSchema.safeParse(outgoing);
-                if (!parsed.success) {
-                    logError(
-                        'Session',
-                        `${this.logPrefix} Tool '${toolType}' produced invalid outgoingMessage: ${JSON.stringify(parsed.error.issues)}`
-                    );
-                    return;
-                }
-
-                const frame = parsed.data;
-                if (frame.type === 'end') {
-                    // Defer terminal frames until after the final text token,
-                    // so the LLM's farewell isn't cut off mid-sentence.
-                    this.pendingTerminalFrame = frame;
-                    logOut(
-                        'Session',
-                        `${this.logPrefix} Deferring terminal frame from '${toolType}' until farewell flush`
-                    );
-                    return;
-                }
-
-                // Non-terminal frames ship immediately.
-                this.sendResponse(frame);
             },
 
             error: (error: Error) => {
@@ -568,6 +517,114 @@ export class ConversationRelaySession {
                 this.trackToolCall(promise);
             },
         };
+    }
+
+    /**
+     * What a call action means on the wire. The only place tools' effects
+     * become frames, and the only place that knows which action ends the call.
+     */
+    private applyAction(action: CallAction, toolType: string): ActionOutcome {
+        switch (action.type) {
+            case 'listenMode':
+                this.setListenMode(action.enabled);
+                return { applied: true, terminal: false };
+            case 'silence':
+                this.setSilenceDetection(action.enabled);
+                return { applied: true, terminal: false };
+            case 'language': {
+                // Twilio rejects a code the TwiML didn't declare, so resolve
+                // each one against the declared list (same lookup as the
+                // auto-switch: `en-US` -> the declared `en-AU`).
+                const tts = this.resolveDeclaredLanguage(action.ttsLanguage, toolType);
+                const stt = this.resolveDeclaredLanguage(action.transcriptionLanguage, toolType);
+                if (tts === null || stt === null) {
+                    return {
+                        applied: false,
+                        terminal: false,
+                        detail: `This call only supports: ${[...this.declaredLanguages].join(', ')}`,
+                    };
+                }
+                const frame: CallAction = { type: 'language' };
+                if (tts) frame.ttsLanguage = tts;
+                if (stt) frame.transcriptionLanguage = stt;
+                if (!this.applyToolFrame(frame, toolType)) return { applied: false, terminal: false };
+                // An explicit switch (the caller asked) wins for the rest of
+                // the call; without this, automatic detection would flip TTS
+                // straight back on the next prompt.
+                this.manualLanguageOverride = true;
+                if (tts) this.activeTtsLanguage = tts;
+                const substituted = [
+                    tts !== action.ttsLanguage ? `${action.ttsLanguage} -> ${tts}` : null,
+                    stt !== action.transcriptionLanguage ? `${action.transcriptionLanguage} -> ${stt}` : null,
+                ].filter(Boolean);
+                return substituted.length > 0
+                    ? { applied: true, terminal: false, detail: `Used the call's language: ${substituted.join(', ')}` }
+                    : { applied: true, terminal: false };
+            }
+            case 'endCall':
+            case 'sendDigits':
+            case 'play': {
+                const { type, ...fields } = action;
+                const frameType = type === 'endCall' ? 'end' : type;
+                const applied = this.applyToolFrame({ type: frameType, ...fields }, toolType);
+                return { applied, terminal: applied && type === 'endCall' };
+            }
+            default:
+                logError(
+                    'Session',
+                    `${this.logPrefix} Tool '${toolType}' requested unknown action: ${JSON.stringify(action)}`
+                );
+                return { applied: false, terminal: false, detail: 'Unknown action' };
+        }
+    }
+
+    /**
+     * A declared code for `code`: itself if declared, else the declared code
+     * with the same primary tag. `undefined` passes through; null means no
+     * declared match, so the action is dropped. With no declared list, every
+     * code passes.
+     */
+    private resolveDeclaredLanguage(code: string | undefined, toolType: string): string | undefined | null {
+        if (code === undefined || code === 'multi' || this.declaredLanguages.size === 0) return code;
+        if (this.declaredLanguages.has(code)) return code;
+        const match = this.ttsLanguageByTag.get(code.split('-')[0].toLowerCase());
+        if (match) {
+            logOut('Session', `${this.logPrefix} Tool '${toolType}' asked for ${code} — using declared ${match}`);
+            return match;
+        }
+        logError(
+            'Session',
+            `${this.logPrefix} Tool '${toolType}' asked for undeclared language ${code} — declared: ${[...this.declaredLanguages].join(', ')}`
+        );
+        return null;
+    }
+
+    /** Validates and ships (or defers) a tool's frame; false when invalid. */
+    private applyToolFrame(outgoing: unknown, toolType: string): boolean {
+        const parsed = OutgoingFrameSchema.safeParse(outgoing);
+        if (!parsed.success) {
+            logError(
+                'Session',
+                `${this.logPrefix} Tool '${toolType}' produced invalid frame: ${JSON.stringify(parsed.error.issues)}`
+            );
+            return false;
+        }
+
+        const frame = parsed.data;
+        if (frame.type === 'end') {
+            // Defer terminal frames until after the final text token,
+            // so the LLM's farewell isn't cut off mid-sentence.
+            this.pendingTerminalFrame = frame;
+            logOut(
+                'Session',
+                `${this.logPrefix} Deferring terminal frame from '${toolType}' until farewell flush`
+            );
+            return true;
+        }
+
+        // Non-terminal frames ship immediately.
+        this.sendResponse(frame);
+        return true;
     }
 
     // =========================================================================

@@ -13,7 +13,7 @@
  */
 
 import { describe, it, expect, beforeEach, vi } from 'vitest';
-import { createChangeContextTool } from '../../../src/tools/change-context.js';
+import { createChangeContextTool } from '../../../../src/tools/llm/change-context.js';
 
 interface MockContextSource {
     get: ReturnType<typeof vi.fn>;
