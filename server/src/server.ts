@@ -33,6 +33,8 @@ import {
 } from './middleware/outbound-guards.js';
 import { createTwilioSignatureValidator, isValidWsUpgrade } from './middleware/twilio-signature.js';
 import { createLatencyModeRouter } from './latency/modeRoute.js';
+import { getMode } from './latency/mode.js';
+import { warmFillerBank } from './latency/matchFiller.js';
 
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
@@ -610,6 +612,7 @@ const startServer = (port: number): void => {
         })
         .on('listening', () => {
             logOut('Server', `Server started on port ${currentPort}`);
+            if (getMode() !== 'none') warmFillerBank();
         });
 };
 

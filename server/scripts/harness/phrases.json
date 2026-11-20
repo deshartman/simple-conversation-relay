@@ -1,0 +1,270 @@
+[
+  {
+    "text": "this is ridiculous, I've been waiting three weeks for this",
+    "expectCategory": "complaint-frustration"
+  },
+  {
+    "text": "I am so fed up with your company",
+    "expectCategory": "complaint-frustration"
+  },
+  {
+    "text": "this is the worst service I have ever had",
+    "expectCategory": "complaint-frustration"
+  },
+  {
+    "text": "I keep calling and nobody fixes anything",
+    "expectCategory": "complaint-frustration"
+  },
+  {
+    "text": "can I talk to a real person please",
+    "expectCategory": "human-request"
+  },
+  {
+    "text": "let me speak to your supervisor",
+    "expectCategory": "human-request"
+  },
+  {
+    "text": "am I talking to a robot right now",
+    "expectCategory": "human-request"
+  },
+  {
+    "text": "I want to be transferred to the billing department",
+    "expectCategory": "human-request"
+  },
+  {
+    "text": "can someone call me back later",
+    "expectCategory": "human-request"
+  },
+  {
+    "text": "hi there, how are you doing today",
+    "expectCategory": "greeting-smalltalk"
+  },
+  {
+    "text": "hello, is anyone there",
+    "expectCategory": "greeting-smalltalk"
+  },
+  {
+    "text": "good morning",
+    "expectCategory": "greeting-smalltalk"
+  },
+  {
+    "text": "crazy weather we're having huh",
+    "expectCategory": "greeting-smalltalk"
+  },
+  {
+    "text": "thank you so much, that was really helpful",
+    "expectCategory": "thanks-goodbye"
+  },
+  {
+    "text": "okay that's all I needed, goodbye",
+    "expectCategory": "thanks-goodbye"
+  },
+  {
+    "text": "no that's everything, have a great day",
+    "expectCategory": "thanks-goodbye"
+  },
+  {
+    "text": "thanks, bye now",
+    "expectCategory": "thanks-goodbye"
+  },
+  {
+    "text": "sorry, could you repeat that",
+    "expectCategory": "clarification-repeat"
+  },
+  {
+    "text": "can you say that more slowly please",
+    "expectCategory": "clarification-repeat"
+  },
+  {
+    "text": "I didn't understand, what do you mean by that",
+    "expectCategory": "clarification-repeat"
+  },
+  {
+    "text": "wait, that's not what I said, I said fifteen not fifty",
+    "expectCategory": "clarification-repeat"
+  },
+  {
+    "text": "yes that's correct",
+    "expectCategory": "confirmation"
+  },
+  {
+    "text": "no, that's not right",
+    "expectCategory": "confirmation"
+  },
+  {
+    "text": "yeah go ahead and do that",
+    "expectCategory": "confirmation"
+  },
+  {
+    "text": "hmm, I'm not sure about that one",
+    "expectCategory": "confirmation"
+  },
+  {
+    "text": "hang on a second, let me grab my card",
+    "expectCategory": "hold-wait"
+  },
+  {
+    "text": "can you give me a minute",
+    "expectCategory": "hold-wait"
+  },
+  {
+    "text": "how much longer is this going to take",
+    "expectCategory": "hold-wait"
+  },
+  {
+    "text": "I'm in the middle of something, can we do this later",
+    "expectCategory": "hold-wait"
+  },
+  {
+    "text": "um, uh, well, so I was, uh",
+    "expectCategory": "unclear-input"
+  },
+  {
+    "text": "the, the thing with the, never mind",
+    "expectCategory": "unclear-input"
+  },
+  {
+    "text": "sorry, kids yelling in the background, hold on what",
+    "expectCategory": "unclear-input"
+  },
+  {
+    "text": "I wanted to ask about my bill and also the weather tomorrow and my cat",
+    "expectCategory": "unclear-input"
+  },
+  {
+    "text": "my husband passed away last month and I need to close his account",
+    "expectCategory": "distress-sensitive"
+  },
+  {
+    "text": "I just found out I have cancer and I can't pay this bill",
+    "expectCategory": "distress-sensitive"
+  },
+  {
+    "text": "I lost my job and I'm about to lose my house",
+    "expectCategory": "distress-sensitive"
+  },
+  {
+    "text": "someone scammed me out of my life savings",
+    "expectCategory": "distress-sensitive"
+  },
+  {
+    "text": "my wallet got stolen with all my cards in it",
+    "expectCategory": "bad-news-empathy"
+  },
+  {
+    "text": "my package arrived completely smashed",
+    "expectCategory": "bad-news-empathy"
+  },
+  {
+    "text": "I was just charged four hundred dollars I didn't expect",
+    "expectCategory": "bad-news-empathy"
+  },
+  {
+    "text": "my application got rejected again",
+    "expectCategory": "bad-news-empathy"
+  },
+  {
+    "text": "just give me a yes or no, is the fee refundable",
+    "expectCategory": "professional-direct"
+  },
+  {
+    "text": "what exactly does your policy say about cancellations",
+    "expectCategory": "professional-direct"
+  },
+  {
+    "text": "I need the exact amount I owe, to the cent",
+    "expectCategory": "professional-direct"
+  },
+  {
+    "text": "give me a straight answer, when will this be resolved",
+    "expectCategory": "professional-direct"
+  },
+  {
+    "text": "who is responsible for this mistake",
+    "expectCategory": "professional-direct"
+  },
+  {
+    "text": "can you look up my order status",
+    "expectCategory": "request-action"
+  },
+  {
+    "text": "I'd like to check my account balance",
+    "expectCategory": "request-action"
+  },
+  {
+    "text": "can you send me a copy of my invoice",
+    "expectCategory": "request-action"
+  },
+  {
+    "text": "please find my last payment",
+    "expectCategory": "request-action"
+  },
+  {
+    "text": "what are your opening hours",
+    "expectCategory": "question-info"
+  },
+  {
+    "text": "how does the referral program work",
+    "expectCategory": "question-info"
+  },
+  {
+    "text": "do you offer international shipping",
+    "expectCategory": "question-info"
+  },
+  {
+    "text": "what's the difference between the two plans",
+    "expectCategory": "question-info"
+  },
+  {
+    "text": "my internet keeps dropping every evening",
+    "expectCategory": "problem-report"
+  },
+  {
+    "text": "the app crashes whenever I open it",
+    "expectCategory": "problem-report"
+  },
+  {
+    "text": "I can't log in to my account",
+    "expectCategory": "problem-report"
+  },
+  {
+    "text": "my card was declined but I have money",
+    "expectCategory": "problem-report"
+  },
+  {
+    "text": "I need to change my delivery address",
+    "expectCategory": "request-change"
+  },
+  {
+    "text": "can I upgrade my plan",
+    "expectCategory": "request-change"
+  },
+  {
+    "text": "I want to update the phone number on my account",
+    "expectCategory": "request-change"
+  },
+  {
+    "text": "can we move my appointment to Friday",
+    "expectCategory": "request-change"
+  },
+  {
+    "text": "I'm really upset and I want to talk to a manager right now",
+    "expectCategory": "human-request",
+    "ambiguous": true
+  },
+  {
+    "text": "thanks but I still can't log in",
+    "expectCategory": "problem-report",
+    "ambiguous": true
+  },
+  {
+    "text": "okay, wait, can you check that again",
+    "expectCategory": "request-action",
+    "ambiguous": true
+  },
+  {
+    "text": "yes but I'm still angry about the charge",
+    "expectCategory": "complaint-frustration",
+    "ambiguous": true
+  }
+]

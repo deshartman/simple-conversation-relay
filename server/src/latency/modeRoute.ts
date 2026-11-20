@@ -1,5 +1,6 @@
 import { Router } from 'express';
 import { LATENCY_MODES, getMode, setMode, isLatencyMode } from './mode.js';
+import { warmFillerBank } from './matchFiller.js';
 import { logOut } from '../utils/logger.js';
 
 /**
@@ -29,6 +30,7 @@ export function createLatencyModeRouter(): Router {
         const previous = getMode();
         setMode(mode);
         logOut('Latency', `Mode changed: ${previous} -> ${mode}`);
+        if (mode === 'embedding') warmFillerBank();
         res.json({ mode, previous });
     };
     router.put('/mode', set);

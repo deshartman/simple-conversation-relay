@@ -22,6 +22,7 @@
  */
 
 import { logOut, logError } from '../utils/logger.js';
+import { matchFiller } from '../latency/matchFiller.js';
 import { SilenceHandler } from './SilenceHandler.js';
 import type { SilenceDetectionConfig } from './SilenceHandler.js';
 import type { ResponseService, ResponseHandler, ContentResponse, ToolResultEvent, CallAction, ActionOutcome } from '../interfaces/ResponseService.js';
@@ -114,6 +115,11 @@ export class ConversationRelaySession {
     private accumulatedTokens = '';
     private pendingTerminalFrame: OutgoingFrame | null = null;
     private readonly inFlightToolCalls: Set<Promise<unknown>> = new Set();
+    /** Filler bookkeeping: a filler may only be sent for the current turn, before the LLM speaks. */
+    private turnSeq = 0;
+    private llmStarted = false;
+    private promptAt = 0;
+    private firstTokenLogged = false;
 
     constructor(opts: ConversationRelaySessionOptions) {
         this.responseService = opts.responseService;
@@ -220,6 +226,13 @@ export class ConversationRelaySession {
                 case 'prompt':
                     logOut('Session', `${this.logPrefix} PROMPT: ${message.voicePrompt}`);
                     this.autoSwitchTtsLanguage(message.lang);
+                    {
+                        const turn = ++this.turnSeq;
+                        this.llmStarted = false;
+                        this.firstTokenLogged = false;
+                        this.promptAt = performance.now();
+                        void this.sendFiller(message.voicePrompt || '', turn);
+                    }
                     await this.responseService.handleEvent({
                         type: 'prompt',
                         text: message.voicePrompt || '',
@@ -239,6 +252,7 @@ export class ConversationRelaySession {
                     //     'Session',
                     //     `${this.logPrefix} INTERRUPT: ${JSON.stringify(message, null, 2)}`
                     // );
+                    this.turnSeq++;
                     await this.responseService.handleEvent({
                         type: 'interrupt',
                         heard: message.utteranceUntilInterrupt,
@@ -275,6 +289,31 @@ export class ConversationRelaySession {
     // =========================================================================
     // Outgoing — the single path back to Twilio
     // =========================================================================
+
+    /**
+     * Match the caller's text to a filler and speak it, in parallel with the LLM.
+     * Dropped if the turn moved on, the LLM already spoke, listen mode is on,
+     * or the match took longer than LATENCY_FILLER_BUDGET_MS.
+     */
+    private async sendFiller(text: string, turn: number): Promise<void> {
+        const t0 = performance.now();
+        const m = await matchFiller(text);
+        if (!m) return;
+        const elapsed = performance.now() - t0;
+        const budget = Number(process.env.LATENCY_FILLER_BUDGET_MS) || 500;
+        const drop =
+            turn !== this.turnSeq ? 'stale'
+            : this.llmStarted ? 'late (LLM already speaking)'
+            : this.listenMode ? 'listen mode'
+            : elapsed >= budget ? `late (${Math.round(elapsed)}ms >= ${budget}ms)`
+            : null;
+        logOut(
+            'Latency',
+            `${this.logPrefix} filler mode=${m.mode} id=${m.filler.id} score=${m.score.toFixed(2)} match=${Math.round(m.ms)}ms ${drop ? `dropped: ${drop}` : 'sent'}`
+        );
+        if (drop) return;
+        await this.sendText(`${m.filler.say} `, false);
+    }
 
     /**
      * Ship a validated OutgoingFrame. Listen-mode suppresses text/play/
@@ -473,6 +512,13 @@ export class ConversationRelaySession {
     private buildResponseHandler(): ResponseHandler {
         return {
             content: (response: ContentResponse) => {
+                if (response.token && !this.llmStarted) {
+                    this.llmStarted = true;
+                    if (!this.firstTokenLogged) {
+                        this.firstTokenLogged = true;
+                        logOut('Latency', `${this.logPrefix} first LLM token ${Math.round(performance.now() - this.promptAt)}ms after prompt`);
+                    }
+                }
                 // Accumulate token stream for logging; ship each token as a
                 // text frame via the session's outgoing path.
                 if (!response.last) {

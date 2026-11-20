@@ -21,6 +21,7 @@ import type {
 } from 'openai/resources/responses/responses.mjs';
 
 import { logOut, logError } from '../utils/logger.js';
+import { getMode } from '../latency/mode.js';
 import type {
     ResponseService,
     ContentResponse,
@@ -34,6 +35,10 @@ import type { ServerConfig } from '../config/ServerConfig.js';
 import type { ToolRegistry } from '../tools/tool-registry.js';
 import type { ToolContext } from '../tools/define-tool.js';
 import { ContextNotFoundError, type ContextSource } from './ContextStore.js';
+
+/** Appended when a filler may already have been spoken (latency mode != none). */
+const FILLER_NOTE =
+    "A brief acknowledgment may already have been spoken to the caller; do not open your reply with another acknowledgment such as 'let me check'.";
 
 /** Reasoning models (gpt-5) think for seconds before the first token; set OPENAI_REASONING_EFFORT=minimal for voice. Leave unset for non-reasoning models, which reject the parameter. */
 const reasoningParam = () =>
@@ -415,7 +420,8 @@ class OpenAIResponseService implements ResponseService {
     /** The current instructions, loading the default context on first use. */
     private async loadInstructions(): Promise<string> {
         if (this.instructions === null) this.instructions = await this.contexts.getDefault();
-        return this.instructions;
+        if (getMode() === 'none') return this.instructions;
+        return `${this.instructions}\n\n${FILLER_NOTE}`;
     }
 
     async generateResponse(role: 'user' | 'system' = 'user', prompt: string): Promise<void> {
