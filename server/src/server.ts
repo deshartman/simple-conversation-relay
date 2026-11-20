@@ -32,6 +32,7 @@ import {
     createRateLimiter,
 } from './middleware/outbound-guards.js';
 import { createTwilioSignatureValidator, isValidWsUpgrade } from './middleware/twilio-signature.js';
+import { createLatencyModeRouter } from './latency/modeRoute.js';
 
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
@@ -376,6 +377,8 @@ app.ws('/conversation-relay', (ws: any, req: express.Request) => {
 app.get('/', (_req: express.Request, res: express.Response) => {
     res.send('WebSocket Server Running');
 });
+
+app.use('/latency', createLatencyModeRouter());
 
 app.post('/outboundCall', guardOutboundCall, async (req: express.Request, res: express.Response) => {
     const requestData: RequestData = req.body;
