@@ -3,6 +3,7 @@
  * each with a situation description and example caller utterances for matching.
  * Data lives in fillers.json (imported so tsc copies it into dist/).
  */
+import { readFileSync } from 'node:fs';
 import data from './fillers.json' with { type: 'json' };
 
 export interface Filler {
@@ -13,8 +14,8 @@ export interface Filler {
     say: string;
 }
 
-let cache: Filler[] | undefined;
-let byId: Map<string, Filler> | undefined;
+// One entry per dictionary: '' is the bundled fillers.json, otherwise the FILLERS_PATH file (offline eval).
+const cache = new Map<string, { list: Filler[]; byId: Map<string, Filler> }>();
 
 function validate(raw: unknown): Filler[] {
     if (!Array.isArray(raw)) throw new Error('fillers.json: expected an array');
@@ -37,12 +38,20 @@ function validate(raw: unknown): Filler[] {
     return raw as Filler[];
 }
 
-export function loadFillers(): Filler[] {
-    if (!cache) {
-        cache = validate(data);
-        byId = new Map(cache.map((f) => [f.id, f]));
+/** Bundled dictionary, or the file at `path` (default: env FILLERS_PATH) when set. */
+export function loadFillers(path: string | undefined = process.env.FILLERS_PATH || undefined): Filler[] {
+    return entry(path).list;
+}
+
+function entry(path: string | undefined) {
+    const key = path ?? '';
+    let e = cache.get(key);
+    if (!e) {
+        const list = validate(path ? JSON.parse(readFileSync(path, 'utf8')) : data);
+        e = { list, byId: new Map(list.map((f) => [f.id, f])) };
+        cache.set(key, e);
     }
-    return cache;
+    return e;
 }
 
 /** Texts to embed for one filler: the `when` description plus each example. */
@@ -50,7 +59,6 @@ export function fillerDocuments(f: Filler): string[] {
     return [f.when, ...f.examples];
 }
 
-export function fillerById(id: string): Filler | undefined {
-    loadFillers();
-    return byId!.get(id);
+export function fillerById(id: string, path: string | undefined = process.env.FILLERS_PATH || undefined): Filler | undefined {
+    return entry(path).byId.get(id);
 }
