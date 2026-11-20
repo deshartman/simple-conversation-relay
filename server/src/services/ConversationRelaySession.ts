@@ -22,7 +22,9 @@
  */
 
 import { logOut, logError } from '../utils/logger.js';
-import { matchFiller } from '../latency/matchFiller.js';
+import { matchFiller, type MissReason } from '../latency/matchFiller.js';
+import { getMode } from '../latency/mode.js';
+import { nextFallback } from '../latency/fallbackFillers.js';
 import { SilenceHandler } from './SilenceHandler.js';
 import type { SilenceDetectionConfig } from './SilenceHandler.js';
 import type { ResponseService, ResponseHandler, ContentResponse, ToolResultEvent, CallAction, ActionOutcome } from '../interfaces/ResponseService.js';
@@ -120,6 +122,7 @@ export class ConversationRelaySession {
     private llmStarted = false;
     private promptAt = 0;
     private firstTokenLogged = false;
+    private lastFallback: string | undefined;
 
     constructor(opts: ConversationRelaySessionOptions) {
         this.responseService = opts.responseService;
@@ -291,28 +294,53 @@ export class ConversationRelaySession {
     // =========================================================================
 
     /**
-     * Match the caller's text to a filler and speak it, in parallel with the LLM.
-     * Dropped if the turn moved on, the LLM already spoke, listen mode is on,
-     * or the match took longer than LATENCY_FILLER_BUDGET_MS.
+     * Acknowledge every caller prompt (modes jev/embedding), in parallel with the LLM: the matched
+     * filler if it is good and arrives within LATENCY_FILLER_BUDGET_MS, otherwise a neutral fallback.
+     * At the budget the fallback goes out without waiting for the matcher; a late match is dropped.
+     * Exactly one acknowledgement per turn. Dropped if the turn moved on, the LLM already spoke,
+     * or listen mode is on.
      */
     private async sendFiller(text: string, turn: number): Promise<void> {
+        const mode = getMode();
+        if (mode === 'none') return;
         const t0 = performance.now();
-        const m = await matchFiller(text);
-        if (!m) return;
-        const elapsed = performance.now() - t0;
-        const budget = Number(process.env.LATENCY_FILLER_BUDGET_MS) || 500;
-        const drop =
-            turn !== this.turnSeq ? 'stale'
-            : this.llmStarted ? 'late (LLM already speaking)'
-            : this.listenMode ? 'listen mode'
-            : elapsed >= budget ? `late (${Math.round(elapsed)}ms >= ${budget}ms)`
-            : null;
-        logOut(
-            'Latency',
-            `${this.logPrefix} filler mode=${m.mode} id=${m.filler.id} score=${m.score.toFixed(2)} match=${Math.round(m.ms)}ms ${drop ? `dropped: ${drop}` : 'sent'}`
-        );
-        if (drop) return;
-        await this.sendText(`${m.filler.say} `, false);
+        const budget = Number(process.env.LATENCY_FILLER_BUDGET_MS) || 350;
+        let miss: MissReason = 'no-match';
+        const matching = matchFiller(text, undefined, (r) => { miss = r; });
+        let timer: NodeJS.Timeout | undefined;
+        const timedOut = Symbol('timeout');
+        const first = await Promise.race([
+            matching,
+            new Promise<typeof timedOut>((r) => { timer = setTimeout(() => r(timedOut), budget); }),
+        ]);
+        clearTimeout(timer);
+
+        const emit = async (source: 'match' | 'fallback', id: string, say: string, score: string, reason?: string) => {
+            const drop =
+                turn !== this.turnSeq ? 'stale'
+                : this.llmStarted ? 'late (LLM already speaking)'
+                : this.listenMode ? 'listen mode'
+                : null;
+            logOut(
+                'Latency',
+                `${this.logPrefix} filler mode=${mode} source=${source} id=${id}${reason ? ` reason=${reason}` : ''} score=${score} ms=${Math.round(performance.now() - t0)} ${drop ? `dropped: ${drop}` : 'sent'}`
+            );
+            if (!drop) await this.sendText(`${say} `, false);
+        };
+        const fallback = (reason: string, score: string) => {
+            this.lastFallback = nextFallback(this.lastFallback);
+            return emit('fallback', 'fallback', this.lastFallback, score, reason);
+        };
+
+        if (first === timedOut) {
+            await fallback('timeout', '-');
+            const late = await matching;
+            logOut('Latency', `${this.logPrefix} filler match late, fallback sent (${late ? `id=${late.filler.id} score=${late.score.toFixed(2)} ` : 'no match '}after ${Math.round(performance.now() - t0)}ms)`);
+        } else if (first) {
+            await emit('match', first.filler.id, first.filler.say, first.score.toFixed(2));
+        } else {
+            await fallback(miss, '-');
+        }
     }
 
     /**

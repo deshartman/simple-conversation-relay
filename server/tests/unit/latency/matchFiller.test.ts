@@ -88,11 +88,30 @@ describe('matchFiller', () => {
         expect(await matchFiller('hi')).toBeNull();
     });
 
-    it('jev: the none option and failures return null', async () => {
+    it('jev: the generic-ack catch-all and failures return null', async () => {
         const matchFiller = await load('jev');
-        jevMock.mockResolvedValueOnce({ ok: true, model: 'm', ms: 5, answers: { filler: { choice: 'none', probabilities: { none: 0.9 } } } });
+        jevMock.mockResolvedValueOnce({ ok: true, model: 'm', ms: 5, answers: { filler: { choice: 'generic-ack', probabilities: { 'generic-ack': 0.9 } } } });
         expect(await matchFiller('hi')).toBeNull();
         jevMock.mockResolvedValueOnce({ ok: false, error: 'timeout', ms: 600 });
         expect(await matchFiller('hi')).toBeNull();
+    });
+
+    it('reports why it missed via onMiss', async () => {
+        const reasons: string[] = [];
+        const onMiss = (r: string) => reasons.push(r);
+        process.env.LATENCY_EMBED_THRESHOLD = '0.95';
+        mockEmbeddings([0.9, 0.1]);
+        await (await load('embedding'))('hi', undefined, onMiss);
+        embedMock.mockRejectedValue(new Error('down'));
+        await (await load('embedding'))('hi', undefined, onMiss);
+        jevMock.mockResolvedValueOnce({ ok: true, model: 'm', ms: 5, answers: { filler: { choice: 'generic-ack', probabilities: { 'generic-ack': 0.9 } } } });
+        await (await load('jev'))('hi', undefined, onMiss);
+        expect(reasons).toEqual(['below-threshold', 'error', 'catch-all']);
+    });
+
+    it('jev: always offers the generic-ack option', async () => {
+        jevMock.mockResolvedValue({ ok: true, model: 'm', ms: 5, answers: { filler: { choice: 'generic-ack', probabilities: {} } } });
+        await (await load('jev'))('hi');
+        expect(Object.keys((jevMock.mock.calls[0][1].filler as any).criteria)).toContain('generic-ack');
     });
 });

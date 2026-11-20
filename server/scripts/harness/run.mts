@@ -9,6 +9,7 @@ import { randomUUID } from 'node:crypto';
 import { fileURLToPath } from 'node:url';
 import path from 'node:path';
 import WebSocket from 'ws';
+import { FALLBACK_FILLERS } from '../../src/latency/fallbackFillers.js';
 import twilio from 'twilio';
 
 const here = path.dirname(fileURLToPath(import.meta.url));
@@ -104,6 +105,7 @@ function runTurn(mode: string, p: Phrase): Promise<Result> {
             if (res.firstText !== null) {
                 const hit = fillers.filter((f) => res.firstText!.trim().startsWith(f.say.trim())).sort((x, y) => y.say.length - x.say.length)[0];
                 if (hit) { res.fillerId = hit.id; res.fillerCategory = hit.category; res.categoryMatch = hit.category === p.expectCategory; }
+                else if (mode !== 'none' && FALLBACK_FILLERS.some((f) => res.firstText!.trim().startsWith(f))) res.fillerId = 'fallback';
             }
             try { ws.close(); } catch { /* ignore */ }
             resolve(res);
@@ -188,12 +190,13 @@ console.log('\n=== Summary ===');
 for (const mode of modes) {
     const rs = results.filter((r) => r.mode === mode);
     const ttf = rs.map((r) => r.firstFrameMs).filter((x): x is number => x !== null);
-    const hits = rs.filter((r) => r.fillerId);
+    const fb = rs.filter((r) => r.fillerId === 'fallback');
+    const hits = rs.filter((r) => r.fillerId && r.fillerId !== 'fallback');
     const agree = hits.filter((r) => r.categoryMatch);
     console.log(
         `${mode}: n=${rs.length} frames=${ttf.length} ttf median=${f0(pct(ttf, 0.5))}ms p95=${f0(pct(ttf, 0.95))}ms ` +
-            `filler hit=${hits.length}/${rs.length} (${rs.length ? ((100 * hits.length) / rs.length).toFixed(0) : 0}%) ` +
-            `category agree=${agree.length}/${hits.length}`
+            `matched filler=${hits.length} fallback=${fb.length} no frame=${rs.length - ttf.length} ` +
+            `category agree (matched only)=${agree.length}/${hits.length}`
     );
     for (const r of hits.filter((x) => !x.categoryMatch)) console.log(`   mismatch: "${r.text}" expected ${r.expectCategory}, got ${r.fillerCategory} (${r.fillerId})`);
 }
