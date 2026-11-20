@@ -1,233 +1,5 @@
 [
   {
-    "id": "balance-check",
-    "category": "account-lookup",
-    "when": "Caller asks for their current account balance or amount owed.",
-    "examples": [
-      "what's my balance",
-      "how much do I owe right now",
-      "can you tell me my account balance",
-      "I just want to know what my balance is"
-    ],
-    "say": "Sure, let me pull up your balance."
-  },
-  {
-    "id": "account-status",
-    "category": "account-lookup",
-    "when": "Caller asks about the general status or standing of their account.",
-    "examples": [
-      "is my account in good standing",
-      "what's the status of my account",
-      "can you check if my account is active",
-      "is everything okay with my account"
-    ],
-    "say": "Let me take a look at your account."
-  },
-  {
-    "id": "usage-lookup",
-    "category": "account-lookup",
-    "when": "Caller asks how much of a service, data, or minutes they have used.",
-    "examples": [
-      "how much data have I used this month",
-      "how many minutes do I have left",
-      "what's my usage so far",
-      "am I close to my limit"
-    ],
-    "say": "Let me check your usage for you."
-  },
-  {
-    "id": "transaction-history",
-    "category": "account-lookup",
-    "when": "Caller asks about recent transactions, charges, or activity on the account.",
-    "examples": [
-      "what were my last few transactions",
-      "can you read me my recent activity",
-      "what was that charge on Tuesday",
-      "show me what posted this week"
-    ],
-    "say": "One moment while I look through your recent activity."
-  },
-  {
-    "id": "account-verify",
-    "category": "account-lookup",
-    "when": "Caller gives identifying details such as name, number, or account id so they can be found.",
-    "examples": [
-      "my account number is four five two one",
-      "it's under Maria Lopez",
-      "my phone number is five five five one two one two",
-      "the email on file is jsmith at example"
-    ],
-    "say": "Thanks, give me a second to find that."
-  },
-  {
-    "id": "update-contact",
-    "category": "account-lookup",
-    "when": "Caller wants to change or confirm contact details like address, phone, or email on the account.",
-    "examples": [
-      "I need to update my address",
-      "can you change my email on file",
-      "I got a new phone number",
-      "what phone number do you have for me"
-    ],
-    "say": "Okay, let me bring up your contact details."
-  },
-  {
-    "id": "make-payment",
-    "category": "billing-payment",
-    "when": "Caller wants to make a payment now.",
-    "examples": [
-      "I'd like to pay my bill",
-      "can I make a payment over the phone",
-      "I want to pay what I owe today",
-      "let's take care of my payment"
-    ],
-    "say": "Happy to help with that payment."
-  },
-  {
-    "id": "dispute-charge",
-    "category": "billing-payment",
-    "when": "Caller disputes or does not recognize a charge.",
-    "examples": [
-      "I don't recognize this charge",
-      "I was charged twice for the same thing",
-      "there's a charge on here that's wrong",
-      "I want to dispute a payment"
-    ],
-    "say": "I'm sorry about that, let me look into the charge."
-  },
-  {
-    "id": "refund-request",
-    "category": "billing-payment",
-    "when": "Caller asks for money back or a refund.",
-    "examples": [
-      "I want a refund",
-      "can I get my money back",
-      "you owe me a refund for last month",
-      "how do I get reimbursed"
-    ],
-    "say": "Let me see what we can do about that."
-  },
-  {
-    "id": "due-date",
-    "category": "billing-payment",
-    "when": "Caller asks when a bill is due or when a payment is expected.",
-    "examples": [
-      "when is my bill due",
-      "what's my next payment date",
-      "when does my payment come out",
-      "what's the due date on my invoice"
-    ],
-    "say": "Let me check that date for you."
-  },
-  {
-    "id": "payment-failed",
-    "category": "billing-payment",
-    "when": "Caller says a payment or card was declined or failed.",
-    "examples": [
-      "my card got declined",
-      "the payment didn't go through",
-      "it says my payment failed",
-      "I tried to pay and it errored out"
-    ],
-    "say": "Okay, let me see what happened with that payment."
-  },
-  {
-    "id": "payment-method",
-    "category": "billing-payment",
-    "when": "Caller wants to add, change, or ask about the payment method on file.",
-    "examples": [
-      "I need to update my credit card",
-      "can I switch to a different card",
-      "which card do you have on file",
-      "I want to set up autopay"
-    ],
-    "say": "Sure, let me pull up your payment details."
-  },
-  {
-    "id": "invoice-question",
-    "category": "billing-payment",
-    "when": "Caller asks for an invoice, receipt, or an explanation of a bill.",
-    "examples": [
-      "can you explain my bill",
-      "I need a copy of my invoice",
-      "why is my bill higher this month",
-      "can you send me a receipt"
-    ],
-    "say": "Let me go over that bill with you."
-  },
-  {
-    "id": "cancel-service",
-    "category": "cancel-change",
-    "when": "Caller wants to cancel a service, plan, or subscription.",
-    "examples": [
-      "I want to cancel my subscription",
-      "please cancel my service",
-      "I'm done, cancel everything",
-      "how do I close my account"
-    ],
-    "say": "I understand, let me look at your options."
-  },
-  {
-    "id": "change-plan",
-    "category": "cancel-change",
-    "when": "Caller wants to upgrade, downgrade, or switch plans.",
-    "examples": [
-      "I want to switch to a cheaper plan",
-      "can I upgrade my plan",
-      "I'd like to change my package",
-      "what if I move to the premium tier"
-    ],
-    "say": "Sure, let me see what's available for you."
-  },
-  {
-    "id": "modify-order",
-    "category": "cancel-change",
-    "when": "Caller wants to change details of an existing order or booking.",
-    "examples": [
-      "I need to change my order",
-      "can I add something to what I ordered",
-      "I put in the wrong size",
-      "can you edit my reservation"
-    ],
-    "say": "Okay, let me pull that up and see what can change."
-  },
-  {
-    "id": "cancel-order",
-    "category": "cancel-change",
-    "when": "Caller wants to cancel a specific order or booking.",
-    "examples": [
-      "cancel my order please",
-      "I don't want that order anymore",
-      "can you cancel the thing I ordered yesterday",
-      "I need to cancel my reservation"
-    ],
-    "say": "Got it, let me check where that order stands."
-  },
-  {
-    "id": "pause-service",
-    "category": "cancel-change",
-    "when": "Caller wants to pause, freeze, or temporarily stop something.",
-    "examples": [
-      "can I pause my membership",
-      "I'm going away, hold my service",
-      "I need to put it on hold for a couple months",
-      "can I freeze my account"
-    ],
-    "say": "Let me see if we can do that for you."
-  },
-  {
-    "id": "return-exchange",
-    "category": "cancel-change",
-    "when": "Caller wants to return or exchange a product.",
-    "examples": [
-      "I'd like to return this",
-      "can I exchange it for another one",
-      "this doesn't fit, what do I do",
-      "how do I send it back"
-    ],
-    "say": "Okay, let me look at the return options."
-  },
-  {
     "id": "angry-general",
     "category": "complaint-frustration",
     "when": "Caller is angry or very upset in general terms.",
@@ -264,14 +36,14 @@
     "say": "I apologize for the wait, I'm on it now."
   },
   {
-    "id": "billing-anger",
+    "id": "anger-about-charge",
     "category": "complaint-frustration",
-    "when": "Caller is upset specifically about money, fees, or being overcharged.",
+    "when": "Caller is angry or frustrated about something that cost them money or was handled wrongly.",
     "examples": [
-      "you guys keep overcharging me",
-      "these fees are outrageous",
-      "I'm sick of being charged for nothing",
-      "this bill is a rip off"
+      "I'm sick of being charged for things I didn't ask for",
+      "this is a rip-off",
+      "you people keep getting it wrong",
+      "I'm furious about how this was handled"
     ],
     "say": "I understand, that's frustrating. Let me check."
   },
@@ -636,342 +408,6 @@
     "say": "Let me clarify which one I mean."
   },
   {
-    "id": "cant-login",
-    "category": "technical-issue",
-    "when": "Caller cannot sign in or access their account online.",
-    "examples": [
-      "I can't log in",
-      "it won't let me into my account",
-      "I forgot my password",
-      "the login page keeps giving me an error"
-    ],
-    "say": "Sorry about the trouble, let me help you get in."
-  },
-  {
-    "id": "service-down",
-    "category": "technical-issue",
-    "when": "Caller says service, internet, or an app is not working or is down.",
-    "examples": [
-      "my internet is down",
-      "the app isn't working",
-      "the service is out",
-      "nothing is loading"
-    ],
-    "say": "Let me check if there's an issue on our end."
-  },
-  {
-    "id": "device-problem",
-    "category": "technical-issue",
-    "when": "Caller reports trouble with a specific device or product.",
-    "examples": [
-      "my device won't turn on",
-      "the screen is frozen",
-      "it keeps restarting",
-      "the thing is making a weird noise"
-    ],
-    "say": "Okay, let me help troubleshoot that with you."
-  },
-  {
-    "id": "error-message",
-    "category": "technical-issue",
-    "when": "Caller reads or describes a specific error message.",
-    "examples": [
-      "it says error code five zero three",
-      "I keep getting an error",
-      "there's a message that says something went wrong",
-      "it just says failed"
-    ],
-    "say": "Thanks for that detail, let me look it up."
-  },
-  {
-    "id": "slow-connection",
-    "category": "technical-issue",
-    "when": "Caller reports slowness, lag, or poor quality.",
-    "examples": [
-      "everything is really slow",
-      "the connection keeps dropping",
-      "video keeps buffering",
-      "the speeds are terrible"
-    ],
-    "say": "Let me look at what's going on with that."
-  },
-  {
-    "id": "how-to-use",
-    "category": "technical-issue",
-    "when": "Caller asks how to do something in the product or app.",
-    "examples": [
-      "how do I reset my router",
-      "where do I find the settings",
-      "how do I turn that feature on",
-      "I can't figure out how to set this up"
-    ],
-    "say": "Sure, I'll walk you through it."
-  },
-  {
-    "id": "tried-already",
-    "category": "technical-issue",
-    "when": "Caller says they have already tried the usual fixes.",
-    "examples": [
-      "I already restarted it",
-      "I've tried turning it off and on",
-      "I did all the troubleshooting steps",
-      "I've already reset my password twice"
-    ],
-    "say": "Understood, I'll skip the basics and dig deeper."
-  },
-  {
-    "id": "where-is-order",
-    "category": "order-delivery",
-    "when": "Caller asks where their order or package is.",
-    "examples": [
-      "where is my order",
-      "I haven't gotten my package yet",
-      "can you track my delivery",
-      "what's the status of my shipment"
-    ],
-    "say": "Let me track that order for you."
-  },
-  {
-    "id": "delivery-date",
-    "category": "order-delivery",
-    "when": "Caller asks when an order will arrive.",
-    "examples": [
-      "when will it arrive",
-      "what's the delivery date",
-      "how long until I get it",
-      "is it coming today"
-    ],
-    "say": "Let me check the delivery estimate."
-  },
-  {
-    "id": "order-late",
-    "category": "order-delivery",
-    "when": "Caller says an order is late or overdue.",
-    "examples": [
-      "it was supposed to be here Monday",
-      "my order is late",
-      "it's been two weeks already",
-      "it should have come by now"
-    ],
-    "say": "I'm sorry it's late, let me find out why."
-  },
-  {
-    "id": "wrong-item",
-    "category": "order-delivery",
-    "when": "Caller received the wrong, damaged, or missing item.",
-    "examples": [
-      "I got the wrong item",
-      "the box was damaged",
-      "something was missing from my order",
-      "this isn't what I ordered"
-    ],
-    "say": "I'm sorry about that, let me look at your order."
-  },
-  {
-    "id": "place-order",
-    "category": "order-delivery",
-    "when": "Caller wants to place a new order.",
-    "examples": [
-      "I'd like to order something",
-      "can I place an order",
-      "I want to buy two of those",
-      "I'd like to get the large one"
-    ],
-    "say": "Great, let me help you place that order."
-  },
-  {
-    "id": "change-address-delivery",
-    "category": "order-delivery",
-    "when": "Caller wants to change delivery address, time, or instructions.",
-    "examples": [
-      "can you deliver to a different address",
-      "I want to reschedule the delivery",
-      "leave it with my neighbor",
-      "I need to change where it ships"
-    ],
-    "say": "Let me see if the delivery can still be changed."
-  },
-  {
-    "id": "lost-package",
-    "category": "order-delivery",
-    "when": "Caller says a package is lost or marked delivered but not received.",
-    "examples": [
-      "it says delivered but I don't have it",
-      "my package is lost",
-      "someone stole my delivery",
-      "the tracking hasn't updated in days"
-    ],
-    "say": "I'm sorry, let me look into where it went."
-  },
-  {
-    "id": "book-appointment",
-    "category": "appointment-scheduling",
-    "when": "Caller wants to schedule a new appointment.",
-    "examples": [
-      "I'd like to book an appointment",
-      "can I schedule a visit",
-      "I need to set up a time to come in",
-      "do you have any openings"
-    ],
-    "say": "Sure, let me check availability."
-  },
-  {
-    "id": "reschedule",
-    "category": "appointment-scheduling",
-    "when": "Caller wants to move an existing appointment.",
-    "examples": [
-      "I need to reschedule",
-      "can we move my appointment",
-      "I can't make it Tuesday, can we do another day",
-      "push it back a week please"
-    ],
-    "say": "Okay, let me look at your appointment."
-  },
-  {
-    "id": "cancel-appointment",
-    "category": "appointment-scheduling",
-    "when": "Caller wants to cancel an appointment.",
-    "examples": [
-      "I need to cancel my appointment",
-      "I won't be able to come in",
-      "please take me off the schedule",
-      "cancel my visit for tomorrow"
-    ],
-    "say": "No problem, let me find that appointment."
-  },
-  {
-    "id": "appointment-time",
-    "category": "appointment-scheduling",
-    "when": "Caller asks when their appointment is.",
-    "examples": [
-      "when is my appointment",
-      "what time am I scheduled",
-      "do I have something this week",
-      "remind me what day I'm booked"
-    ],
-    "say": "Let me check when you're scheduled."
-  },
-  {
-    "id": "availability",
-    "category": "appointment-scheduling",
-    "when": "Caller asks about available dates or hours.",
-    "examples": [
-      "what times do you have on Friday",
-      "are you open on Saturdays",
-      "what's the earliest I can come in",
-      "anything available next week"
-    ],
-    "say": "Let me see what times are open."
-  },
-  {
-    "id": "pick-time",
-    "category": "appointment-scheduling",
-    "when": "Caller picks or proposes a specific date or time slot.",
-    "examples": [
-      "let's do Thursday at two",
-      "the morning works for me",
-      "I'll take the three o'clock one",
-      "how about next Monday"
-    ],
-    "say": "Great, let me see if that works."
-  },
-  {
-    "id": "appointment-prep",
-    "category": "appointment-scheduling",
-    "when": "Caller asks what to bring or how to prepare for an appointment.",
-    "examples": [
-      "what do I need to bring",
-      "how should I prepare",
-      "do I need to arrive early",
-      "is there anything I should do beforehand"
-    ],
-    "say": "Let me find the details for you."
-  },
-  {
-    "id": "how-much",
-    "category": "pricing-info",
-    "when": "Caller asks the price of a product or service.",
-    "examples": [
-      "how much does it cost",
-      "what's the price",
-      "what do you charge for that",
-      "how much is the basic plan"
-    ],
-    "say": "Let me get the pricing for you."
-  },
-  {
-    "id": "hours-location",
-    "category": "pricing-info",
-    "when": "Caller asks about business hours or locations.",
-    "examples": [
-      "what are your hours",
-      "where is your nearest store",
-      "are you open right now",
-      "what's your address"
-    ],
-    "say": "Let me pull up that information."
-  },
-  {
-    "id": "plan-compare",
-    "category": "pricing-info",
-    "when": "Caller asks to compare options or what is included.",
-    "examples": [
-      "what's the difference between the two plans",
-      "what's included in premium",
-      "which plan is best for me",
-      "does it come with support"
-    ],
-    "say": "Good question, let me compare those for you."
-  },
-  {
-    "id": "promotion",
-    "category": "pricing-info",
-    "when": "Caller asks about discounts, promotions, or deals.",
-    "examples": [
-      "do you have any deals",
-      "is there a discount for me",
-      "any promotions right now",
-      "can I get a better rate"
-    ],
-    "say": "Let me see what offers are available."
-  },
-  {
-    "id": "policy-question",
-    "category": "pricing-info",
-    "when": "Caller asks about a policy such as returns, warranty, or fees.",
-    "examples": [
-      "what's your return policy",
-      "is it under warranty",
-      "do you charge a late fee",
-      "how long do I have to cancel"
-    ],
-    "say": "Let me check the policy on that."
-  },
-  {
-    "id": "availability-product",
-    "category": "pricing-info",
-    "when": "Caller asks whether a product or service is available or in stock.",
-    "examples": [
-      "do you have that in stock",
-      "is that available in my area",
-      "do you carry that model",
-      "do you offer that service"
-    ],
-    "say": "Let me check on that availability."
-  },
-  {
-    "id": "general-question",
-    "category": "pricing-info",
-    "when": "Caller asks an open-ended informational question needing a lookup.",
-    "examples": [
-      "I have a question about how this works",
-      "can you tell me about your services",
-      "what exactly do you offer",
-      "I'm trying to find out some information"
-    ],
-    "say": "Sure, let me find that out for you."
-  },
-  {
     "id": "yes",
     "category": "confirmation",
     "when": "Caller says a clear yes or agrees.",
@@ -1173,7 +609,7 @@
       "can you tell me a joke",
       "who won the game last night"
     ],
-    "say": "Ha, let me think about how I can best help."
+    "say": "Let me think about how best to help you."
   },
   {
     "id": "mixed-request",
@@ -1198,5 +634,581 @@
       "yes mom, dinner is fine"
     ],
     "say": "No worries, I'll be here when you're ready."
+  },
+  {
+    "id": "bereavement",
+    "category": "distress-sensitive",
+    "when": "Caller mentions a death or the loss of someone close, often while handling an account.",
+    "examples": [
+      "my husband passed away last month",
+      "I'm calling because my mother died and I need to close her account",
+      "we lost my dad and I'm sorting out his things",
+      "my wife died recently and I don't know where to start"
+    ],
+    "say": "I'm so sorry for your loss. Take all the time you need."
+  },
+  {
+    "id": "serious-illness",
+    "category": "distress-sensitive",
+    "when": "Caller mentions a serious illness, hospital stay, or medical crisis affecting them or family.",
+    "examples": [
+      "I've just been diagnosed with cancer",
+      "my son is in the hospital right now",
+      "I've been really sick and couldn't deal with this",
+      "my mum is in intensive care"
+    ],
+    "say": "I'm so sorry you're dealing with that. I'm here with you."
+  },
+  {
+    "id": "financial-hardship",
+    "category": "distress-sensitive",
+    "when": "Caller says they are in serious financial difficulty, such as job loss or being unable to pay for essentials.",
+    "examples": [
+      "I lost my job and I can't pay this",
+      "I can't afford groceries and rent this month",
+      "we're about to lose our house",
+      "I literally have no money right now"
+    ],
+    "say": "I'm sorry you're going through that. Let's look at this carefully."
+  },
+  {
+    "id": "overwhelmed-crying",
+    "category": "distress-sensitive",
+    "when": "Caller sounds tearful, overwhelmed, or says they cannot cope.",
+    "examples": [
+      "I can't do this anymore",
+      "I'm sorry, I'm just really overwhelmed right now",
+      "sorry, I'm crying, it's been a terrible week",
+      "I don't know what to do, I'm at the end of my rope"
+    ],
+    "say": "That sounds really hard. Take your time, I'm listening."
+  },
+  {
+    "id": "fear-safety",
+    "category": "distress-sensitive",
+    "when": "Caller says they are scared, feel unsafe, or are being threatened or harassed.",
+    "examples": [
+      "I'm really scared",
+      "someone is threatening me",
+      "I don't feel safe at home",
+      "my ex is using my account and I'm afraid of him"
+    ],
+    "say": "I'm sorry, that sounds frightening. I'm listening carefully."
+  },
+  {
+    "id": "scam-victim",
+    "category": "distress-sensitive",
+    "when": "Caller says they were scammed, defrauded, or had money or identity stolen.",
+    "examples": [
+      "I've been scammed out of my savings",
+      "someone stole my identity",
+      "they took all the money out of my account",
+      "I gave my details to a fraudster"
+    ],
+    "say": "I'm so sorry, that's awful. Let's go through it step by step."
+  },
+  {
+    "id": "family-crisis",
+    "category": "distress-sensitive",
+    "when": "Caller mentions a disaster or crisis at home, such as a fire, flood, or family emergency.",
+    "examples": [
+      "our house flooded last night",
+      "we've had a fire at the house",
+      "there's been an emergency in the family",
+      "we lost everything in the storm"
+    ],
+    "say": "I'm so sorry. Let's take this one step at a time."
+  },
+  {
+    "id": "lost-stolen",
+    "category": "bad-news-empathy",
+    "when": "Caller reports that something important was lost or stolen, such as a card, wallet, or phone.",
+    "examples": [
+      "I lost my wallet",
+      "my card was stolen",
+      "somebody took my phone",
+      "I think I left my credit card at a restaurant"
+    ],
+    "say": "Oh no, I'm sorry. Let's get this handled."
+  },
+  {
+    "id": "accident-damage",
+    "category": "bad-news-empathy",
+    "when": "Caller reports an accident or damage to a device, vehicle, or property.",
+    "examples": [
+      "I dropped my phone in the pool",
+      "I was in a car accident",
+      "the screen is completely smashed",
+      "a pipe burst and ruined the equipment"
+    ],
+    "say": "Oh no, that's not good. I'm sorry that happened."
+  },
+  {
+    "id": "charge-shock",
+    "category": "bad-news-empathy",
+    "when": "Caller is shocked by a large or unexpected charge, balance, or bill.",
+    "examples": [
+      "I just got a bill for nine hundred dollars",
+      "there's a charge on my account I've never seen",
+      "why is my balance so high",
+      "they took double out of my account"
+    ],
+    "say": "Oh no, that's a shock. Let me look at it."
+  },
+  {
+    "id": "delivery-disaster",
+    "category": "bad-news-empathy",
+    "when": "Caller reports that something arrived broken, wrong, or never arrived, or that a trip or booking fell through.",
+    "examples": [
+      "my order arrived completely smashed",
+      "my flight got cancelled",
+      "the package was empty",
+      "the whole shipment never showed up"
+    ],
+    "say": "Oh no, I'm sorry to hear that."
+  },
+  {
+    "id": "missed-deadline",
+    "category": "bad-news-empathy",
+    "when": "Caller says they missed a payment, appointment, or deadline and is worried about the consequences.",
+    "examples": [
+      "I missed my payment date",
+      "I forgot my appointment yesterday",
+      "I think I'm past the deadline",
+      "I didn't get the form in on time"
+    ],
+    "say": "Oh no, that's stressful. Let's see where things stand."
+  },
+  {
+    "id": "denied-rejected",
+    "category": "bad-news-empathy",
+    "when": "Caller says a claim, application, or request was denied or declined.",
+    "examples": [
+      "my claim was denied",
+      "they rejected my application",
+      "my card got declined at the store",
+      "I was told I don't qualify"
+    ],
+    "say": "I'm sorry to hear that, that's disappointing."
+  },
+  {
+    "id": "business-impact",
+    "category": "bad-news-empathy",
+    "when": "Caller says a problem is seriously affecting their work or business.",
+    "examples": [
+      "my whole shop is down because of this",
+      "I can't run my business without this",
+      "I'm losing customers every hour",
+      "we've had to stop work because of the outage"
+    ],
+    "say": "Oh no, I'm sorry. That's a real problem for you."
+  },
+  {
+    "id": "yes-no-demand",
+    "category": "professional-direct",
+    "when": "Caller demands a plain yes or no answer to a pointed question.",
+    "examples": [
+      "yes or no, will I be charged for this",
+      "just answer yes or no",
+      "is it covered or not",
+      "can you do it or can't you"
+    ],
+    "say": "Understood. Let me give you a clear answer."
+  },
+  {
+    "id": "exact-policy",
+    "category": "professional-direct",
+    "when": "Caller asks precisely what a policy, term, or condition says.",
+    "examples": [
+      "what exactly does your policy say about this",
+      "what are the terms in writing",
+      "where does it say that in the contract",
+      "what is the exact wording on cancellations"
+    ],
+    "say": "Let me confirm the exact policy for you."
+  },
+  {
+    "id": "exact-figures",
+    "category": "professional-direct",
+    "when": "Caller asks for specific amounts, fees, rates, or dates.",
+    "examples": [
+      "what is the exact fee",
+      "give me the precise amount",
+      "what's the interest rate exactly",
+      "what is the total including all charges"
+    ],
+    "say": "Let me confirm the exact figures."
+  },
+  {
+    "id": "timeline-demand",
+    "category": "professional-direct",
+    "when": "Caller demands a specific timeline or deadline for resolution.",
+    "examples": [
+      "exactly when will this be fixed",
+      "give me a date, not a maybe",
+      "how many days will this take, specifically",
+      "when precisely will I get my refund"
+    ],
+    "say": "That's a fair question. Let me verify the timeline."
+  },
+  {
+    "id": "accountability",
+    "category": "professional-direct",
+    "when": "Caller asks who is responsible or what exactly went wrong.",
+    "examples": [
+      "who authorized this charge",
+      "who is responsible for this mistake",
+      "why did this happen",
+      "who approved that change on my account"
+    ],
+    "say": "Understood. Let me look at exactly what happened."
+  },
+  {
+    "id": "prior-commitment",
+    "category": "professional-direct",
+    "when": "Caller cites something they were previously told or promised and challenges it.",
+    "examples": [
+      "last time you told me this would be fixed",
+      "I was promised a callback and never got one",
+      "your colleague said it was covered",
+      "that's not what I was told before"
+    ],
+    "say": "I understand. Let me review the record."
+  },
+  {
+    "id": "formal-escalation",
+    "category": "professional-direct",
+    "when": "Caller asks for written confirmation, or threatens a formal complaint, regulator, or legal action.",
+    "examples": [
+      "I want that in writing",
+      "I'm going to file a formal complaint",
+      "I'll take this to the regulator",
+      "I'm speaking to my lawyer about this"
+    ],
+    "say": "Understood. Let me review the formal options."
+  },
+  {
+    "id": "no-script",
+    "category": "professional-direct",
+    "when": "Caller asks for a direct answer without scripted language or pleasantries.",
+    "examples": [
+      "just give me a straight answer",
+      "skip the script",
+      "don't waste my time, what's the answer",
+      "cut to the point please"
+    ],
+    "say": "Understood. I'll keep this direct and accurate."
+  },
+  {
+    "id": "data-privacy",
+    "category": "professional-direct",
+    "when": "Caller asks how their personal data is used, stored, recorded, or shared.",
+    "examples": [
+      "is this call being recorded",
+      "what do you do with my personal data",
+      "who has access to my information",
+      "do you share my details with third parties"
+    ],
+    "say": "Fair question. Let me give you an accurate answer."
+  },
+  {
+    "id": "look-into-it",
+    "category": "request-action",
+    "when": "Caller asks the agent to look up, check, or retrieve something; the topic does not matter.",
+    "examples": [
+      "I want to check my account balance",
+      "can you check on my order",
+      "I need to see my last few payments",
+      "can you look up my appointment"
+    ],
+    "say": "Okay, let me look into that for you."
+  },
+  {
+    "id": "we-can-check",
+    "category": "request-action",
+    "when": "Caller asks for information about their own account, order, booking, or records.",
+    "examples": [
+      "can you pull up my details",
+      "I need a copy of my invoice",
+      "could you find my reservation",
+      "I'd like to see my usage this month"
+    ],
+    "say": "Okay, we can check that."
+  },
+  {
+    "id": "can-help",
+    "category": "request-action",
+    "when": "Caller states a task they want done, such as paying, booking, sending, or updating something.",
+    "examples": [
+      "I'd like to make a payment",
+      "I need to book something for Tuesday",
+      "can you send me a confirmation",
+      "I want to update my address"
+    ],
+    "say": "Sure, I can help with that."
+  },
+  {
+    "id": "let-me-get",
+    "category": "request-action",
+    "when": "Caller asks for a specific piece of information, such as a number, status, or reference.",
+    "examples": [
+      "what's my account number",
+      "I need my case reference",
+      "get me the status of my claim",
+      "what was the date of my last visit"
+    ],
+    "say": "Of course, let me get that for you."
+  },
+  {
+    "id": "moment-to-find",
+    "category": "request-action",
+    "when": "Caller asks the agent to find or locate something specific.",
+    "examples": [
+      "can you find my receipt",
+      "I'm looking for my last statement",
+      "I need the number I called before",
+      "can you locate my booking"
+    ],
+    "say": "Absolutely, give me a moment to find that."
+  },
+  {
+    "id": "happy-to-help",
+    "category": "request-action",
+    "when": "Caller makes a polite request for help with something.",
+    "examples": [
+      "I was hoping you could help me with something",
+      "could you do something for me",
+      "I need a hand with my account",
+      "I've got a request"
+    ],
+    "say": "Happy to help with that."
+  },
+  {
+    "id": "lets-see-what-we-can-do",
+    "category": "request-action",
+    "when": "Caller asks for a favour or exception, such as a waiver, extension, or earlier date.",
+    "examples": [
+      "can you waive the fee",
+      "I need an extension",
+      "could you move it to next week",
+      "is there any way to do this sooner"
+    ],
+    "say": "Okay, let's see what we can do."
+  },
+  {
+    "id": "good-question",
+    "category": "question-info",
+    "when": "Caller asks a general how-or-what question about how something works.",
+    "examples": [
+      "how does the renewal work",
+      "what's included in my plan",
+      "how long does the process take",
+      "how do I go about this"
+    ],
+    "say": "Good question, let me find that out."
+  },
+  {
+    "id": "let-me-check",
+    "category": "question-info",
+    "when": "Caller asks a factual question about timing, availability, or cost.",
+    "examples": [
+      "when does my plan renew",
+      "do you offer weekend hours",
+      "is there a fee for that",
+      "is it available in my area"
+    ],
+    "say": "Let me check on that for you."
+  },
+  {
+    "id": "fair-question",
+    "category": "question-info",
+    "when": "Caller asks a question that deserves a careful answer, such as eligibility or coverage.",
+    "examples": [
+      "am I eligible for this",
+      "is this covered",
+      "what are my options here",
+      "does this apply to me"
+    ],
+    "say": "That's a fair question, one moment."
+  },
+  {
+    "id": "right-answer",
+    "category": "question-info",
+    "when": "Caller asks which of several things applies, or asks for a comparison.",
+    "examples": [
+      "what's the difference between the two",
+      "can I do this online or do I need to come in",
+      "which option is better for me",
+      "what happens if I do it later"
+    ],
+    "say": "Let me make sure I give you the right answer."
+  },
+  {
+    "id": "find-out",
+    "category": "question-info",
+    "when": "Caller asks something the agent likely needs to look up before answering.",
+    "examples": [
+      "do you know when that arrives",
+      "what's the process for that",
+      "is there a deadline for this",
+      "how much notice do I need to give"
+    ],
+    "say": "Sure, I'll find that out for you."
+  },
+  {
+    "id": "think-through",
+    "category": "question-info",
+    "when": "Caller asks for advice or a recommendation.",
+    "examples": [
+      "what would you recommend",
+      "should I do it now or wait",
+      "what do most people do",
+      "which would you pick"
+    ],
+    "say": "Let me think that through with you."
+  },
+  {
+    "id": "whats-going-on",
+    "category": "problem-report",
+    "when": "Caller reports that something is not working or went wrong, in a neutral tone.",
+    "examples": [
+      "my login isn't working",
+      "the app keeps crashing",
+      "my payment didn't go through",
+      "I never got the email"
+    ],
+    "say": "Okay, let me see what's going on."
+  },
+  {
+    "id": "dig-into-it",
+    "category": "problem-report",
+    "when": "Caller explains a problem in detail, including what they saw or any error.",
+    "examples": [
+      "it says error four oh four when I try",
+      "it worked yesterday and now it doesn't",
+      "I get a blank screen after I click submit",
+      "the number on my statement doesn't match"
+    ],
+    "say": "Thanks for explaining, let me dig into that."
+  },
+  {
+    "id": "figure-out",
+    "category": "problem-report",
+    "when": "Caller says something is wrong or odd and does not know why.",
+    "examples": [
+      "something's wrong with my account",
+      "this doesn't look right",
+      "I don't understand why this happened",
+      "there's a mistake here"
+    ],
+    "say": "Let's figure out what happened."
+  },
+  {
+    "id": "sorry-trouble",
+    "category": "problem-report",
+    "when": "Caller says they have had trouble or difficulty with something.",
+    "examples": [
+      "I've been having trouble with this all week",
+      "I can't seem to get it to work",
+      "I keep running into problems",
+      "it's been a hassle"
+    ],
+    "say": "Sorry for the trouble, let me take a look."
+  },
+  {
+    "id": "closer-look",
+    "category": "problem-report",
+    "when": "Caller reports a discrepancy, such as a missing item, wrong amount, or wrong detail.",
+    "examples": [
+      "I'm missing something from my order",
+      "the amount is wrong",
+      "you've got my name wrong",
+      "that's not what I asked for"
+    ],
+    "say": "I see, let me take a closer look."
+  },
+  {
+    "id": "beyond-basics",
+    "category": "problem-report",
+    "when": "Caller says they have already tried the obvious fixes.",
+    "examples": [
+      "I already restarted it",
+      "I've tried that twice",
+      "I've done all the steps you're about to say",
+      "I've already been through the basics"
+    ],
+    "say": "Understood, I'll go beyond the basics."
+  },
+  {
+    "id": "see-what-we-can-do",
+    "category": "request-change",
+    "when": "Caller wants to cancel, stop, end, or leave something.",
+    "examples": [
+      "I want to cancel my subscription",
+      "I'd like to close my account",
+      "I want to end this contract",
+      "I want to stop the service"
+    ],
+    "say": "I understand, let me see what we can do."
+  },
+  {
+    "id": "look-at-options",
+    "category": "request-change",
+    "when": "Caller wants to change, upgrade, downgrade, or switch something.",
+    "examples": [
+      "I need to change my booking",
+      "can I switch to something cheaper",
+      "I want to upgrade",
+      "I'd like to move to a different plan"
+    ],
+    "say": "Okay, let me look at the options."
+  },
+  {
+    "id": "no-problem",
+    "category": "request-change",
+    "when": "Caller wants to return, exchange, or undo something.",
+    "examples": [
+      "I'd like to return this",
+      "can I exchange it",
+      "I want to undo that change",
+      "I need to send it back"
+    ],
+    "say": "No problem, let me take a look."
+  },
+  {
+    "id": "check-where-things-stand",
+    "category": "request-change",
+    "when": "Caller wants to modify or cancel something already in progress.",
+    "examples": [
+      "I want to change my order",
+      "can I cancel what I just booked",
+      "I need to alter my reservation",
+      "can I stop the payment I scheduled"
+    ],
+    "say": "Okay, let me check where things stand."
+  },
+  {
+    "id": "review-with-you",
+    "category": "request-change",
+    "when": "Caller wants to pause, delay, or put something on hold temporarily.",
+    "examples": [
+      "can I pause it for a few months",
+      "I want to put this on hold",
+      "can we delay this",
+      "I need a break from this"
+    ],
+    "say": "Of course, let me review that with you."
+  },
+  {
+    "id": "pull-up-first",
+    "category": "request-change",
+    "when": "Caller asks to remove, correct, or replace a detail on their record.",
+    "examples": [
+      "I need to remove a name from the account",
+      "can you correct my details",
+      "I want to replace the card on file",
+      "I'd like to change who gets the notices"
+    ],
+    "say": "Sure, let me pull that up first."
   }
 ]
