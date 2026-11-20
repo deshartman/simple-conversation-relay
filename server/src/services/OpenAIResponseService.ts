@@ -35,6 +35,10 @@ import type { ToolRegistry } from '../tools/tool-registry.js';
 import type { ToolContext } from '../tools/define-tool.js';
 import { ContextNotFoundError, type ContextSource } from './ContextStore.js';
 
+/** Reasoning models (gpt-5) think for seconds before the first token; set OPENAI_REASONING_EFFORT=minimal for voice. Leave unset for non-reasoning models, which reject the parameter. */
+const reasoningParam = () =>
+    process.env.OPENAI_REASONING_EFFORT ? { reasoning: { effort: process.env.OPENAI_REASONING_EFFORT as any } } : {};
+
 dotenv.config();
 
 interface ResponsesAPIToolCall {
@@ -365,6 +369,7 @@ class OpenAIResponseService implements ResponseService {
                                             tools.length > 0 ? (tools as unknown as any) : undefined,
                                         stream: true,
                                         instructions: await this.loadInstructions(),
+                                        ...reasoningParam(),
                                     });
                                     await this.processStream(followUpStream, generation);
                                 }
@@ -432,6 +437,7 @@ class OpenAIResponseService implements ResponseService {
                 stream: true,
                 tools: tools.length > 0 ? (tools as unknown as any) : undefined,
                 instructions: await this.loadInstructions(),
+                ...reasoningParam(),
             });
 
             await this.processStream(stream, generation);
