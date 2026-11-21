@@ -1,0 +1,161 @@
+<!DOCTYPE html>
+<html lang="en"><head><meta charset="UTF-8"><meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Low-Latency Acknowledgement</title>
+<link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&display=swap" rel="stylesheet">
+<style>
+*{margin:0;padding:0;box-sizing:border-box}
+:root{--bg:#030B24;--panel:#050F2E;--node:#0F1936;--line:#1B2850;--line2:#243564;--fg:#F2F5FB;--mute:#9AA6C0;--red:#F22F46;--cyan:#1FB5E0;--green:#5FD6A4;--amber:#F08A2C}
+body{background:var(--bg);color:var(--fg);font-family:Inter,-apple-system,sans-serif;line-height:1.5}
+.wrap{max-width:1200px;margin:0 auto;padding:40px 24px 64px}
+.eyebrow{font-size:11px;font-weight:700;letter-spacing:.14em;text-transform:uppercase;color:var(--red)}
+h1{font-size:clamp(30px,5vw,52px);font-weight:800;letter-spacing:-.03em;line-height:1.08;margin:10px 0 12px}
+h1 em{font-style:normal;color:var(--green)}h1 span{color:var(--cyan)}
+.sub{color:var(--mute);font-size:16px;max-width:640px}
+h2{font-size:13px;letter-spacing:.12em;text-transform:uppercase;color:var(--mute);margin:48px 0 14px}
+.panel{background:var(--panel);border:1px solid var(--line);border-radius:14px;padding:16px}
+.stats{display:grid;grid-template-columns:repeat(3,1fr);gap:12px;margin-top:28px}
+.stat{background:var(--node);border:1px solid var(--line);border-radius:12px;padding:18px}
+.stat b{display:block;font-size:clamp(30px,4.5vw,46px);font-weight:800;letter-spacing:-.03em;line-height:1}
+.stat span{display:block;color:var(--mute);font-size:13px;margin-top:8px}
+.stat.g b{color:var(--green)}.stat.r b{color:var(--red)}.stat.c b{color:var(--cyan)}
+svg{width:100%;height:auto;display:block}
+text{fill:var(--fg);font-family:Inter,sans-serif;font-size:12px}.m{fill:var(--mute)}
+.bars{display:grid;gap:14px}
+.brow{display:grid;grid-template-columns:110px 1fr;gap:12px;align-items:center}
+.brow>b{font-size:14px}
+.track{position:relative;height:30px;background:var(--node);border-radius:8px;overflow:hidden;border:1px solid var(--line)}
+.fill{position:absolute;left:0;top:0;bottom:0;display:flex;align-items:center;padding-left:10px;font-weight:700;font-size:13px;color:#030B24;border-radius:8px 0 0 8px}
+.cap{color:var(--mute);font-size:12px;margin-top:4px}
+.sw{display:grid;gap:10px;width:100%}
+.opt{display:grid;grid-template-columns:28px 130px 1fr;align-items:center;gap:14px;text-align:left;width:100%;font:inherit;color:var(--fg);background:var(--node);border:1px solid var(--line2);border-radius:12px;padding:14px 18px;cursor:pointer;transition:border-color .15s,background .15s,box-shadow .15s}
+.opt:hover{border-color:var(--c)}
+.opt .dot{width:22px;height:22px;border-radius:50%;border:2px solid var(--line2)}
+.opt b{font-size:18px;font-weight:800;letter-spacing:-.01em}
+.opt span{color:var(--mute);font-size:14px}
+.opt.on{background:linear-gradient(90deg,color-mix(in srgb,var(--c) 22%,var(--node)),var(--node));border-color:var(--c);box-shadow:0 0 0 1px var(--c),0 6px 22px -8px var(--c);cursor:default}
+.opt.on .dot{background:var(--c);border-color:var(--c);box-shadow:0 0 0 4px color-mix(in srgb,var(--c) 30%,transparent)}
+.opt.on span{color:var(--fg)}
+.opt:disabled{cursor:progress}
+.swrow{display:grid;gap:10px}
+.try{color:var(--mute);font-size:14px;margin:4px 0 0}.try b{color:var(--fg)}
+#swmsg{color:var(--mute);font-size:13px}#swmsg.err{color:var(--amber)}
+@media(max-width:700px){.opt{grid-template-columns:24px 1fr}.opt span{grid-column:2}}
+.chips{display:flex;flex-wrap:wrap;gap:10px}
+.chip{background:var(--node);border:1px solid var(--line2);border-left:3px solid var(--amber);border-radius:10px;padding:10px 14px;font-size:14px;font-weight:600}
+.tt{font-size:14px;font-weight:700;margin:18px 0 2px}
+.note{color:var(--mute);font-size:12.5px;margin:2px 0 0}
+.lg{display:flex;gap:18px;flex-wrap:wrap;color:var(--mute);font-size:12px;margin:0 2px 8px}
+.lg i{display:inline-block;width:12px;height:12px;border-radius:3px;margin-right:6px;vertical-align:-2px}
+@media(max-width:700px){.stats{grid-template-columns:1fr}.brow{grid-template-columns:1fr}}
+</style></head><body><div class="wrap">
+
+<div class="eyebrow">Low-latency reaction · ConversationRelay</div>
+<h1>Acknowledge in <em>50 ms</em>.<br>Answer properly in <span>2 s</span>.</h1>
+<p class="sub">The model needs time to think. The caller shouldn't hear silence while it does.</p>
+
+<div class="stats">
+<div class="stat r"><b>1–3 s</b><span>of silence before the LLM starts talking</span></div>
+<div class="stat g"><b>≤ 355 ms</b><span>to the first spoken acknowledgement</span></div>
+<div class="stat c"><b>0</b><span>silent turns, in both modes</span></div>
+</div>
+
+<h2>Live mode</h2>
+<div class="panel swrow">
+<div class="sw" id="sw" role="group" aria-label="Latency mode"></div>
+<span id="swmsg">loading…</span>
+<p class="try">Pick a mode, then call the number and ask the same question in each. Listen for the gap before the first word: <b>none</b> is silent until the answer, <b>jev</b> and <b>embedding</b> say a short "Okay." first.</p>
+</div>
+
+<h2>How it works</h2>
+<div class="panel">
+<svg viewBox="0 0 1100 250" role="img" aria-label="The prompt goes to the LLM and to a matcher in parallel; the matcher's acknowledgement is spoken first, then the LLM answer continues">
+<defs><marker id="a" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto"><path d="M0 0L10 5L0 10z" fill="#9AA6C0"/></marker></defs>
+<!-- caller -->
+<circle cx="70" cy="125" r="34" fill="#0F1936" stroke="#9AA6C0" stroke-width="1.5"/>
+<circle cx="70" cy="114" r="8" fill="none" stroke="#F2F5FB" stroke-width="2.5"/><path d="M53 144a17 15 0 0 1 34 0" fill="none" stroke="#F2F5FB" stroke-width="2.5" stroke-linecap="round"/>
+<text x="70" y="182" text-anchor="middle">Caller</text><text class="m" x="70" y="198" text-anchor="middle">asks a question</text>
+<!-- server -->
+<rect x="190" y="95" width="150" height="60" rx="12" fill="#0F1936" stroke="#F22F46" stroke-width="1.6"/>
+<text x="265" y="122" text-anchor="middle" style="font-weight:700">Server</text><text class="m" x="265" y="140" text-anchor="middle">prompt arrives</text>
+<!-- fork -->
+<rect x="470" y="30" width="220" height="64" rx="12" fill="#0F1936" stroke="#1FB5E0" stroke-width="1.6"/>
+<text x="580" y="56" text-anchor="middle" style="font-weight:700">Matcher</text><text class="m" x="580" y="74" text-anchor="middle">embedding or Jev · 50–250 ms</text>
+<rect x="470" y="156" width="220" height="64" rx="12" fill="#0F1936" stroke="#F22F46" stroke-width="1.6"/>
+<text x="580" y="182" text-anchor="middle" style="font-weight:700">LLM</text><text class="m" x="580" y="200" text-anchor="middle">real answer · 1–3 s</text>
+<!-- speak -->
+<rect x="820" y="95" width="150" height="60" rx="12" fill="#0F1936" stroke="#5FD6A4" stroke-width="1.6"/>
+<text x="895" y="122" text-anchor="middle" style="font-weight:700">Voice out</text><text class="m" x="895" y="140" text-anchor="middle">one utterance</text>
+<g fill="none" stroke="#9AA6C0" stroke-width="1.8" marker-end="url(#a)">
+<line x1="104" y1="125" x2="188" y2="125"/>
+<path d="M340 115 C400 115 400 62 468 62" stroke="#1FB5E0"/><path d="M340 135 C400 135 400 188 468 188" stroke="#F22F46"/>
+<path d="M690 62 C760 62 760 115 818 115" stroke="#5FD6A4"/><path d="M690 188 C760 188 760 135 818 135" stroke="#F22F46" stroke-dasharray="5 4"/>
+</g>
+<text x="400" y="30" class="m" text-anchor="middle">in parallel</text>
+<text x="770" y="40" fill="#5FD6A4" style="fill:#5FD6A4;font-weight:700">1st: "Okay."</text>
+<text x="745" y="220" style="fill:#F22F46;font-weight:700">then: the answer</text>
+<text x="1000" y="120" class="m">late match?</text><text x="1000" y="138" style="font-weight:700">dropped</text>
+</svg>
+</div>
+
+<h2>Three real calls</h2>
+<div class="panel">
+<div class="lg"><span><i style="background:#9AA6C0"></i>caller</span><span><i style="background:#1FB5E0"></i>matcher</span><span><i style="background:#5FD6A4"></i>acknowledgement</span><span><i style="background:#243564"></i>waiting on LLM</span><span><i style="background:#F22F46"></i>first LLM token</span></div>
+<div id="charts"></div>
+</div>
+
+<h2>Match quality · 150 held-out phrases</h2>
+<div class="panel"><div class="bars">
+<div class="brow"><b>Jev</b><div><div class="track"><div class="fill" style="width:87.3%;background:var(--cyan)">87% useful</div></div><div class="cap">7.5% wrong · median 245 ms</div></div></div>
+<div class="brow"><b>Embedding</b><div><div class="track"><div class="fill" style="width:60.7%;background:var(--green)">61% useful</div></div><div class="cap">11.4% wrong · median 113 ms · the rest get a neutral "Okay."</div></div></div>
+</div></div>
+
+<h2>Still open</h2>
+<div class="chips">
+<div class="chip">Emergency phrases: no rule yet</div>
+<div class="chip">Listen test: few calls so far</div>
+<div class="chip">Jev budget 450 ms: untested</div>
+<div class="chip">Needs a fresh test set</div>
+</div>
+
+</div>
+<script>
+// ms after the prompt. match: matcher done. ack: acknowledgement sent. llm: first LLM token.
+const TURNS=[
+ {name:"Embedding · \"Can you tell me what it does?\"",mode:"embedding",match:51,ack:51,ackKind:"neutral",llm:1112},
+ {name:"Embedding · \"Is there any way I can check my bill on this, please?\"",mode:"embedding",match:75,ack:75,ackKind:"neutral",llm:2165},
+ {name:"Jev · \"Can you tell me what it does?\"",mode:"jev",match:912,ack:355,ackKind:"neutral at budget",llm:2166,
+  note:"Jev's answer (good-question) was right but arrived at 912 ms, past the budget, so it was dropped."}
+];
+const MAX=Math.ceil((Math.max(...TURNS.map(t=>t.llm))+500)/500)*500; // shared axis
+document.getElementById('charts').innerHTML=TURNS.map(chart).join('');
+function chart(t){
+ const W=1100,L=110,R=24,T=26,RH=34,x=ms=>L+(W-L-R)*ms/MAX,
+  rows=["Caller","Matcher","Acknowledge","LLM"],H=T+rows.length*RH+22;
+ let s=`<svg viewBox="0 0 ${W} ${H}" role="img" aria-label="${t.name}">`;
+ for(let ms=0;ms<=MAX;ms+=500){const X=x(ms);s+=`<line x1="${X}" x2="${X}" y1="${T-6}" y2="${H-18}" stroke="#1B2850"/><text class="m" x="${X}" y="14" text-anchor="middle">${(ms/1000).toFixed(1)}s</text>`}
+ rows.forEach((r,i)=>s+=`<text class="m" x="4" y="${T+i*RH+21}">${r}</text>`);
+ const bar=(i,a,b,c,label)=>{const w=Math.max(4,x(b)-x(a));return `<rect x="${x(a)}" y="${T+i*RH+6}" width="${w}" height="20" rx="4" fill="${c}"/>`+(label?`<text x="${x(b)+8}" y="${T+i*RH+21}">${label}</text>`:'')};
+ s+=bar(0,0,40,'#9AA6C0','');
+ s+=bar(1,0,t.match,'#1FB5E0',t.match+' ms'+(t.match>t.ack&&t.mode==='jev'?' · too late':''));
+ s+=bar(2,t.ack,t.ack+120,'#5FD6A4',t.ackKind+' · '+t.ack+' ms');
+ s+=bar(3,0,t.llm,'#243564','')+bar(3,t.llm,t.llm+110,'#F22F46',t.llm+' ms');
+ s+=`<line x1="${x(350)}" x2="${x(350)}" y1="${T-6}" y2="${H-18}" stroke="#F08A2C" stroke-dasharray="4 3"/><text x="${x(350)+5}" y="${H-5}" style="fill:#F08A2C">350 ms budget</text></svg>`;
+ return `<div class="tt">${t.name}</div>`+s+(t.note?`<p class="note">${t.note}</p>`:'');
+}
+
+// Mode switch: same origin as the server that served this page, so no URL to paste.
+const INFO={none:{c:'#9AA6C0',t:'Baseline. Nothing is said while the LLM thinks.'},
+ jev:{c:'#1FB5E0',t:'Hosted classifier picks the line. About 250 ms, most accurate (87% useful).'},
+ embedding:{c:'#5FD6A4',t:'Local vector match. About 50 to 110 ms, fastest (61% useful, more plain "Okay.").'}};
+let avail=['none','jev','embedding'];const API='/latency/mode',swEl=document.getElementById('sw'),msg=document.getElementById('swmsg');
+function paint(mode,a){avail=a||avail;
+ swEl.innerHTML=avail.map(m=>{const i=INFO[m]||{c:'#9AA6C0',t:''};
+  return `<button class="opt${m===mode?' on':''}" data-m="${m}" style="--c:${i.c}" aria-pressed="${m===mode}"><i class="dot"></i><b>${m}</b><span>${i.t}</span></button>`}).join('');
+ msg.className='';msg.textContent='Active now: '+mode}
+function fail(e){msg.className='err';msg.textContent='Could not reach the server ('+e+'). Open this page from the server, not as a file.'}
+fetch(API).then(r=>r.json()).then(j=>paint(j.mode,j.available)).catch(fail);
+swEl.addEventListener('click',e=>{const btn=e.target.closest('.opt');const m=btn&&btn.dataset.m;if(!m||btn.classList.contains('on'))return;
+ [...swEl.children].forEach(b=>b.disabled=true);msg.className='';msg.textContent='Switching…';
+ fetch(API,{method:'PUT',headers:{'Content-Type':'application/json'},body:JSON.stringify({mode:m})})
+  .then(r=>r.ok?r.json():Promise.reject('http '+r.status)).then(j=>paint(j.mode)).catch(fail)});
+</script></body></html>

@@ -70,6 +70,12 @@ describe('/latency/mode route', () => {
             body: body === undefined ? undefined : JSON.stringify(body),
         });
 
+    it('GET /latency/ serves the page with the mode switch', async () => {
+        const res = await fetch(base.replace(/mode$/, ''));
+        expect(res.status).toBe(200);
+        expect(res.headers.get('content-type')).toContain('text/html');
+        expect(await res.text()).toContain('id="sw"');
+    });
     it('GET returns mode and available', async () => {
         const res = await send('GET');
         expect(res.status).toBe(200);
