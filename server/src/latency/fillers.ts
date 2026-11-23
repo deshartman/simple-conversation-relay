@@ -62,3 +62,8 @@ export function fillerDocuments(f: Filler): string[] {
 export function fillerById(id: string, path: string | undefined = process.env.FILLERS_PATH || undefined): Filler | undefined {
     return entry(path).byId.get(id);
 }
+
+/** Opening word of a spoken phrase, lowercased, punctuation stripped ("Okay, one moment." -> "okay"). */
+export function opener(say: string): string {
+    return say.trim().split(/\s+/)[0].toLowerCase().replace(/[^a-z']/g, '');
+}

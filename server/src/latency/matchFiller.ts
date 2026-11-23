@@ -5,7 +5,7 @@
  * `score` is cosine similarity (embedding) or the chosen option's Jev probability (jev).
  */
 import { getMode, type LatencyMode } from './mode.js';
-import { loadFillers, fillerDocuments, fillerById, type Filler } from './fillers.js';
+import { loadFillers, fillerDocuments, fillerById, opener, type Filler } from './fillers.js';
 import { embed, cosine } from './embeddings.js';
 import { jevEvaluate } from './jev.js';
 import { logOut, logError } from '../utils/logger.js';
@@ -16,7 +16,13 @@ export type ScoreBy = 'max' | 'when-only' | 'mean-top2';
 export const SCORE_BYS: readonly ScoreBy[] = ['max', 'when-only', 'mean-top2'];
 
 /** Per-call overrides (offline eval); each defaults to its env var, then to current behaviour. */
-export interface MatchOptions { fillersPath?: string; threshold?: number; margin?: number; scoreBy?: ScoreBy }
+export interface MatchOptions {
+    fillersPath?: string; threshold?: number; margin?: number; scoreBy?: ScoreBy;
+    /** Opening words already used recently on this call; fillers that start with one are not candidates. */
+    avoidOpeners?: ReadonlySet<string>;
+}
+
+const allowed = (f: Filler, o: MatchOptions): boolean => !o.avoidOpeners?.has(opener(f.say));
 
 const JEV_TIMEOUT_MS = 600;
 // The explicit out inside the Jev question: always pick something, this is the safe default.
@@ -65,6 +71,7 @@ async function rankEmbedding(text: string, o: MatchOptions): Promise<Ranked | nu
     const q = (await embed([text], 'query')).vectors[0];
     const docs = new Map<Filler, { when: number; all: number[] }>();
     vectors.forEach((v, i) => {
+        if (!allowed(owner[i], o)) return;
         const s = cosine(q, v);
         const d = docs.get(owner[i]) ?? docs.set(owner[i], { when: -Infinity, all: [] }).get(owner[i])!;
         d.all.push(s);
@@ -81,7 +88,7 @@ async function rankEmbedding(text: string, o: MatchOptions): Promise<Ranked | nu
 async function rankJev(text: string, o: MatchOptions): Promise<Ranked> {
     const fillers = loadFillers(o.fillersPath);
     const criteria: Record<string, unknown> = {};
-    for (const f of fillers) criteria[f.id] = { what: f.when, examples: f.examples };
+    for (const f of fillers.filter((f) => allowed(f, o))) criteria[f.id] = { what: f.when, examples: f.examples };
     criteria[CATCH_ALL] = {
         what: 'Use when the utterance has no request or answer that matches any other option: off-topic chatter, side talk to someone else in the room, background noise, or fragments with no request. Prefer it over any specific option that only shares a word with the utterance.',
     };

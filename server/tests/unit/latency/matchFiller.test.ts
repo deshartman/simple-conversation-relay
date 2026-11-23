@@ -12,7 +12,7 @@ vi.mock('../../../src/utils/logger.js', () => ({ logOut: vi.fn(), logError: vi.f
 
 import { embed } from '../../../src/latency/embeddings.js';
 import { jevEvaluate } from '../../../src/latency/jev.js';
-import { loadFillers, fillerDocuments } from '../../../src/latency/fillers.js';
+import { loadFillers, fillerDocuments, opener } from '../../../src/latency/fillers.js';
 
 const FIRST = loadFillers()[0];
 const embedMock = vi.mocked(embed);
@@ -72,6 +72,31 @@ describe('matchFiller', () => {
         expect(await matchFiller('hi')).toBeNull();
         mockEmbeddings([1, 0]);
         expect((await matchFiller('hi'))?.filler.id).toBe(FIRST.id);
+    });
+
+    it('jev: leaves out fillers whose opening word was recently used', async () => {
+        const all = loadFillers();
+        const okay = all.filter((f) => opener(f.say) === 'okay');
+        expect(okay.length).toBeGreaterThan(1);
+        jevMock.mockResolvedValue({ ok: true, model: 'm', ms: 5, answers: { filler: { choice: FIRST.id, probabilities: { [FIRST.id]: 0.8 } } } });
+        const matchFiller = await load('jev');
+        await matchFiller('hi', undefined, undefined, { avoidOpeners: new Set(['okay']) });
+        const criteria = (jevMock.mock.calls[0][1] as any).filler.criteria;
+        for (const f of okay) expect(criteria).not.toHaveProperty(f.id);
+        expect(criteria).toHaveProperty('generic-ack');
+        expect(Object.keys(criteria).length).toBe(all.length - okay.length + 1);
+    });
+
+    it('embedding: never picks a filler whose opening word is avoided', async () => {
+        const okay = loadFillers().find((f) => opener(f.say) === 'okay')!;
+        embedMock.mockImplementation(async (inputs, kind) => ({
+            vectors: kind === 'query' ? [[1, 0]] : inputs.map((d) => (fillerDocuments(okay).includes(d) ? [1, 0] : [0, 1])),
+            ms: 1,
+        }));
+        const matchFiller = await load('embedding');
+        expect((await matchFiller('hi'))?.filler.id).toBe(okay.id);
+        const r = await matchFiller('hi', undefined, undefined, { avoidOpeners: new Set(['okay']) });
+        expect(r?.filler ? opener(r.filler.say) : null).not.toBe('okay');
     });
 
     it('jev: returns the chosen filler when its probability clears the threshold', async () => {

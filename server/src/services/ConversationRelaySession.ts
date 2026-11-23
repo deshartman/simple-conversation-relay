@@ -25,6 +25,7 @@ import { logOut, logError } from '../utils/logger.js';
 import { matchFiller, type MissReason } from '../latency/matchFiller.js';
 import { getMode } from '../latency/mode.js';
 import { nextFallback } from '../latency/fallbackFillers.js';
+import { opener } from '../latency/fillers.js';
 import { SilenceHandler } from './SilenceHandler.js';
 import type { SilenceDetectionConfig } from './SilenceHandler.js';
 import type { ResponseService, ResponseHandler, ContentResponse, ToolResultEvent, CallAction, ActionOutcome } from '../interfaces/ResponseService.js';
@@ -45,6 +46,8 @@ import {
  * already waiting, and a hung service must not swallow the reminder.
  */
 const SILENCE_WORDING_TIMEOUT_MS = 1500;
+/** How many recent filler opening words are kept off-limits for the next filler. */
+const RECENT_OPENERS = 3;
 
 const LISTEN_MODE_GATED: ReadonlySet<OutgoingFrame['type']> = new Set(['text', 'play', 'language']);
 
@@ -123,6 +126,8 @@ export class ConversationRelaySession {
     private promptAt = 0;
     private firstTokenLogged = false;
     private lastFallback: string | undefined;
+    /** Opening words of the last few fillers spoken, so "Okay" doesn't keep coming back. */
+    private recentOpeners: string[] = [];
 
     constructor(opts: ConversationRelaySessionOptions) {
         this.responseService = opts.responseService;
@@ -306,7 +311,7 @@ export class ConversationRelaySession {
         const t0 = performance.now();
         const budget = Number(process.env.LATENCY_FILLER_BUDGET_MS) || 350;
         let miss: MissReason = 'no-match';
-        const matching = matchFiller(text, undefined, (r) => { miss = r; });
+        const matching = matchFiller(text, undefined, (r) => { miss = r; }, { avoidOpeners: new Set(this.recentOpeners) });
         let timer: NodeJS.Timeout | undefined;
         const timedOut = Symbol('timeout');
         const first = await Promise.race([
@@ -325,10 +330,13 @@ export class ConversationRelaySession {
                 'Latency',
                 `${this.logPrefix} filler mode=${mode} source=${source} id=${id}${reason ? ` reason=${reason}` : ''} score=${score} ms=${Math.round(performance.now() - t0)} ${drop ? `dropped: ${drop}` : 'sent'}`
             );
-            if (!drop) await this.sendText(`${say} `, false);
+            if (!drop) {
+                this.recentOpeners = [...this.recentOpeners, opener(say)].slice(-RECENT_OPENERS);
+                await this.sendText(`${say} `, false);
+            }
         };
         const fallback = (reason: string, score: string) => {
-            this.lastFallback = nextFallback(this.lastFallback);
+            this.lastFallback = nextFallback(this.lastFallback, new Set(this.recentOpeners));
             return emit('fallback', 'fallback', this.lastFallback, score, reason);
         };
 
