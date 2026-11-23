@@ -28,3 +28,45 @@ export function getMode(): LatencyMode {
 export function setMode(m: LatencyMode): void {
     current = m;
 }
+
+export const MAX_LLM_DELAY_MS = 20000;
+
+export function isValidDelayMs(x: unknown): x is number {
+    return typeof x === 'number' && Number.isInteger(x) && x >= 0 && x <= MAX_LLM_DELAY_MS;
+}
+
+/**
+ * Test-only artificial delay before the LLM call, so the hold sound gets a chance to play.
+ * Default LATENCY_TEST_LLM_DELAY_MS (invalid/unset -> 0). 0 = off.
+ */
+let llmDelayMs: number | undefined;
+
+export function getLlmDelayMs(): number {
+    if (llmDelayMs === undefined) {
+        const fromEnv = Number(process.env.LATENCY_TEST_LLM_DELAY_MS);
+        llmDelayMs = isValidDelayMs(fromEnv) ? fromEnv : 0;
+    }
+    return llmDelayMs;
+}
+
+export function setLlmDelayMs(ms: number): void {
+    llmDelayMs = ms;
+}
+
+/**
+ * Handler on/off: whether the hold sound is played after the acknowledgement.
+ * Default LATENCY_HANDLER: 'off' | 'false' | '0' -> off; anything else (incl. unset) -> on.
+ */
+let handlerEnabled: boolean | undefined;
+
+export function isHandlerEnabled(): boolean {
+    if (handlerEnabled === undefined) {
+        const fromEnv = process.env.LATENCY_HANDLER?.trim().toLowerCase();
+        handlerEnabled = !(fromEnv === 'off' || fromEnv === 'false' || fromEnv === '0');
+    }
+    return handlerEnabled;
+}
+
+export function setHandlerEnabled(b: boolean): void {
+    handlerEnabled = b;
+}

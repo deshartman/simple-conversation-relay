@@ -23,7 +23,7 @@
 
 import { logOut, logError } from '../utils/logger.js';
 import { matchFiller, type MissReason } from '../latency/matchFiller.js';
-import { getMode } from '../latency/mode.js';
+import { getMode, getLlmDelayMs, isHandlerEnabled } from '../latency/mode.js';
 import { nextFallback } from '../latency/fallbackFillers.js';
 import { opener } from '../latency/fillers.js';
 import { SilenceHandler } from './SilenceHandler.js';
@@ -126,6 +126,10 @@ export class ConversationRelaySession {
     private promptAt = 0;
     private firstTokenLogged = false;
     private lastFallback: string | undefined;
+    /** Hold media (plan MEDIA-PLAYBACK.md, Option A): one play per turn, queued behind the acknowledgement. */
+    private holdActive = false;
+    private holdSentAt = 0;
+    private holdTurn = 0;
     /** Opening words of the last few fillers spoken, so "Okay" doesn't keep coming back. */
     private recentOpeners: string[] = [];
 
@@ -238,8 +242,13 @@ export class ConversationRelaySession {
                         const turn = ++this.turnSeq;
                         this.llmStarted = false;
                         this.firstTokenLogged = false;
+                        this.holdActive = false;
                         this.promptAt = performance.now();
                         void this.sendFiller(message.voicePrompt || '', turn);
+                    }
+                    // Test-only: hold back the LLM so the hold sound gets a chance to play. 0 = off.
+                    if (getLlmDelayMs() > 0) {
+                        await new Promise((r) => setTimeout(r, getLlmDelayMs()));
                     }
                     await this.responseService.handleEvent({
                         type: 'prompt',
@@ -261,6 +270,7 @@ export class ConversationRelaySession {
                     //     `${this.logPrefix} INTERRUPT: ${JSON.stringify(message, null, 2)}`
                     // );
                     this.turnSeq++;
+                    this.holdActive = false;
                     await this.responseService.handleEvent({
                         type: 'interrupt',
                         heard: message.utteranceUntilInterrupt,
@@ -289,6 +299,7 @@ export class ConversationRelaySession {
     }
 
     cleanup(): void {
+        this.holdActive = false;
         this.silenceHandler?.stop();
         this.responseService.cleanup();
         logOut('Session', `${this.logPrefix} Cleaned up`);
@@ -333,6 +344,7 @@ export class ConversationRelaySession {
             if (!drop) {
                 this.recentOpeners = [...this.recentOpeners, opener(say)].slice(-RECENT_OPENERS);
                 await this.sendText(`${say} `, false);
+                this.maybeStartHold(turn);
             }
         };
         const fallback = (reason: string, score: string) => {
@@ -349,6 +361,35 @@ export class ConversationRelaySession {
         } else {
             await fallback(miss, '-');
         }
+    }
+
+    /**
+     * Right after the acknowledgement went out: queue one preemptible hold sound behind it, so the
+     * caller isn't left in silence until the LLM speaks. The LLM's first text frame preempts it.
+     * LATENCY_HOLD_URL: unset -> https://<SERVER_BASE_URL>/media/hold.wav; empty -> disabled.
+     * At most one play per turn.
+     */
+    private maybeStartHold(turn: number): void {
+        const url = process.env.LATENCY_HOLD_URL ?? (process.env.SERVER_BASE_URL ? `https://${process.env.SERVER_BASE_URL}/media/hold.wav` : '');
+        const skip =
+            turn !== this.turnSeq ? 'stale'
+            : this.llmStarted ? 'llm-started'
+            : this.listenMode ? 'listen-mode'
+            : !isHandlerEnabled() ? 'handler-off'
+            : !url ? 'disabled'
+            : this.holdTurn === turn ? 'already-sent'
+            : null;
+        if (skip === 'already-sent') return;
+        if (skip) {
+            logOut('Latency', `${this.logPrefix} hold skipped reason=${skip}`);
+            return;
+        }
+        const loop = Number(process.env.LATENCY_HOLD_LOOP) || 1;
+        this.holdTurn = turn;
+        this.sendPlay(url, { loop, preemptible: true, interruptible: true });
+        this.holdActive = true;
+        this.holdSentAt = performance.now();
+        logOut('Latency', `${this.logPrefix} hold sent url=${url} loop=${loop}`);
     }
 
     /**
@@ -554,6 +595,10 @@ export class ConversationRelaySession {
                         this.firstTokenLogged = true;
                         logOut('Latency', `${this.logPrefix} first LLM token ${Math.round(performance.now() - this.promptAt)}ms after prompt`);
                     }
+                }
+                if (this.holdActive && response.token?.trim()) {
+                    this.holdActive = false;
+                    logOut('Latency', `${this.logPrefix} hold preempted ${Math.round(performance.now() - this.holdSentAt)}ms after hold sent`);
                 }
                 // Accumulate token stream for logging; ship each token as a
                 // text frame via the session's outgoing path.

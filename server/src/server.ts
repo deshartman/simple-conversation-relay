@@ -381,6 +381,8 @@ app.get('/', (_req: express.Request, res: express.Response) => {
 });
 
 app.use('/latency', createLatencyModeRouter());
+// Hold sound for the latency filler (LATENCY_HOLD_URL); resolved from this file so it works from src/ and dist/.
+app.use('/media', express.static(fileURLToPath(new URL('../public/media', import.meta.url))));
 
 app.post('/outboundCall', guardOutboundCall, async (req: express.Request, res: express.Response) => {
     const requestData: RequestData = req.body;
