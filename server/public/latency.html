@@ -206,8 +206,8 @@ text{fill:var(--fg);font-family:Inter,sans-serif;font-size:12px}.m{fill:var(--mu
 <div class="steps">
 <div class="part" style="--c:#1FB5E0"><b><em>1</em>Rank</b><span>score fillers · skip recently used openers</span></div>
 <div class="part" style="--c:#9AA6C0"><b><em>2</em>Catch-all</b><span>nothing fits → fallback</span></div>
-<div class="part" style="--c:#F08A2C"><b><em>3</em>Threshold</b><span>Jev ≥ 0.5 · embedding ≥ 0.59 · Laya ≥ 0.6</span></div>
-<div class="part" style="--c:#F22F46"><b><em>4</em>Margin</b><span>beat runner-up · Jev off · embedding ≥ 0.01 · Laya off</span></div>
+<div class="part" style="--c:#F08A2C"><b><em>3</em>Threshold</b><span>Jev ≥ 0.5 · embedding ≥ 0.59 (benchmark: 0.6) · Laya ≥ 0.6</span></div>
+<div class="part" style="--c:#F22F46"><b><em>4</em>Margin</b><span>beat runner-up · Jev off · embedding ≥ 0.01 (benchmark: 0) · Laya off</span></div>
 <div class="part" style="--c:#5FD6A4"><b><em>5</em>Budget</b><span>≤ 400 ms, else fallback · one per turn</span></div>
 </div>
 <table class="otab"><thead><tr><th>Caller says</th><th>Jev</th><th>Embedding</th><th>Laya</th></tr></thead><tbody id="otab"></tbody></table>
@@ -257,7 +257,7 @@ text{fill:var(--fg);font-family:Inter,sans-serif;font-size:12px}.m{fill:var(--mu
 <div class="brow"><b>Embedding</b><div><div class="track"><div class="fill" style="width:60.7%;background:var(--green)">61% useful</div></div><div class="cap">11.4% wrong of matches · median 24 ms · the rest get a neutral "Okay."</div></div></div>
 <div class="brow"><b>Laya · base</b><div><div class="track"><div class="fill" style="width:30.7%;background:#F5B84B">31% useful</div></div><div class="cap">64.8% wrong of matches · median 216 ms</div></div></div>
 <div class="brow"><b>Laya · typed</b><div><div class="track"><div class="fill" style="width:32%;background:#F5B84B">32% useful</div></div><div class="cap">60.0% wrong of matches · median 224 ms</div></div></div>
-</div><p class="note" style="margin-top:10px">Useful = the right line was spoken. Each engine ran with its committed threshold, tuned on the dev set only. Source: engine-comparison.md, 23 Nov 2026.</p></div>
+</div><p class="note" style="margin-top:10px">Useful = the right line was spoken. Each engine ran with its committed threshold, tuned on the dev set only. Source: engine-comparison.md, 23 Nov 2026. The benchmark ran embedding at threshold 0.6 / margin 0; the probe table above uses the server's current defaults, 0.59 / 0.01.</p></div>
 
 <h2>Handler · never leave the caller in dead air, never answer half a question</h2>
 <p class="sub" style="max-width:760px">With the Handler on, the Handler takes the caller's question first, then hands the LLM one complete question. For every piece the caller says, it acknowledges at once, plays a hold sound while the caller waits, and decides whether the caller has finished, waiting a little for more words if not. If the caller talks over the "Okay." or the hold sound before the answer starts, the Handler takes the pending question back and merges the next words into it. The LLM answers once, and the Handler steps aside when the answer starts. No dead air, and no answering half a question or talking over the caller.</p>
@@ -383,7 +383,7 @@ text{fill:var(--fg);font-family:Inter,sans-serif;font-size:12px}.m{fill:var(--mu
 <li><b>Uncalibrated probabilities.</b> Laya's confidences are over-confident (the checkpoint ships temperatures outside the valid range), so its threshold barely separates right from wrong.</li>
 <li><b>Latency is not like-for-like.</b> Jev includes the network and TLS to a hosted API, Laya runs on the M4's GPU (MPS), and embedding runs on CPU inside Docker.</li>
 <li><b>Small sets, one run.</b> 66 dev and 150 holdout phrases, one run per engine. Differences of a few points are within noise.</li>
-<li><b>Thresholds tuned on dev only.</b> Jev 0.5, embedding 0.6, Laya 0.6. The holdout set was not used for tuning.</li>
+<li><b>Thresholds tuned on dev only.</b> Jev 0.5, embedding 0.6 (margin 0), Laya 0.6. The holdout set was not used for tuning.</li>
 <li><b>Laya's coherence "question" class scored 0/10</b> on both checkpoints, with near-uniform probabilities. The prompts were not reworded.</li>
 </ul>
 <p class="take"><b>Takeaway:</b> Jev is the most accurate, embedding is the fastest, and Laya is free and local but not yet accurate enough to pick among 100+ fillers.</p>
@@ -615,9 +615,15 @@ const OUT=[
  ['Hang on, my dog is barking',
   [OK,'match','"Sure, take your time."','hold-on p 0.75 · conf 0.64'],
   [FB,'below threshold','"Sure thing!"','wait-no 0.577 &lt; 0.59 · avoided a wrong line']]];
-const NA=[FB,'—','—','not run on these four phrases'];
+const BAD='#F22F46',OFF='#F5B84B';
+// Laya, real picks through rank/matchFiller (mode laya), gate 0.6 / margin 0: [base cell, typed secondary line]
+const LAYA=[
+ [[FB,'below threshold','"Sure thing!"','financial-hardship p 0.53 &lt; 0.6'],'typed: financial-hardship p 0.64 · matched, off-target'],
+ [[OK,'match','"I apologize for the wait, I\'m on it now."','long-wait-complaint p 0.95'],'typed: long-wait-complaint p 0.81 · match'],
+ [[BAD,'wrong line','"Hi, glad you called. I\'m listening."','greeting-with-issue p 0.84 · passed the gate'],'typed: want-human p 0.77 · match'],
+ [[BAD,'wrong line','"I\'m sorry, that sounds frightening. I\'m listening carefully."','fear-safety p 0.96 · passed the gate'],'typed: serious-illness p 0.74 · wrong line']];
 const cell=([c,v,say,why],h)=>`<td data-h="${h}"><span class="v" style="background:${c}">${v}</span><span class="say">${say}</span><span class="why">${why}</span></td>`;
-document.getElementById('otab').innerHTML=OUT.map(([p,j,e])=>`<tr><td>"${esc(p)}"</td>${cell(j,'Jev')}${cell(e,'Embedding')}${cell(NA,'Laya')}</tr>`).join('');
+document.getElementById('otab').innerHTML=OUT.map(([p,j,e],i)=>`<tr><td>"${esc(p)}"</td>${cell(j,'Jev')}${cell(e,'Embedding')}${cell(LAYA[i][0],'Laya').replace('</td>',`<span class="why" style="margin-top:3px;opacity:.8">${LAYA[i][1]}</span></td>`)}</tr>`).join('');
 
 // 3D embedding space: real nomic-embed-text vectors, PCA to 3 components.
 const G={'charge-shock':['#F08A2C','charge-shock'],'long-wait-complaint':['#F22F46','long-wait-complaint'],'want-human':['#5FD6A4','want-human'],query:['#1FB5E0','caller utterance']};
