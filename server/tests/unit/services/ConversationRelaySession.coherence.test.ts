@@ -318,12 +318,13 @@ describe('ConversationRelaySession coherence', () => {
             expect(prompts(rs)).toEqual([{ type: 'prompt', text: 'Do you support SMS? And voice?', lang: 'en-US' }]);
         });
 
-        it('an interrupt and no further prompt re-sends the original text once after question_wait', async () => {
+        it('an interrupt and no further prompt re-sends the original text once, after the longer take-back wait', async () => {
             answer('question');
             const { session, rs } = makeSession();
             await prompt(session, 'Do you support SMS?');
             await interrupt(session);
-            await vi.advanceTimersByTimeAsync(1900);
+            // question_wait is 2000, but a take-back waits at least 4000 (caller is mid-sentence, call CAd4bda9).
+            await vi.advanceTimersByTimeAsync(3900);
             expect(prompts(rs)).toHaveLength(1);
             await vi.advanceTimersByTimeAsync(200);
             expect(prompts(rs).map((e: any) => e.text)).toEqual(['Do you support SMS?', 'Do you support SMS?']);
@@ -344,12 +345,37 @@ describe('ConversationRelaySession coherence', () => {
             expect(prompts(rs).map((e: any) => e.text)).toEqual(['Do you support SMS?', 'Do you support SMS?']);
         });
 
-        it('question_wait 0: the default take-back wait is 1500 ms', async () => {
+        it('question_wait 0: the default take-back wait is 4000 ms', async () => {
             setQuestionWaitMs(0);
             const { session, rs } = makeSession();
             await prompt(session, 'Do you support SMS?');
             await interrupt(session);
-            await vi.advanceTimersByTimeAsync(1400);
+            await vi.advanceTimersByTimeAsync(3900);
+            expect(prompts(rs)).toHaveLength(1);
+            await vi.advanceTimersByTimeAsync(200);
+            expect(prompts(rs)).toHaveLength(2);
+        });
+
+        it('a longer question_wait wins over the take-back wait', async () => {
+            setQuestionWaitMs(6000);
+            answer('question');
+            const { session, rs } = makeSession();
+            await prompt(session, 'Do you support SMS?');
+            await interrupt(session);
+            await vi.advanceTimersByTimeAsync(5900);
+            expect(prompts(rs)).toHaveLength(1);
+            await vi.advanceTimersByTimeAsync(200);
+            expect(prompts(rs)).toHaveLength(2);
+        });
+
+        it('a second interrupt during the take-back wait restarts it at the same length', async () => {
+            answer('question');
+            const { session, rs } = makeSession();
+            await prompt(session, 'Do you support SMS?');
+            await interrupt(session);
+            await vi.advanceTimersByTimeAsync(3000);
+            await interrupt(session);
+            await vi.advanceTimersByTimeAsync(3900);
             expect(prompts(rs)).toHaveLength(1);
             await vi.advanceTimersByTimeAsync(200);
             expect(prompts(rs)).toHaveLength(2);

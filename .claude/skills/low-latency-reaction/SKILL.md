@@ -5,7 +5,7 @@ description: Work on the low-latency acknowledgement test bed in this fork of si
 
 # Low-latency reaction (feature/system-1)
 
-A caller's prompt starts two things together: the LLM call, and a matcher that picks a short spoken acknowledgement ("Okay.", "Good question."). The acknowledgement is sent as `{type:'text', token, last:false}` so the LLM tokens continue the same utterance. If no match lands within `LATENCY_FILLER_BUDGET_MS` (350), a neutral fallback line is spoken and any late match is dropped. Every turn gets exactly one acknowledgement in `jev` and `embedding` mode; `none` is the baseline.
+A caller's prompt starts two things together: the LLM call, and a matcher that picks a short spoken acknowledgement ("Okay.", "Good question."). The acknowledgement is sent as `{type:'text', token, last:false}` so the LLM tokens continue the same utterance. If no match lands within `LATENCY_FILLER_BUDGET_MS` (400), a neutral fallback line is spoken and any late match is dropped. Every turn gets exactly one acknowledgement in `jev` and `embedding` mode; `none` is the baseline.
 
 All paths are under `server/`. Secrets are in `server/.env` (git-ignored): never print them.
 

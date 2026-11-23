@@ -51,10 +51,13 @@ const SILENCE_WORDING_TIMEOUT_MS = 1500;
 /** How many recent filler opening words are kept off-limits for the next filler. */
 const RECENT_OPENERS = 3;
 
-/** Wait after a taken-back question when question_wait is 0, so the question is not lost. */
+/**
+ * Minimum wait after a taken-back question. The caller is known to be mid-sentence, and on call
+ * CAd4bda9 their words arrived ~3 s after the interrupt, past the 2 s question_wait.
+ */
 const takebackWaitMs = () => {
     const n = Number(process.env.LATENCY_TAKEBACK_WAIT_MS);
-    return Number.isFinite(n) && n > 0 ? n : 1500;
+    return Number.isFinite(n) && n > 0 ? n : 4000;
 };
 
 const LISTEN_MODE_GATED: ReadonlySet<OutgoingFrame['type']> = new Set(['text', 'play', 'language']);
@@ -143,6 +146,8 @@ export class ConversationRelaySession {
     /** Coherence: prompt fragments held back until the caller looks done (or question_wait expires). */
     private promptBuffer: string[] = [];
     private waitTimer: NodeJS.Timeout | undefined;
+    /** Length of the running wait, so a restart (caller talking over the hold) keeps it. */
+    private waitMs = 0;
     private bufferLang: string | undefined;
     /** Bumped per buffered prompt so a slow classification of an older fragment is ignored. */
     private coherenceSeq = 0;
@@ -296,12 +301,12 @@ export class ConversationRelaySession {
                     if (this.pendingWindowOpen() && this.pending && !this.pending.merged) {
                         const state = this.takeBackPending();
                         this.pending = null;
-                        this.startWaitTimer();
+                        this.startWaitTimer(Math.max(getQuestionWaitMs(), takebackWaitMs()));
                         logOut('Session', `${this.logPrefix} interrupt before answer: took back pending question (state=${state}), waiting for the caller`);
                         break;
                     }
                     // Caller spoke over the acknowledgement/hold: they are mid-sentence, so keep waiting.
-                    if (this.waitTimer) this.startWaitTimer();
+                    if (this.waitTimer) this.startWaitTimer(this.waitMs);
                     // Before the answer started, the caller talking over our acknowledgement/hold is not
                     // a request to stop the answer: forwarding would silently kill the in-flight stream.
                     if (this.pendingWindowOpen()) {
@@ -420,14 +425,15 @@ export class ConversationRelaySession {
         }
     }
 
-    /** (Re)start the wait for more words; flushes when question_wait expires. */
-    private startWaitTimer(): void {
+    /** (Re)start the wait for more words; flushes when it expires. Default: question_wait. */
+    private startWaitTimer(ms: number = getQuestionWaitMs() || takebackWaitMs()): void {
         clearTimeout(this.waitTimer);
+        this.waitMs = ms;
         this.waitTimer = setTimeout(() => {
             this.waitTimer = undefined;
             this.flushPrompt('timeout').catch((e) =>
                 logError('Latency', `${this.logPrefix} coherence flush failed: ${e instanceof Error ? e.message : String(e)}`));
-        }, getQuestionWaitMs() || takebackWaitMs());
+        }, ms);
     }
 
     /** Send everything buffered to the LLM as one prompt. The test LLM delay counts from here. */
@@ -465,7 +471,7 @@ export class ConversationRelaySession {
         const mode = getMode();
         if (mode === 'none') return;
         const t0 = performance.now();
-        const budget = Number(process.env.LATENCY_FILLER_BUDGET_MS) || 350;
+        const budget = Number(process.env.LATENCY_FILLER_BUDGET_MS) || 400;
         let miss: MissReason = 'no-match';
         const matching = matchFiller(text, undefined, (r) => { miss = r; }, { avoidOpeners: new Set(this.recentOpeners) });
         let timer: NodeJS.Timeout | undefined;
