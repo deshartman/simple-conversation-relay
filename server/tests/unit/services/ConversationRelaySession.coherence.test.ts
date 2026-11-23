@@ -2,11 +2,13 @@ import { describe, it, expect, beforeEach, afterEach, vi } from 'vitest';
 
 vi.mock('../../../src/latency/matchFiller.js', () => ({ matchFiller: vi.fn() }));
 vi.mock('../../../src/latency/coherence.js', () => ({ classifyCoherence: vi.fn() }));
+vi.mock('../../../src/latency/jev.js', () => ({ warmJev: vi.fn(async () => {}) }));
 vi.mock('../../../src/utils/logger.js', async (orig) => ({ ...(await orig<any>()), logOut: vi.fn(), logError: vi.fn() }));
 
 import { matchFiller } from '../../../src/latency/matchFiller.js';
 import { classifyCoherence } from '../../../src/latency/coherence.js';
-import { setMode, setQuestionWaitMs, setLlmDelayMs, setHandlerEnabled } from '../../../src/latency/mode.js';
+import { warmJev } from '../../../src/latency/jev.js';
+import { setMode, setQuestionWaitMs, setLlmDelayMs, setHandlerEnabled, setJevWarmEnabled } from '../../../src/latency/mode.js';
 import { logOut } from '../../../src/utils/logger.js';
 import { ConversationRelaySession } from '../../../src/services/ConversationRelaySession.js';
 
@@ -49,6 +51,8 @@ describe('ConversationRelaySession coherence', () => {
         setQuestionWaitMs(0);
         setLlmDelayMs(0);
         setHandlerEnabled(true);
+        setJevWarmEnabled(true);
+        delete process.env.LATENCY_TAKEBACK_WAIT_MS;
     });
 
     it('question_wait 0 sends at once without classifying', async () => {
@@ -277,6 +281,113 @@ describe('ConversationRelaySession coherence', () => {
             expect(prompts(rs)).toHaveLength(2);
         });
 
+        const interrupt = (s: ConversationRelaySession) =>
+            s.handleIncoming({ type: 'interrupt', utteranceUntilInterrupt: '' } as any);
+
+        it('an interrupt in flight takes the question back; the next prompt merges into one send', async () => {
+            answer('question');
+            answer('question');
+            const { session, rs } = makeSession();
+            await prompt(session, 'Do you support SMS?');
+            await interrupt(session);
+            expect(events(rs, 'retract')).toHaveLength(1);
+            expect(events(rs, 'interrupt')).toHaveLength(0);
+            expect(logged('interrupt before answer: took back pending question (state=in-flight), waiting for the caller')).toBe(true);
+            await prompt(session, 'Actually, the support voice?');
+            expect(rs.handleEvent.mock.calls.map((c: any[]) => c[0].type)).toEqual(['prompt', 'retract', 'prompt']);
+            expect(prompts(rs)[1].text).toBe('Do you support SMS? Actually, the support voice?');
+            expect(events(rs, 'retract')).toHaveLength(1); // the new prompt did not take back again
+            await vi.advanceTimersByTimeAsync(5000);
+            expect(prompts(rs)).toHaveLength(2);
+        });
+
+        it('an interrupt in the LLM delay cancels the stale send without a retract; the next prompt merges', async () => {
+            setLlmDelayMs(500);
+            answer('question');
+            answer('question');
+            const { session, rs } = makeSession();
+            void prompt(session, 'Do you support SMS?');
+            await vi.advanceTimersByTimeAsync(100);
+            await interrupt(session);
+            expect(logged('took back pending question (state=delay)')).toBe(true);
+            await vi.advanceTimersByTimeAsync(100);
+            void prompt(session, 'And voice?');
+            await vi.advanceTimersByTimeAsync(2000);
+            expect(events(rs, 'retract')).toHaveLength(0);
+            expect(events(rs, 'interrupt')).toHaveLength(0);
+            expect(prompts(rs)).toEqual([{ type: 'prompt', text: 'Do you support SMS? And voice?', lang: 'en-US' }]);
+        });
+
+        it('an interrupt and no further prompt re-sends the original text once after question_wait', async () => {
+            answer('question');
+            const { session, rs } = makeSession();
+            await prompt(session, 'Do you support SMS?');
+            await interrupt(session);
+            await vi.advanceTimersByTimeAsync(1900);
+            expect(prompts(rs)).toHaveLength(1);
+            await vi.advanceTimersByTimeAsync(200);
+            expect(prompts(rs).map((e: any) => e.text)).toEqual(['Do you support SMS?', 'Do you support SMS?']);
+            await vi.advanceTimersByTimeAsync(5000);
+            expect(prompts(rs)).toHaveLength(2);
+        });
+
+        it('question_wait 0 with the Handler on: re-sent after LATENCY_TAKEBACK_WAIT_MS', async () => {
+            setQuestionWaitMs(0);
+            process.env.LATENCY_TAKEBACK_WAIT_MS = '800';
+            const { session, rs } = makeSession();
+            await prompt(session, 'Do you support SMS?');
+            await interrupt(session);
+            expect(events(rs, 'retract')).toHaveLength(1);
+            await vi.advanceTimersByTimeAsync(700);
+            expect(prompts(rs)).toHaveLength(1);
+            await vi.advanceTimersByTimeAsync(200);
+            expect(prompts(rs).map((e: any) => e.text)).toEqual(['Do you support SMS?', 'Do you support SMS?']);
+        });
+
+        it('question_wait 0: the default take-back wait is 1500 ms', async () => {
+            setQuestionWaitMs(0);
+            const { session, rs } = makeSession();
+            await prompt(session, 'Do you support SMS?');
+            await interrupt(session);
+            await vi.advanceTimersByTimeAsync(1400);
+            expect(prompts(rs)).toHaveLength(1);
+            await vi.advanceTimersByTimeAsync(200);
+            expect(prompts(rs)).toHaveLength(2);
+        });
+
+        it('an interrupt after the first token is forwarded with no take-back', async () => {
+            answer('question');
+            const { session, rs } = makeSession();
+            await prompt(session, 'Do you support SMS?');
+            rs.handler.content({ type: 'text', token: 'Yes', last: false });
+            await interrupt(session);
+            expect(events(rs, 'interrupt')).toHaveLength(1);
+            expect(events(rs, 'retract')).toHaveLength(0);
+            await vi.advanceTimersByTimeAsync(5000);
+            expect(prompts(rs)).toHaveLength(1);
+        });
+
+        it('an interrupt after a tool started is forwarded with no take-back', async () => {
+            answer('question');
+            const { session, rs } = makeSession();
+            await prompt(session, 'Do you support SMS?');
+            rs.handler.toolCallStart(new Promise(() => {}));
+            await interrupt(session);
+            expect(events(rs, 'interrupt')).toHaveLength(1);
+            expect(events(rs, 'retract')).toHaveLength(0);
+        });
+
+        it('Handler off: an interrupt is forwarded with no take-back', async () => {
+            setHandlerEnabled(false);
+            const { session, rs } = makeSession();
+            await prompt(session, 'Do you support SMS?');
+            await interrupt(session);
+            expect(events(rs, 'interrupt')).toHaveLength(1);
+            expect(events(rs, 'retract')).toHaveLength(0);
+            await vi.advanceTimersByTimeAsync(5000);
+            expect(prompts(rs)).toHaveLength(1);
+        });
+
         it('an interrupt after the first token is forwarded', async () => {
             answer('question');
             const { session, rs } = makeSession();
@@ -315,6 +426,26 @@ describe('ConversationRelaySession coherence', () => {
             void prompt(session, 'two');
             await vi.advanceTimersByTimeAsync(1000);
             expect(prompts(rs).map((e: any) => e.text)).toEqual(['one', 'two']);
+        });
+    });
+
+    describe('Jev warm-up on setup', () => {
+        beforeEach(() => vi.mocked(warmJev).mockClear());
+        it('warms when mode=jev', async () => {
+            setMode('jev');
+            await makeSession().session.setup();
+            expect(warmJev).toHaveBeenCalledTimes(1);
+        });
+        it.each(['embedding', 'none'] as const)('does not warm when mode=%s', async (mode) => {
+            setMode(mode);
+            await makeSession().session.setup();
+            expect(warmJev).not.toHaveBeenCalled();
+        });
+        it('does not warm when disabled', async () => {
+            setMode('jev');
+            setJevWarmEnabled(false);
+            await makeSession().session.setup();
+            expect(warmJev).not.toHaveBeenCalled();
         });
     });
 });

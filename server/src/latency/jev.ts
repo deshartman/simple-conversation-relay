@@ -6,6 +6,7 @@
  * Never throws: always resolves { ok, ... }.
  */
 import { Agent, request } from 'node:https';
+import { logOut, logError } from '../utils/logger.js';
 
 export type JevQuestion =
     | { type: 'noul'; instructions: string; criteria?: Record<string, unknown> }
@@ -51,5 +52,30 @@ export async function jevEvaluate(
         req.setTimeout(timeoutMs, () => { req.destroy(); fail(`timeout after ${timeoutMs}ms`); });
         req.on('error', (e) => fail(e.message));
         req.end(body);
+    });
+}
+
+/**
+ * Open the TLS connection on the same keep-alive agent so the first real call reuses a warm socket.
+ * A bodyless HEAD to the API host: no model run, not billable. Any HTTP status counts as warm.
+ * Never throws; fire and forget.
+ */
+export function warmJev(): Promise<void> {
+    const t0 = performance.now();
+    const done = (note = '') => logOut('Latency', `jev warm ms=${Math.round(performance.now() - t0)}${note}`);
+    return new Promise((resolve) => {
+        try {
+            const url = new URL((process.env.JEV_BASE_URL ?? 'https://api.typesafe.ai').replace(/\/+$/, ''));
+            const req = request({ agent, hostname: url.hostname, path: '/', method: 'HEAD' }, (res) => {
+                res.resume();
+                res.on('end', () => { done(` status=${res.statusCode}`); resolve(); });
+            });
+            req.setTimeout(3000, () => req.destroy(new Error('timeout after 3000ms')));
+            req.on('error', (e) => { logError('Latency', `jev warm failed: ${e.message}`); resolve(); });
+            req.end();
+        } catch (e) {
+            logError('Latency', `jev warm failed: ${e instanceof Error ? e.message : String(e)}`);
+            resolve();
+        }
     });
 }

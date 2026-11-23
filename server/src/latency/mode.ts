@@ -71,6 +71,21 @@ export function setHandlerEnabled(b: boolean): void {
     handlerEnabled = b;
 }
 
+/** Jev connection warm-up at call start / mode switch. Default LATENCY_JEV_WARM: 'off' | 'false' | '0' -> off; else on. */
+let jevWarmEnabled: boolean | undefined;
+
+export function isJevWarmEnabled(): boolean {
+    if (jevWarmEnabled === undefined) {
+        const fromEnv = process.env.LATENCY_JEV_WARM?.trim().toLowerCase();
+        jevWarmEnabled = !(fromEnv === 'off' || fromEnv === 'false' || fromEnv === '0');
+    }
+    return jevWarmEnabled;
+}
+
+export function setJevWarmEnabled(b: boolean): void {
+    jevWarmEnabled = b;
+}
+
 export const MAX_QUESTION_WAIT_MS = 10000;
 
 export function isValidQuestionWaitMs(x: unknown): x is number {

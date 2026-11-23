@@ -24,7 +24,8 @@
 import { logOut, logError } from '../utils/logger.js';
 import { matchFiller, type MissReason } from '../latency/matchFiller.js';
 import { classifyCoherence } from '../latency/coherence.js';
-import { getMode, getLlmDelayMs, getQuestionWaitMs, isHandlerEnabled } from '../latency/mode.js';
+import { getMode, getLlmDelayMs, getQuestionWaitMs, isHandlerEnabled, isJevWarmEnabled } from '../latency/mode.js';
+import { warmJev } from '../latency/jev.js';
 import { nextFallback } from '../latency/fallbackFillers.js';
 import { opener } from '../latency/fillers.js';
 import { SilenceHandler } from './SilenceHandler.js';
@@ -49,6 +50,12 @@ import {
 const SILENCE_WORDING_TIMEOUT_MS = 1500;
 /** How many recent filler opening words are kept off-limits for the next filler. */
 const RECENT_OPENERS = 3;
+
+/** Wait after a taken-back question when question_wait is 0, so the question is not lost. */
+const takebackWaitMs = () => {
+    const n = Number(process.env.LATENCY_TAKEBACK_WAIT_MS);
+    return Number.isFinite(n) && n > 0 ? n : 1500;
+};
 
 const LISTEN_MODE_GATED: ReadonlySet<OutgoingFrame['type']> = new Set(['text', 'play', 'language']);
 
@@ -226,6 +233,9 @@ export class ConversationRelaySession {
             parameters: parameterData,
         });
 
+        // Open the Jev TLS connection now so the first filler/coherence call reuses a warm socket.
+        if (getMode() === 'jev' && isJevWarmEnabled()) void warmJev();
+
         this.silenceHandler?.start();
         logOut('Session', `${this.logPrefix} Setup complete`);
     }
@@ -280,6 +290,16 @@ export class ConversationRelaySession {
                     // );
                     this.turnSeq++;
                     this.holdActive = false;
+                    // Before the answer: the caller is still talking and more words are coming. Take the
+                    // pending question back and wait; the next prompt is merged by routePrompt, or the
+                    // wait timer re-sends it alone. (A pending already merged is just waiting: handled below.)
+                    if (this.pendingWindowOpen() && this.pending && !this.pending.merged) {
+                        const state = this.takeBackPending();
+                        this.pending = null;
+                        this.startWaitTimer();
+                        logOut('Session', `${this.logPrefix} interrupt before answer: took back pending question (state=${state}), waiting for the caller`);
+                        break;
+                    }
                     // Caller spoke over the acknowledgement/hold: they are mid-sentence, so keep waiting.
                     if (this.waitTimer) this.startWaitTimer();
                     // Before the answer started, the caller talking over our acknowledgement/hold is not
@@ -343,6 +363,16 @@ export class ConversationRelaySession {
     private mergePending(): void {
         const p = this.pending;
         if (!p || p.merged || !this.pendingWindowOpen()) return;
+        const state = this.takeBackPending();
+        logOut('Latency', `${this.logPrefix} coherence merge state=${state} pieces=${p.pieces + 1}`);
+    }
+
+    /**
+     * Put the pending question's text back at the front of the buffer and mark it merged. Already with
+     * the LLM: retract it (not awaited); still in the test delay: cancel that send. Caller checks the window.
+     */
+    private takeBackPending(): 'delay' | 'in-flight' {
+        const p = this.pending!;
         p.merged = true;
         this.promptBuffer.unshift(p.text);
         // Not awaited: awaiting here let a piece arriving at the same moment reach the buffer first
@@ -350,8 +380,10 @@ export class ConversationRelaySession {
         if (p.sent) {
             this.responseService.handleEvent({ type: 'retract' }).catch((e) =>
                 logError('Latency', `${this.logPrefix} retract failed: ${e instanceof Error ? e.message : String(e)}`));
-        } else this.cancelledFlushSeq = p.seq;
-        logOut('Latency', `${this.logPrefix} coherence merge state=${p.sent ? 'in-flight' : 'delay'} pieces=${p.pieces + 1}`);
+            return 'in-flight';
+        }
+        this.cancelledFlushSeq = p.seq;
+        return 'delay';
     }
 
     /**
@@ -395,7 +427,7 @@ export class ConversationRelaySession {
             this.waitTimer = undefined;
             this.flushPrompt('timeout').catch((e) =>
                 logError('Latency', `${this.logPrefix} coherence flush failed: ${e instanceof Error ? e.message : String(e)}`));
-        }, getQuestionWaitMs());
+        }, getQuestionWaitMs() || takebackWaitMs());
     }
 
     /** Send everything buffered to the LLM as one prompt. The test LLM delay counts from here. */
