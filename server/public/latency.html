@@ -172,36 +172,7 @@ text{fill:var(--fg);font-family:Inter,sans-serif;font-size:12px}.m{fill:var(--mu
 </div>
 
 <div class="panel" style="margin-top:14px">
-<div class="ctlh" style="color:#F5B84B">3 · Laya, a local System 1</div>
-<div class="kt" style="--c:#F5B84B">
-<div><b>Non-generative encoder</b><span>Laya (Convai Innovations, Apache-2.0) is ModernBERT-large, 421M parameters. It returns probabilities over typed options in one forward pass. It writes no text.</span></div>
-<div><b>Local laya-serve</b><span>Runs on this machine (Apple M4, MPS). It exposes the same <code>/v1/systemone</code> API as Jev, so the same client and the same questions are reused. Free, but about 0.8 GB of disk.</span></div>
-<div><b>Two checkpoints tested</b><span>base (<code>english</code>) and <code>typed-decisions</code>. Both are scored below.</span></div>
-</div>
-<div class="qrow">
-<div class="qcard" style="--c:#F5B84B"><b>filler</b>: choice  (typed choice question)
-"Which option best describes what
- the caller just said?"
-  charge-shock   { what, examples }
-  want-human     { what, examples }
-  … 101 fillers
-  <b>generic-ack</b>    ← "none of these"
-  = 102 options, but the server caps
-    one choice at 100</div>
-<div class="qcard" style="--c:var(--amber)"><b>tournament grouping</b>
- 102 options → groups of 64
- each group: one forward pass,
-   probabilities over its options
- group winners → a final round
- the final winner's probability
-   goes through the same gate:
-   threshold 0.6 · margin 0</div>
-</div>
-<p class="note">Probabilities are over each group's finalists, not over all 102 options, and the checkpoint's temperatures are uncalibrated, so they run over-confident. The gate barely separates right from wrong (see the table below).</p>
-</div>
-
-<div class="panel" style="margin-top:14px">
-<div class="ctlh" style="color:var(--amber)">4 · How the matcher picks what to say</div>
+<div class="ctlh" style="color:var(--amber)">3 · How the matcher picks what to say</div>
 <p class="try" style="margin:0 0 12px">Same gates for all three modes. Fail any gate → neutral fallback ("Sure thing!").</p>
 <div class="steps">
 <div class="part" style="--c:#1FB5E0"><b><em>1</em>Rank</b><span>score fillers · skip recently used openers</span></div>
