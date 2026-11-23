@@ -43,6 +43,9 @@ text{fill:var(--fg);font-family:Inter,sans-serif;font-size:12px}.m{fill:var(--mu
 .chips{display:flex;flex-wrap:wrap;gap:10px}
 .chip{background:var(--node);border:1px solid var(--line2);border-left:3px solid var(--amber);border-radius:10px;padding:10px 14px;font-size:14px;font-weight:600}
 .tt{font-size:14px;font-weight:700;margin:18px 0 2px}
+.rph{display:flex;justify-content:space-between;align-items:center;gap:12px;margin:18px 0 2px}.rph .tt{margin:0}
+.rb{font:inherit;font-size:12px;font-weight:700;color:var(--fg);background:var(--node);border:1px solid var(--line2);border-radius:8px;padding:5px 11px;cursor:pointer;white-space:nowrap}
+.rb:hover{border-color:var(--cyan)}
 .note{color:var(--mute);font-size:12.5px;margin:2px 0 0}
 .lg{display:flex;gap:18px;flex-wrap:wrap;color:var(--mute);font-size:12px;margin:0 2px 8px}
 .lg i{display:inline-block;width:12px;height:12px;border-radius:3px;margin-right:6px;vertical-align:-2px}
@@ -62,6 +65,40 @@ text{fill:var(--fg);font-family:Inter,sans-serif;font-size:12px}.m{fill:var(--mu
 .part{background:var(--node);border:1px solid var(--line);border-left:3px solid var(--c);border-radius:10px;padding:12px 14px}
 .part b{display:block;font-size:14px}.part span{display:block;color:var(--mute);font-size:12.5px;margin-top:4px}
 @media(max-width:700px){.parts{grid-template-columns:1fr}}
+.kt{display:grid;grid-template-columns:repeat(auto-fit,minmax(min(100%,240px),1fr));gap:10px;margin:0 0 14px}
+.kt>div{background:var(--node);border:1px solid var(--line);border-top:2px solid var(--c);border-radius:10px;padding:10px 12px}
+.kt b{display:block;font-size:15px}.kt span{display:block;color:var(--mute);font-size:12.5px;margin-top:2px}.qrow{display:grid;grid-template-columns:1fr 1fr;gap:10px;margin-bottom:8px}.qrow .qcard{margin:0}
+@media(max-width:860px){.qrow{grid-template-columns:1fr}}
+.pgrid{display:grid;grid-template-columns:repeat(auto-fit,minmax(340px,1fr));gap:0 28px}
+@media(max-width:400px){.pgrid{grid-template-columns:1fr}}
+.pgrid.big{grid-template-columns:repeat(auto-fit,minmax(min(100%,460px),1fr));gap:6px 36px}
+.pgrid.big .pr .ph{font-size:16px}.pgrid.big .pr .ph .conf{font-size:13px}.pgrid.big .pb{font-size:13px;grid-template-columns:170px 1fr 48px;margin:5px 0}
+.pgrid.big .pb .t{height:18px}
+@media(max-width:520px){.pgrid.big .pb{grid-template-columns:110px 1fr 40px}}
+.pb .t i{transition:width 1s cubic-bezier(.2,.8,.2,1)}
+.qcard{background:var(--node);border:1px solid var(--line);border-left:3px solid var(--c,var(--cyan));border-radius:10px;padding:10px 12px;margin:0 0 10px;font:12.5px/1.5 ui-monospace,SFMono-Regular,Menlo,monospace;color:var(--mute);overflow-x:auto;white-space:pre}
+.qcard b{color:var(--fg);font-weight:600}
+.pr{margin:0 0 14px}.pr .ph{display:flex;flex-wrap:wrap;justify-content:space-between;align-items:baseline;gap:2px 12px;font-size:14px;font-weight:600;margin-bottom:4px}
+.pr .ph .conf{font-size:12px;font-weight:600;color:var(--mute);white-space:nowrap}.pr .ph .conf b{color:var(--fg)}
+.pb{display:grid;grid-template-columns:150px 1fr 44px;gap:8px;align-items:center;font-size:12px;color:var(--mute);margin:2px 0}
+.pb .t{position:relative;height:12px;background:var(--node);border-radius:4px;border:1px solid var(--line)}
+.pb .t i{position:absolute;left:0;top:0;bottom:0;border-radius:3px}
+.pb .t u{position:absolute;top:-3px;bottom:-3px;width:0;border-left:2px dotted var(--amber)}
+.pb.win{color:var(--fg);font-weight:600}
+.pb>span:first-child{overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+@media(max-width:520px){.pb{grid-template-columns:110px 1fr 40px}}
+#space{touch-action:none;cursor:grab;background:var(--node);border:1px solid var(--line);border-radius:10px}
+#space:active{cursor:grabbing}
+.steps{display:grid;grid-template-columns:repeat(5,1fr);gap:10px;margin-bottom:16px}
+@media(max-width:860px){.steps{grid-template-columns:1fr}}
+.steps .part em{font-style:normal;color:var(--c);font-weight:800;margin-right:6px}
+.otab{width:100%;border-collapse:collapse;font-size:13px}
+.otab th{text-align:left;color:var(--mute);font-weight:600;font-size:12px;letter-spacing:.06em;text-transform:uppercase;padding:8px 10px;border-bottom:1px solid var(--line2)}
+.otab td{vertical-align:top;padding:10px;border-bottom:1px solid var(--line)}
+.otab td:first-child{font-weight:600;width:24%}
+.otab .v{display:inline-block;font-size:11px;font-weight:800;letter-spacing:.06em;text-transform:uppercase;border-radius:6px;padding:1px 7px;margin-bottom:4px;color:#030B24}
+.otab .say{display:block;color:var(--fg)}.otab .why{display:block;color:var(--mute);font-size:12px}
+@media(max-width:700px){.otab thead{display:none}.otab tr{display:block;border-bottom:1px solid var(--line2);padding:6px 0}.otab td{display:block;width:auto!important;border:0;padding:4px 0}.otab td[data-h]::before{content:attr(data-h);display:block;color:var(--mute);font-size:11px;letter-spacing:.06em;text-transform:uppercase}}
 </style></head><body><div class="wrap">
 
 <div class="eyebrow">Low-latency reaction · ConversationRelay</div>
@@ -79,6 +116,63 @@ text{fill:var(--fg);font-family:Inter,sans-serif;font-size:12px}.m{fill:var(--mu
 <div class="sw" id="sw" role="group" aria-label="Latency mode"></div>
 <span id="swmsg">loading…</span>
 <p class="try">Pick a mode, then call the number and ask the same question in each. Listen for the gap before the first word: <b>none</b> is silent until the answer, <b>jev</b> and <b>embedding</b> say a short "Okay." first.</p>
+</div>
+
+<h2>Under the hood · how jev and embedding pick the "Okay."</h2>
+<p class="sub" style="max-width:760px;margin-bottom:14px">Both modes <b style="color:var(--fg)">classify</b> the caller's words into one of 101 pre-written lines. Neither writes an answer. Data from one probe run, 23 Nov 2026.</p>
+
+<div class="panel">
+<div class="ctlh" style="color:var(--cyan)">1 · Jev as a System 1</div>
+<div class="kt" style="--c:var(--cyan)">
+<div><b>System 1 · Jev</b><span>Classifies the prompt by answering set questions, and gives a confidence for each answer. Trained to classify prompts accurately.</span></div>
+<div><b>System 2 · the LLM</b><span>Generates the response. Trained to answer people.</span></div>
+<div><b>Online service</b><span>A hosted API, called over HTTPS. About 250 ms per call.</span></div>
+</div>
+<div class="qrow">
+<div class="qcard" style="--c:var(--cyan)"><b>filler</b>: choice
+"Which option best describes what
+ the caller just said?"
+  charge-shock   { what, examples }
+  want-human     { what, examples }
+  … 101 fillers
+  <b>generic-ack</b>    ← "none of these"</div>
+<div class="qcard" style="--c:var(--amber)"><b>coherence</b>: choice  (Handler, below)
+"Which option best describes the
+ caller's latest words, given what
+ they said earlier?"
+  question · statement · filler · changed-mind</div>
+</div>
+<div class="rph" style="margin:6px 0 8px"><div class="lg" style="margin:0"><span><i style="background:#1FB5E0"></i>Jev's choice</span><span><i style="background:#243564"></i>runners-up</span><span><i style="border-left:2px dotted #F08A2C;width:0;border-radius:0"></i>0.5 threshold</span></div><button class="rb" id="jevrb" type="button" aria-label="Replay Jev probabilities">↻ Replay</button></div>
+<div id="jevbars" class="pgrid big"></div>
+</div>
+
+<div class="panel" style="margin-top:14px">
+<div class="ctlh" style="color:var(--green)">2 · Embeddings</div>
+<div class="kt" style="--c:var(--green)">
+<div><b>Vector space</b><span>Each phrase becomes a multi-dimensional vector (768 numbers). Similar concepts clump together.</span></div>
+<div><b>Local classifier</b><span>Used here as a classifier, like Jev, but it runs locally on the server.</span></div>
+</div>
+<div class="rph" style="margin:0 0 8px"><div class="lg" id="spacelg" style="margin:0"></div><button class="rb" id="spinrb" type="button" aria-label="Replay embedding rotation">↻ Replay</button></div>
+<svg id="space" viewBox="0 0 900 460" role="img" aria-label="3D projection of phrase embeddings: three clusters of filler examples, with three caller utterances landing near their matching cluster"></svg>
+<p class="note">nomic-embed-text vectors, projected from 768 dimensions to 3 (PCA), so distances are approximate · drag to rotate</p>
+<div class="tt" style="margin-top:18px">Top 3 fillers by cosine score</div>
+<div class="lg"><span><i style="background:#5FD6A4"></i>best filler</span><span><i style="background:#243564"></i>runners-up</span><span><i style="border-left:2px dotted #F08A2C;width:0;border-radius:0"></i>0.59 threshold</span></div>
+<div id="embbars" class="pgrid"></div>
+<p class="note">Narrow band: unrelated phrases still score around 0.5.</p>
+</div>
+
+<div class="panel" style="margin-top:14px">
+<div class="ctlh" style="color:var(--amber)">3 · How the matcher picks what to say</div>
+<p class="try" style="margin:0 0 12px">Same gates for both modes. Fail any gate → neutral fallback ("Sure thing!").</p>
+<div class="steps">
+<div class="part" style="--c:#1FB5E0"><b><em>1</em>Rank</b><span>score fillers · skip recently used openers</span></div>
+<div class="part" style="--c:#9AA6C0"><b><em>2</em>Catch-all</b><span>nothing fits → fallback</span></div>
+<div class="part" style="--c:#F08A2C"><b><em>3</em>Threshold</b><span>Jev ≥ 0.5 · embedding ≥ 0.59</span></div>
+<div class="part" style="--c:#F22F46"><b><em>4</em>Margin</b><span>beat runner-up · Jev off · embedding ≥ 0.01</span></div>
+<div class="part" style="--c:#5FD6A4"><b><em>5</em>Budget</b><span>≤ 400 ms, else fallback · one per turn</span></div>
+</div>
+<table class="otab"><thead><tr><th>Caller says</th><th>Jev</th><th>Embedding</th></tr></thead><tbody id="otab"></tbody></table>
+<p class="note" style="margin-top:8px">*cold connection. The server pre-warms it (<code>warmJev</code>); warm calls took 255–271 ms.</p>
 </div>
 
 <h2>How it works</h2>
@@ -245,17 +339,21 @@ document.getElementById('charts').innerHTML=TURNS.map(chart).join('');
 function chart(t){
  const W=1100,L=110,R=24,T=26,RH=34,x=ms=>L+(W-L-R)*ms/MAX,
   rows=["Caller","Matcher","Acknowledge","LLM"],H=T+rows.length*RH+22;
- let s=`<svg viewBox="0 0 ${W} ${H}" role="img" aria-label="${t.name}">`;
+ let s=`<svg viewBox="0 0 ${W} ${H}" role="img" aria-label="${t.name}"${pa(L,W-L-R,MAX,T-6,H-18)}>`;
  for(let ms=0;ms<=MAX;ms+=500){const X=x(ms);s+=`<line x1="${X}" x2="${X}" y1="${T-6}" y2="${H-18}" stroke="#1B2850"/><text class="m" x="${X}" y="14" text-anchor="middle">${(ms/1000).toFixed(1)}s</text>`}
  rows.forEach((r,i)=>s+=`<text class="m" x="4" y="${T+i*RH+21}">${r}</text>`);
+ s+='<g class="pl">';
  const bar=(i,a,b,c,label)=>{const w=Math.max(4,x(b)-x(a));return `<rect x="${x(a)}" y="${T+i*RH+6}" width="${w}" height="20" rx="4" fill="${c}"/>`+(label?`<text x="${x(b)+8}" y="${T+i*RH+21}">${label}</text>`:'')};
  s+=bar(0,0,40,'#9AA6C0','');
  s+=bar(1,0,t.match,'#1FB5E0',t.match+' ms'+(t.match>t.ack&&t.mode==='jev'?' · too late':''));
  s+=bar(2,t.ack,t.ack+120,'#5FD6A4',t.ackKind+' · '+t.ack+' ms');
  s+=bar(3,0,t.llm,'#243564','')+bar(3,t.llm,t.llm+110,'#F22F46',t.llm+' ms');
- s+=`<line x1="${x(350)}" x2="${x(350)}" y1="${T-6}" y2="${H-18}" stroke="#F08A2C" stroke-dasharray="4 3"/><text x="${x(350)+5}" y="${H-5}" style="fill:#F08A2C">350 ms budget on this call</text></svg>`;
- return `<div class="tt">${t.name}</div>`+s+(t.note?`<p class="note">${t.note}</p>`:'');
+ s+=`</g><line x1="${x(350)}" x2="${x(350)}" y1="${T-6}" y2="${H-18}" stroke="#F08A2C" stroke-dasharray="4 3"/><text x="${x(350)+5}" y="${H-5}" style="fill:#F08A2C">350 ms budget on this call</text></svg>`;
+ return rp(t.name,s+(t.note?`<p class="note">${t.note}</p>`:''));
 }
+// Replayable timeline: svg data-* describes the plot area so the sweep knows ms -> x.
+function pa(l,pw,max,y1,y2){return ` data-l="${l}" data-pw="${pw}" data-max="${max}" data-y1="${y1}" data-y2="${y2}"`}
+function rp(name,body){return `<div class="rp"><div class="rph"><div class="tt">${name}</div><button class="rb" type="button" aria-label="Replay ${name.replace(/"/g,'&quot;')}">↻ Replay</button></div>${body}</div>`}
 
 // Handler: same turn with and without the hold sound. Times (ms after the prompt) are from call
 // CA8b6d48 (2026-11-23 13:49, jev, 4 s test delay): ack sent 382, hold sent 382, first LLM token 5452.
@@ -270,16 +368,17 @@ document.getElementById('hcharts').innerHTML=HTURNS.map(hchart).join('');
 function hchart(t){
  const W=1100,L=110,R=24,T=26,RH=34,x=ms=>L+(W-L-R)*ms/HMAX,
   rows=["Caller","Acknowledge","Typing","LLM"],H2=T+rows.length*RH+8;
- let s=`<svg viewBox="0 0 ${W} ${H2}" role="img" aria-label="${t.name}">`;
+ let s=`<svg viewBox="0 0 ${W} ${H2}" role="img" aria-label="${t.name}"${pa(L,W-L-R,HMAX,T-6,H2-4)}>`;
  for(let ms=0;ms<=HMAX;ms+=500){const X=x(ms);s+=`<line x1="${X}" x2="${X}" y1="${T-6}" y2="${H2-4}" stroke="#1B2850"/><text class="m" x="${X}" y="14" text-anchor="middle">${(ms/1000).toFixed(1)}s</text>`}
  rows.forEach((r,i)=>s+=`<text class="m" x="4" y="${T+i*RH+21}">${r}</text>`);
+ s+='<g class="pl">';
  const bar=(i,a,b,c,label,dash)=>`<rect x="${x(a)}" y="${T+i*RH+6}" width="${Math.max(4,x(b)-x(a))}" height="20" rx="4" fill="${c}"${dash?' stroke="#F08A2C" stroke-dasharray="4 3"':''}/>`+(label?`<text x="${x(a)+8}" y="${T+i*RH+21}" style="fill:${dash?'#9AA6C0':'#030B24'};font-weight:700">${label}</text>`:'');
  s+=bar(0,0,40,'#9AA6C0','');
  s+=bar(1,H.ack,H.ackEnd,'#5FD6A4','"Okay."');
  if(t.hold){s+=bar(2,H.ackEnd,H.ackEnd+1000,'#0F1936','pause',true)+bar(2,H.ackEnd+1000,H.llm,'#F08A2C','typing · stops at 5.45 s')}
  else s+=bar(2,H.ackEnd,H.llm,'#0F1936','silence · 4.5 s',true);
  s+=bar(3,0,H.llm,'#243564','')+`<rect x="${x(H.llm)}" y="${T+3*RH+6}" width="${x(H.llm+110)-x(H.llm)}" height="20" rx="4" fill="#F22F46"/><text x="${x(H.llm)-8}" y="${T+3*RH+21}" text-anchor="end">${H.llm} ms (4 s test delay)</text>`;
- return `<div class="tt">${t.name}</div>`+s+`</svg><p class="note">${t.note}</p>`;
+ return rp(t.name,s+`</g></svg><p class="note">${t.note}</p>`);
 }
 
 // Two real calls, same three questions. ms after the first question. Times from the server log.
@@ -288,7 +387,7 @@ function hchart(t){
 // tag: [row, at, text] free text after a bar.
 const CCOL={caller:'#9AA6C0',cls:'#1FB5E0',ack:'#5FD6A4',typing:'#F08A2C',think:'#243564',llm:'#F22F46'};
 const CCALLS=[
- {name:'Without merge · call CAe55f4f, before the fix: each piece sent on its own',
+ {name:'Without merge · each piece sent on its own',
   rows:["Caller","Classify","Acknowledge","Hold sound","LLM 1","LLM 2","LLM 3"],
   segs:[[0,0,50,'caller','do you do SMS?'],[0,3000,3400,'caller','talks over hold'],[0,5200,6000,'caller','voice?'],[0,6400,7000,'caller','and what kind of voice?'],
         [1,0,424,'cls','question'],[1,6000,6195,'cls'],[1,7000,7214,'cls','question'],
@@ -298,8 +397,8 @@ const CCALLS=[
         [5,6200,11000,'think','do you do voice · sent 6.2 s'],
         [6,7200,12100,'think','what kind of voice · sent 7.2 s'],[6,12100,12550,'llm','answer']],
   tags:[[4,6000,'✕ lost · killed by the interrupt, never answered'],[5,11000,'✕ superseded']],
-  note:'Three separate LLM calls. The interrupt from talking over our own hold sound killed the SMS answer, and the second was superseded. The caller heard one answer, about voice only. SMS was never answered. The caller talked over the hold sound at ~3.0 s, then asked "Actually, do you do voice?" at ~6.0 s and "And what kind of voice?" at ~7.0 s. The acknowledgements were "Good question, let me answer that for you." and "Let me clarify which one I mean." (mismatched). The SMS request starts after the delay at ~4.4 s. The voice request would start at ~10.2 s and was abandoned at ~11 s. The last request\'s first token came at ~12.1 s, 5135 ms after that piece.'},
- {name:'With merge · call CAdb229c, just completed: one question, answered once',
+  note:'Three LLM calls. Only the last was heard, so the SMS question was never answered.'},
+ {name:'With merge · one question, answered once',
   rows:["Caller","Classify","Acknowledge","Hold sound","LLM 1","LLM 2"],
   segs:[[0,0,50,'caller','do you do SMS?'],[0,2000,2400,'caller','talks over'],[0,3600,5000,'caller','Actually, do you do voice? · And what kind of voice?','r'],
         [1,0,352,'cls','question'],[1,5000,5310,'cls','changed mind · 3 pieces merged'],
@@ -308,15 +407,16 @@ const CCALLS=[
         [4,350,5000,'think','SMS question · sent 0.35 s'],
         [5,5300,10200,'think','merged question · sent 5.3 s'],[5,10200,10750,'llm','one answer to all three']],
   tags:[[4,5000,'retracted, merged']],
-  note:'Talking over the hold sound no longer kills the pending answer. The unanswered SMS question was taken back and merged with the two new pieces into one question. The caller heard one answer covering SMS, voice and the kinds of voice. The interrupt at ~2.0 s was not forwarded ("caller still talking"). Both new pieces arrived at ~5.0 s, and the acknowledgement for "Actually, do you do voice?" was dropped because a newer piece had arrived. The SMS request was in flight after the delay (~4.35 s) when it was retracted. The merged question was sent at ~5.3 s, and its first token came at ~10.2 s, 5221 ms after the last piece.'}
+  note:'The pending SMS question is taken back and merged with the new pieces. One LLM call, one answer covering all three.'}
 ];
 const CMAX=13000;
 document.getElementById('ccharts').innerHTML=CCALLS.map(cchart).join('');
 function cchart(t){
  const rows=t.rows,W=1100,L=110,R=24,T=26,RH=32,x=ms=>L+(W-L-R)*ms/CMAX,CH=T+rows.length*RH+6;
- let s=`<svg viewBox="0 0 ${W} ${CH}" role="img" aria-label="${t.name}">`;
+ let s=`<svg viewBox="0 0 ${W} ${CH}" role="img" aria-label="${t.name}"${pa(L,W-L-R,CMAX,T-6,CH-2)}>`;
  for(let ms=0;ms<=CMAX;ms+=1000){const X=x(ms);s+=`<line x1="${X}" x2="${X}" y1="${T-6}" y2="${CH-2}" stroke="#1B2850"/><text class="m" x="${X}" y="14" text-anchor="middle">${ms/1000}s</text>`}
  rows.forEach((r,i)=>s+=`<text class="m" x="4" y="${T+i*RH+19}">${r}</text>`);
+ s+='<g class="pl">';
  for(const [r,a,b,k,label,pos] of t.segs){
   const y=T+r*RH+5,w=Math.max(4,x(b)-x(a)),think=k==='think';
   s+=`<rect x="${x(a)}" y="${y}" width="${w}" height="19" rx="4" fill="${CCOL[k]}"/>`;
@@ -325,8 +425,32 @@ function cchart(t){
    :`<text x="${pos==='l'?x(a)-6:x(b)+6}" y="${y+14}"${pos==='l'?' text-anchor="end"':''} style="fill:${think?'#9AA6C0':CCOL[k]};font-weight:700">${label}</text>`;
  }
  for(const [r,a,label] of t.tags||[])s+=`<text x="${x(a)+6}" y="${T+r*RH+19}" style="font-weight:700">${label}</text>`;
- return `<div class="tt">${t.name}</div>${s}</svg><p class="note">${t.note}</p>`;
+ return rp(t.name,`${s}</g></svg><p class="note">${t.note}</p>`);
 }
+
+// Replay: each timeline sweeps left to right behind a "now" line, so you can see what kicks in when.
+// Every sweep takes SWEEP ms whatever the chart's time span, so all move at the same on-screen speed;
+// the "now" label shows real call time. Plays once when first scrolled into view, and again on ↻ Replay.
+// Reduced motion: drawn complete, no auto-play; Replay still works.
+(function(){
+ const RM=matchMedia('(prefers-reduced-motion: reduce)').matches,SWEEP=8000;
+ document.querySelectorAll('svg[data-max]').forEach((svg,i)=>{
+  const d=svg.dataset,l=+d.l,pw=+d.pw,max=+d.max,y1=+d.y1,y2=+d.y2;
+  svg.insertAdjacentHTML('afterbegin',`<defs><clipPath id="rc${i}"><rect x="0" y="0" height="10000" width="${RM?100000:0}"/></clipPath></defs>`);
+  svg.querySelector('.pl').setAttribute('clip-path',`url(#rc${i})`);
+  svg.insertAdjacentHTML('beforeend',`<g class="now" style="display:none"><line y1="${y1}" y2="${y2}" stroke="#1FB5E0" stroke-width="2"/><rect y="1" width="48" height="17" rx="4" fill="#050F2E"/><text y="14" text-anchor="middle" style="fill:#1FB5E0;font-weight:700"></text></g>`);
+  const clip=svg.querySelector(`#rc${i} rect`),now=svg.querySelector('.now'),line=now.querySelector('line'),box=now.querySelector('rect'),txt=now.querySelector('text');
+  let raf;
+  function run(){
+   cancelAnimationFrame(raf);now.style.display='';const t0=performance.now();
+   (function f(t){const ms=max*Math.min(1,Math.max(0,(t-t0)/SWEEP)),X=l+pw*ms/max;
+    clip.setAttribute('width',X);line.setAttribute('x1',X);line.setAttribute('x2',X);box.setAttribute('x',X-24);txt.setAttribute('x',X);txt.textContent=(ms/1000).toFixed(1)+'s';
+    if(ms<max)raf=requestAnimationFrame(f);else{clip.setAttribute('width',100000);now.style.display='none'}})(t0);
+  }
+  svg.closest('.rp').querySelector('.rb').addEventListener('click',run);
+  if(!RM){const io=new IntersectionObserver(es=>{if(es.some(e=>e.isIntersecting)){io.disconnect();run()}},{threshold:.6});io.observe(svg)}
+ });
+})();
 
 // Handler and delay controls.
 const hsw=document.getElementById('hsw'),dms=document.getElementById('dms'),cmsg=document.getElementById('ctlmsg'),hmsg=document.getElementById('hmsg'),dsw=document.getElementById('dsw');
@@ -376,4 +500,92 @@ swEl.addEventListener('click',e=>{const btn=e.target.closest('.opt');const m=btn
  [...swEl.children].forEach(b=>b.disabled=true);msg.className='';msg.textContent='Switching…';
  fetch(API,{method:'PUT',headers:{'Content-Type':'application/json'},body:JSON.stringify({mode:m})})
   .then(r=>r.ok?r.json():Promise.reject('http '+r.status)).then(j=>paint(j.mode)).catch(fail)});
+</script>
+<script>
+// "Under the hood": one probe run, 23 Nov 2026, live fillers.json, default thresholds.
+const esc=s=>s.replace(/&/g,'&amp;').replace(/</g,'&lt;');
+const JEV=[
+ {p:'Why is my bill so high this month?',ms:454,top:[['charge-shock',.95],['figure-out',.03],['accountability',.02]]},
+ {p:"I've been waiting forever",ms:255,top:[['long-wait-complaint',1],['angry-general',0],['repeat-problem',0]]},
+ {p:'Can I speak to a real person?',ms:255,top:[['want-human',1],['angry-general',0],['repeat-problem',0]]},
+ {p:'Hang on, my dog is barking',ms:271,top:[['hold-on',.75],['noise',.11],['busy-now',.05]]}];
+const EMB=[
+ {p:'Why is my bill so high this month?',top:[['charge-shock',.596],['financial-hardship',.561],['anger-about-charge',.516]]},
+ {p:"I've been waiting forever",top:[['long-wait-complaint',.699],['background-speech',.498],['review-with-you',.484]]},
+ {p:'Can I speak to a real person?',top:[['want-human',.814],['not-a-bot',.659],['specific-person',.655]]},
+ {p:'Hang on, my dog is barking',top:[['wait-no',.577],['still-there',.556],['going-to-grab',.543]]}];
+function probRows(d,thr,win,fmt,conf){
+ return d.map(r=>{const m=r.top[0][1]-r.top[1][1];
+  return `<div class="pr"><div class="ph">"${esc(r.p)}"<span class="conf">${conf?`confidence <b>${m.toFixed(2)}</b>${r.ms?` · ${r.ms} ms`:''}`:`margin <b>${m.toFixed(3)}</b>`}</span></div>`+
+  r.top.map(([id,v],i)=>`<div class="pb${i?'':' win'}"><span title="${id}">${id}</span><span class="t"><i data-w="${Math.max(.5,v*100)}" style="width:${Math.max(.5,v*100)}%;background:${i?'#243564':win}"></i><u style="left:${thr*100}%"></u></span><span data-v="${v}">${fmt(v)}</span></div>`).join('')+'</div>'}).join('')}
+const jevEl=document.getElementById('jevbars');
+jevEl.innerHTML=probRows(JEV,.5,'#1FB5E0',v=>v.toFixed(2),true);
+// Grow-in (~1 s): the first time the Jev bars scroll into view, and on ↻ Replay.
+// Reduced motion: drawn complete, no auto-play; Replay still works.
+{
+ const bars=[...jevEl.querySelectorAll('i[data-w]')],nums=[...jevEl.querySelectorAll('[data-v]')];let raf;
+ const reset=()=>{bars.forEach(b=>{b.style.transition='none';b.style.width='0'});nums.forEach(n=>n.textContent='0.00');void jevEl.offsetWidth;bars.forEach(b=>b.style.transition='')};
+ function grow(){cancelAnimationFrame(raf);reset();
+  requestAnimationFrame(()=>bars.forEach(b=>b.style.width=b.dataset.w+'%'));
+  const t0=performance.now();(function step(t){const k=Math.min(1,Math.max(0,(t-t0)/1000)),e=1-Math.pow(1-k,3);
+   nums.forEach(n=>n.textContent=(n.dataset.v*e).toFixed(2));if(k<1)raf=requestAnimationFrame(step)})(t0)}
+ document.getElementById('jevrb').addEventListener('click',grow);
+ if(!matchMedia('(prefers-reduced-motion: reduce)').matches){reset();
+  const io=new IntersectionObserver(es=>{if(es.some(e=>e.isIntersecting)){io.disconnect();grow()}},{threshold:.4});io.observe(jevEl)}
+}
+document.getElementById('embbars').innerHTML=probRows(EMB,.59,'#5FD6A4',v=>v.toFixed(3),false);
+
+// Outcome table: what each mode would have spoken.
+const OK='#5FD6A4',FB='#9AA6C0',SLOW='#F08A2C';
+const OUT=[
+ ['Why is my bill so high this month?',
+  [SLOW,'over budget','"Sure thing!"','charge-shock p 0.95 · 454 ms* &gt; 400 ms'],
+  [OK,'match','"Oh no, that\'s a shock. Let me look at it."','charge-shock 0.596 · margin 0.035 · just clears']],
+ ["I've been waiting forever",
+  [OK,'match','"I apologize for the wait, I\'m on it now."','long-wait-complaint p 1.00 · conf 1.00'],
+  [OK,'match','"I apologize for the wait, I\'m on it now."','long-wait-complaint 0.699 · margin 0.201']],
+ ['Can I speak to a real person?',
+  [OK,'match','"Understood, let me see about getting someone for you."','want-human p 1.00 · conf 1.00'],
+  [OK,'match','"Understood, let me see about getting someone for you."','want-human 0.814 · margin 0.155']],
+ ['Hang on, my dog is barking',
+  [OK,'match','"Sure, take your time."','hold-on p 0.75 · conf 0.64'],
+  [FB,'below threshold','"Sure thing!"','wait-no 0.577 &lt; 0.59 · avoided a wrong line']]];
+const cell=([c,v,say,why],h)=>`<td data-h="${h}"><span class="v" style="background:${c}">${v}</span><span class="say">${say}</span><span class="why">${why}</span></td>`;
+document.getElementById('otab').innerHTML=OUT.map(([p,j,e])=>`<tr><td>"${esc(p)}"</td>${cell(j,'Jev')}${cell(e,'Embedding')}</tr>`).join('');
+
+// 3D embedding space: real nomic-embed-text vectors, PCA to 3 components.
+const G={'charge-shock':['#F08A2C','charge-shock'],'long-wait-complaint':['#F22F46','long-wait-complaint'],'want-human':['#5FD6A4','want-human'],query:['#1FB5E0','caller utterance']};
+const PTS=[
+ ['long-wait-complaint',.097,-.478,.107,"I've been waiting forever"],['long-wait-complaint',.21,-.106,.089,'why does everything take so long'],
+ ['long-wait-complaint',.029,-.176,.189,'I was on hold for an hour'],['long-wait-complaint',-.072,-.051,.247,'nobody ever gets back to me'],
+ ['want-human',-.47,.121,-.142,'can I talk to a real person'],['want-human',-.252,-.026,.08,'I want a human please'],
+ ['want-human',-.2,.021,.165,'get me a live agent'],['want-human',-.409,.047,-.068,'let me speak to someone'],
+ ['charge-shock',.177,.242,.091,'I just got a bill for nine hundred dollars'],['charge-shock',.079,.206,.241,"there's a charge on my account I've never seen"],
+ ['charge-shock',.319,.311,-.027,'why is my balance so high'],['charge-shock',.106,.225,.196,'they took double out of my account'],
+ ['query',.533,.279,-.447,'Why is my bill so high this month?','charge-shock',.596],
+ ['query',.269,-.648,-.243,"I've been waiting forever",'long-wait-complaint',.699],
+ ['query',-.414,.031,-.478,'Can I speak to a real person?','want-human',.814]];
+document.getElementById('spacelg').innerHTML=Object.values(G).map(([c,n])=>`<span><i style="background:${c}${n==='caller utterance'?';border-radius:50%':''}"></i>${n}</span>`).join('');
+const cen={};for(const g of Object.keys(G)){if(g==='query')continue;const a=PTS.filter(p=>p[0]===g);cen[g]=[1,2,3].map(k=>a.reduce((s,p)=>s+p[k],0)/a.length)}
+const sp=document.getElementById('space');let yaw=.6,pitch=-.35,drag=null,spinRaf;
+function proj([x,y,z]){const cy=Math.cos(yaw),sy=Math.sin(yaw),cp=Math.cos(pitch),sp_=Math.sin(pitch);
+ const X=x*cy+z*sy,Z1=-x*sy+z*cy,Y=y*cp-Z1*sp_,Z=y*sp_+Z1*cp,f=2.4/(2.4+Z);return [370+X*250*f,230-Y*250*f,Z,f]}
+function draw(){let s='';
+ const B=.7,cube=[[-B,-B,-B],[B,-B,-B],[B,B,-B],[-B,B,-B],[-B,-B,B],[B,-B,B],[B,B,B],[-B,B,B]].map(proj);
+ [[0,1],[1,2],[2,3],[3,0],[4,5],[5,6],[6,7],[7,4],[0,4],[1,5],[2,6],[3,7]].forEach(([a,b])=>s+=`<line x1="${cube[a][0]}" y1="${cube[a][1]}" x2="${cube[b][0]}" y2="${cube[b][1]}" stroke="#1B2850"/>`);
+ PTS.filter(p=>p[0]==='query').forEach(p=>{const a=proj(p.slice(1,4)),b=proj(cen[p[5]]);
+  s+=`<line x1="${a[0]}" y1="${a[1]}" x2="${b[0]}" y2="${b[1]}" stroke="${G[p[5]][0]}" stroke-width="1.5" stroke-dasharray="4 4"/><text x="${(a[0]+b[0])/2+6}" y="${(a[1]+b[1])/2}" style="fill:${G[p[5]][0]};font-weight:700;font-size:11px">${p[6].toFixed(3)}</text>`});
+ PTS.map(p=>[p,proj(p.slice(1,4))]).sort((a,b)=>b[1][2]-a[1][2]).forEach(([p,[x,y,,f]])=>{const q=p[0]==='query',r=(q?10:7)*f;
+  s+=`<g><title>${esc(p[4])}</title><circle cx="${x}" cy="${y}" r="${r}" fill="${G[p[0]][0]}" ${q?'stroke="#F2F5FB" stroke-width="2"':'fill-opacity=".85"'}/></g>`;
+  if(q)s+=`<text x="${x-6}" y="${y-16}" style="font-weight:600;font-size:14px">"${esc(p[4])}"</text>`});
+ sp.innerHTML=s}
+sp.addEventListener('pointerdown',e=>{drag=[e.clientX,e.clientY];cancelAnimationFrame(spinRaf);sp.setPointerCapture(e.pointerId)});
+sp.addEventListener('pointermove',e=>{if(!drag)return;yaw+=(e.clientX-drag[0])*.01;pitch=Math.max(-1.4,Math.min(1.4,pitch+(e.clientY-drag[1])*.01));drag=[e.clientX,e.clientY];draw()});
+sp.addEventListener('pointerup',()=>drag=null);
+// One eased full turn (~16 s), then stop. Plays when first in view, and on ↻ Replay. Dragging stops it.
+function spin(){cancelAnimationFrame(spinRaf);const y0=yaw,t0=performance.now();
+ (function f(t){const k=Math.min(1,(t-t0)/16000),e=k<.5?2*k*k:1-Math.pow(-2*k+2,2)/2;yaw=y0+e*2*Math.PI;draw();if(k<1)spinRaf=requestAnimationFrame(f)})(t0)}
+document.getElementById('spinrb').addEventListener('click',spin);
+draw();
+if(!matchMedia('(prefers-reduced-motion: reduce)').matches){const io=new IntersectionObserver(es=>{if(es.some(e=>e.isIntersecting)){io.disconnect();spin()}},{threshold:.5});io.observe(sp)}
 </script></body></html>
