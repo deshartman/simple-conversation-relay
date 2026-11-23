@@ -23,7 +23,8 @@
 
 import { logOut, logError } from '../utils/logger.js';
 import { matchFiller, type MissReason } from '../latency/matchFiller.js';
-import { getMode, getLlmDelayMs, isHandlerEnabled } from '../latency/mode.js';
+import { classifyCoherence } from '../latency/coherence.js';
+import { getMode, getLlmDelayMs, getQuestionWaitMs, isHandlerEnabled } from '../latency/mode.js';
 import { nextFallback } from '../latency/fallbackFillers.js';
 import { opener } from '../latency/fillers.js';
 import { SilenceHandler } from './SilenceHandler.js';
@@ -132,6 +133,12 @@ export class ConversationRelaySession {
     private holdTurn = 0;
     /** Opening words of the last few fillers spoken, so "Okay" doesn't keep coming back. */
     private recentOpeners: string[] = [];
+    /** Coherence: prompt fragments held back until the caller looks done (or question_wait expires). */
+    private promptBuffer: string[] = [];
+    private waitTimer: NodeJS.Timeout | undefined;
+    private bufferLang: string | undefined;
+    /** Bumped per buffered prompt so a slow classification of an older fragment is ignored. */
+    private coherenceSeq = 0;
 
     constructor(opts: ConversationRelaySessionOptions) {
         this.responseService = opts.responseService;
@@ -246,15 +253,7 @@ export class ConversationRelaySession {
                         this.promptAt = performance.now();
                         void this.sendFiller(message.voicePrompt || '', turn);
                     }
-                    // Test-only: hold back the LLM so the hold sound gets a chance to play. 0 = off.
-                    if (getLlmDelayMs() > 0) {
-                        await new Promise((r) => setTimeout(r, getLlmDelayMs()));
-                    }
-                    await this.responseService.handleEvent({
-                        type: 'prompt',
-                        text: message.voicePrompt || '',
-                        lang: message.lang,
-                    });
+                    await this.routePrompt(message.voicePrompt || '', message.lang);
                     break;
                 case 'dtmf':
                     logOut('Session', `${this.logPrefix} DTMF: ${message.digit}`);
@@ -271,6 +270,8 @@ export class ConversationRelaySession {
                     // );
                     this.turnSeq++;
                     this.holdActive = false;
+                    // Caller spoke over the acknowledgement/hold: they are mid-sentence, so keep waiting.
+                    if (this.waitTimer) this.startWaitTimer();
                     await this.responseService.handleEvent({
                         type: 'interrupt',
                         heard: message.utteranceUntilInterrupt,
@@ -300,6 +301,10 @@ export class ConversationRelaySession {
 
     cleanup(): void {
         this.holdActive = false;
+        clearTimeout(this.waitTimer);
+        this.waitTimer = undefined;
+        this.promptBuffer = [];
+        this.coherenceSeq++;
         this.silenceHandler?.stop();
         this.responseService.cleanup();
         logOut('Session', `${this.logPrefix} Cleaned up`);
@@ -308,6 +313,66 @@ export class ConversationRelaySession {
     // =========================================================================
     // Outgoing — the single path back to Twilio
     // =========================================================================
+
+    /**
+     * Coherence (part of the Handler): decide when a caller prompt goes to the LLM. With the Handler
+     * off, question_wait 0 or mode none it goes at once. Otherwise it is buffered and classified: question/changed-mind flush now,
+     * statement/filler wait up to question_wait for more words, a classifier failure flushes now.
+     */
+    private async routePrompt(text: string, lang: string | undefined): Promise<void> {
+        const mode = getMode();
+        const wait = getQuestionWaitMs();
+        if (wait === 0 || mode === 'none' || !isHandlerEnabled()) {
+            this.promptBuffer.push(text);
+            this.bufferLang = lang;
+            await this.flushPrompt('off');
+            return;
+        }
+        clearTimeout(this.waitTimer);
+        this.waitTimer = undefined;
+        const context = [...this.promptBuffer];
+        this.promptBuffer.push(text);
+        this.bufferLang = lang;
+        const seq = ++this.coherenceSeq;
+        try {
+            const r = await classifyCoherence(mode, text, context);
+            if (seq !== this.coherenceSeq) return; // a newer fragment arrived; it decides
+            const send = r.cls === 'question' || r.cls === 'changed-mind';
+            logOut('Latency', `${this.logPrefix} coherence class=${r.cls} source=${r.source} ms=${Math.round(r.ms)} action=${send ? 'send' : 'wait'} buffer="${this.promptBuffer.join(' ')}"`);
+            if (send) await this.flushPrompt('class');
+            else this.startWaitTimer();
+        } catch (e) {
+            if (seq !== this.coherenceSeq) return;
+            logError('Latency', `${this.logPrefix} coherence classify (${mode}) failed: ${e instanceof Error ? e.message : String(e)}`);
+            await this.flushPrompt('error');
+        }
+    }
+
+    /** (Re)start the wait for more words; flushes when question_wait expires. */
+    private startWaitTimer(): void {
+        clearTimeout(this.waitTimer);
+        this.waitTimer = setTimeout(() => {
+            this.waitTimer = undefined;
+            this.flushPrompt('timeout').catch((e) =>
+                logError('Latency', `${this.logPrefix} coherence flush failed: ${e instanceof Error ? e.message : String(e)}`));
+        }, getQuestionWaitMs());
+    }
+
+    /** Send everything buffered to the LLM as one prompt. The test LLM delay counts from here. */
+    private async flushPrompt(reason: 'class' | 'timeout' | 'error' | 'off'): Promise<void> {
+        clearTimeout(this.waitTimer);
+        this.waitTimer = undefined;
+        const pieces = this.promptBuffer.length;
+        const text = this.promptBuffer.join(' ');
+        this.promptBuffer = [];
+        if (!pieces) return;
+        logOut('Latency', `${this.logPrefix} coherence flush reason=${reason} pieces=${pieces}`);
+        // Test-only: hold back the LLM so the hold sound gets a chance to play. 0 = off.
+        if (getLlmDelayMs() > 0) {
+            await new Promise((r) => setTimeout(r, getLlmDelayMs()));
+        }
+        await this.responseService.handleEvent({ type: 'prompt', text, lang: this.bufferLang });
+    }
 
     /**
      * Acknowledge every caller prompt (modes jev/embedding), in parallel with the LLM: the matched

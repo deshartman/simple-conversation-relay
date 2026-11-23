@@ -194,3 +194,62 @@ describe('/latency/delay and /latency/handler routes', () => {
         expect(await (await send('/handler', 'GET')).json()).toEqual({ enabled: true });
     });
 });
+
+describe('question wait setting and route', () => {
+    let server: Server;
+    let base: string;
+    const saved = process.env.LATENCY_QUESTION_WAIT_MS;
+    afterEach(() => {
+        if (saved === undefined) delete process.env.LATENCY_QUESTION_WAIT_MS;
+        else process.env.LATENCY_QUESTION_WAIT_MS = saved;
+    });
+
+    it('defaults to 0, reads env, ignores invalid env', async () => {
+        delete process.env.LATENCY_QUESTION_WAIT_MS;
+        expect((await freshMode()).getQuestionWaitMs()).toBe(0);
+        process.env.LATENCY_QUESTION_WAIT_MS = '1500';
+        expect((await freshMode()).getQuestionWaitMs()).toBe(1500);
+        for (const bad of ['abc', '-5', '10001', '1.5']) {
+            process.env.LATENCY_QUESTION_WAIT_MS = bad;
+            expect((await freshMode()).getQuestionWaitMs()).toBe(0);
+        }
+    });
+
+    describe('routes', () => {
+        beforeEach(async () => {
+            delete process.env.LATENCY_QUESTION_WAIT_MS;
+            vi.resetModules();
+            const { createLatencyModeRouter } = await import('../../../src/latency/modeRoute.js');
+            const app = express();
+            app.use(express.json());
+            app.use('/latency', createLatencyModeRouter());
+            await new Promise<void>((r) => { server = app.listen(0, () => r()); });
+            base = `http://127.0.0.1:${(server.address() as AddressInfo).port}/latency/question-wait`;
+        });
+        afterEach(() => new Promise<void>((r) => server.close(() => r())));
+
+        const send = (method: string, body?: unknown) =>
+            fetch(base, { method, headers: { 'content-type': 'application/json' }, body: body === undefined ? undefined : JSON.stringify(body) });
+
+        it('GET returns ms (default 0)', async () => {
+            expect(await (await send('GET')).json()).toEqual({ ms: 0 });
+        });
+        it.each(['PUT', 'POST'])('%s sets a valid ms and GET reflects it', async (method) => {
+            const res = await send(method, { ms: 2500 });
+            expect(res.status).toBe(200);
+            expect(await res.json()).toEqual({ ms: 2500, previous: 0 });
+            expect(await (await send('GET')).json()).toEqual({ ms: 2500 });
+            expect((await (await send(method, { ms: 10000 })).json()).ms).toBe(10000);
+            expect((await (await send(method, { ms: 0 })).json()).ms).toBe(0);
+        });
+        it('rejects an invalid ms with 400 and leaves state unchanged', async () => {
+            await send('PUT', { ms: 100 });
+            for (const body of [{ ms: -1 }, { ms: 10001 }, { ms: 1.5 }, { ms: '100' }, {}]) {
+                const res = await send('PUT', body);
+                expect(res.status).toBe(400);
+                expect((await res.json()).error).toMatch(/0 to 10000/);
+            }
+            expect(await (await send('GET')).json()).toEqual({ ms: 100 });
+        });
+    });
+});

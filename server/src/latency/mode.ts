@@ -70,3 +70,27 @@ export function isHandlerEnabled(): boolean {
 export function setHandlerEnabled(b: boolean): void {
     handlerEnabled = b;
 }
+
+export const MAX_QUESTION_WAIT_MS = 10000;
+
+export function isValidQuestionWaitMs(x: unknown): x is number {
+    return typeof x === 'number' && Number.isInteger(x) && x >= 0 && x <= MAX_QUESTION_WAIT_MS;
+}
+
+/**
+ * Coherence: how long to wait for more words when a prompt looks unfinished (statement or filler).
+ * Default LATENCY_QUESTION_WAIT_MS (invalid/unset -> 0). 0 = off: every prompt goes straight to the LLM.
+ */
+let questionWaitMs: number | undefined;
+
+export function getQuestionWaitMs(): number {
+    if (questionWaitMs === undefined) {
+        const fromEnv = Number(process.env.LATENCY_QUESTION_WAIT_MS);
+        questionWaitMs = isValidQuestionWaitMs(fromEnv) ? fromEnv : 0;
+    }
+    return questionWaitMs;
+}
+
+export function setQuestionWaitMs(ms: number): void {
+    questionWaitMs = ms;
+}

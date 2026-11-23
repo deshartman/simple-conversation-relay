@@ -4,8 +4,10 @@ import { fileURLToPath } from 'node:url';
 import {
     LATENCY_MODES, getMode, setMode, isLatencyMode,
     MAX_LLM_DELAY_MS, isValidDelayMs, getLlmDelayMs, setLlmDelayMs, isHandlerEnabled, setHandlerEnabled,
+    MAX_QUESTION_WAIT_MS, isValidQuestionWaitMs, getQuestionWaitMs, setQuestionWaitMs,
 } from './mode.js';
 import { warmFillerBank } from './matchFiller.js';
+import { warmCoherenceBank } from './coherence.js';
 import { logOut } from '../utils/logger.js';
 
 /**
@@ -16,6 +18,9 @@ import { logOut } from '../utils/logger.js';
  * PUT|POST /latency/delay {ms}  -> { ms, previous }  (400 unless an integer 0..20000; test-only LLM delay)
  * GET /latency/handler         -> { enabled }
  * PUT|POST /latency/handler {enabled} -> { enabled, previous }  (400 unless boolean; hold sound on/off)
+ *
+ * GET /latency/question-wait -> { ms }
+ * PUT|POST /latency/question-wait {ms} -> { ms, previous }  (400 unless an integer 0..10000; coherence wait, 0 = off)
  *
  * GET /latency/               -> public/latency.html (explainer plus mode switch; same origin, so no CORS)
  *
@@ -35,7 +40,6 @@ export function createLatencyModeRouter(): Router {
             res.status(404).send('latency.html not found');
         }
     });
-
     router.get('/mode', (_req, res) => {
         res.json({ mode: getMode(), available: [...LATENCY_MODES] });
     });
@@ -52,7 +56,7 @@ export function createLatencyModeRouter(): Router {
         const previous = getMode();
         setMode(mode);
         logOut('Latency', `Mode changed: ${previous} -> ${mode}`);
-        if (mode === 'embedding') warmFillerBank();
+        if (mode === 'embedding') { warmFillerBank(); warmCoherenceBank(); }
         res.json({ mode, previous });
     };
     router.put('/mode', set);
@@ -93,6 +97,24 @@ export function createLatencyModeRouter(): Router {
     };
     router.put('/handler', setHandler);
     router.post('/handler', setHandler);
+
+    router.get('/question-wait', (_req, res) => {
+        res.json({ ms: getQuestionWaitMs() });
+    });
+
+    const setQuestionWait: import('express').RequestHandler = (req, res) => {
+        const ms = req.body?.ms;
+        if (!isValidQuestionWaitMs(ms)) {
+            res.status(400).json({ error: `Invalid ms. Expected an integer from 0 to ${MAX_QUESTION_WAIT_MS}` });
+            return;
+        }
+        const previous = getQuestionWaitMs();
+        setQuestionWaitMs(ms);
+        logOut('Latency', `Question wait changed: ${previous}ms -> ${ms}ms`);
+        res.json({ ms, previous });
+    };
+    router.put('/question-wait', setQuestionWait);
+    router.post('/question-wait', setQuestionWait);
 
     return router;
 }

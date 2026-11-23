@@ -47,7 +47,7 @@ text{fill:var(--fg);font-family:Inter,sans-serif;font-size:12px}.m{fill:var(--mu
 .lg{display:flex;gap:18px;flex-wrap:wrap;color:var(--mute);font-size:12px;margin:0 2px 8px}
 .lg i{display:inline-block;width:12px;height:12px;border-radius:3px;margin-right:6px;vertical-align:-2px}
 @media(max-width:700px){.stats{grid-template-columns:1fr}.brow{grid-template-columns:1fr}}
-.ctl{display:grid;grid-template-columns:1fr 1fr;gap:12px;margin-bottom:6px}
+.ctl{display:grid;grid-template-columns:repeat(3,1fr);gap:12px;margin-bottom:6px}
 @media(max-width:700px){.ctl{grid-template-columns:1fr}}
 .ctlh{font-size:12px;font-weight:700;letter-spacing:.08em;text-transform:uppercase;color:var(--mute);margin-bottom:6px}
 .seg{display:flex;flex-wrap:wrap;gap:8px;align-items:center}
@@ -56,7 +56,7 @@ text{fill:var(--fg);font-family:Inter,sans-serif;font-size:12px}.m{fill:var(--mu
 .sb.on{border-color:var(--c,var(--cyan));box-shadow:0 0 0 1px var(--c,var(--cyan));background:color-mix(in srgb,var(--c,var(--cyan)) 22%,var(--node));cursor:default}
 .seg input{width:110px;font:inherit;font-size:14px;color:var(--fg);background:var(--node);border:1px solid var(--line2);border-radius:10px;padding:8px 10px}
 .unit{color:var(--mute);font-size:13px;margin-left:-4px}
-#ctlmsg,#hmsg{color:var(--mute);font-size:13px}#ctlmsg.err,#hmsg.err{color:var(--amber)}
+#ctlmsg,#hmsg,#qmsg{color:var(--mute);font-size:13px}#ctlmsg.err,#hmsg.err,#qmsg.err{color:var(--amber)}
 .parts{display:grid;grid-template-columns:repeat(3,1fr);gap:12px;margin-top:14px}
 .part{background:var(--node);border:1px solid var(--line);border-left:3px solid var(--c);border-radius:10px;padding:12px 14px}
 .part b{display:block;font-size:14px}.part span{display:block;color:var(--mute);font-size:12.5px;margin-top:4px}
@@ -123,32 +123,36 @@ text{fill:var(--fg);font-family:Inter,sans-serif;font-size:12px}.m{fill:var(--mu
 <div class="brow"><b>Embedding</b><div><div class="track"><div class="fill" style="width:60.7%;background:var(--green)">61% useful</div></div><div class="cap">11.4% wrong · median 113 ms · the rest get a neutral "Okay."</div></div></div>
 </div></div>
 
-<h2>Handler · never leave the caller in dead air</h2>
-<p class="sub" style="max-width:760px">Without the Handler, the caller's question goes straight to the LLM, and the caller hears nothing until it answers. With the Handler on, the Handler takes the question first: it acknowledges at once, keeps the line alive with a typing sound, then hands the question to the LLM and steps aside when the answer starts.</p>
+<h2>Handler · never leave the caller in dead air, never answer half a question</h2>
+<p class="sub" style="max-width:760px">With the Handler on, the Handler takes the caller's question first, then hands the LLM one complete question. For every piece the caller says, it acknowledges at once, plays a hold sound while the caller waits, and decides whether the caller has finished, waiting a little for more words if not. The LLM answers once, and the Handler steps aside when the answer starts. No dead air, and no answering half a question or talking over the caller.</p>
 <div class="stats" style="margin-top:18px">
 <div class="stat r"><b>4.5 s</b><span>of silence after "Okay." without the Handler</span></div>
 <div class="stat g"><b>382 ms</b><span>until the caller hears "Okay."</span></div>
-<div class="stat c"><b>Typing</b><span>fills that gap with the Handler on, and stops when the answer starts</span></div>
+<div class="stat c"><b>1 answer</b><span>to a whole question, instead of an answer to half a question</span></div>
 </div>
-<p class="note" style="margin-top:8px">Measured on one call (Jev, 2026-11-23) with an artificial 4 s LLM delay so the gap is easy to hear. Normally the LLM answers in 1–3 s.</p>
+<p class="note" style="margin-top:8px">Silence and "Okay." timings measured on one call (Jev, 2026-11-23) with an artificial 4 s LLM delay so the gap is easy to hear. Normally the LLM answers in 1–3 s.</p>
 
 <div class="panel" style="margin-top:14px">
 <div class="ctl">
 <div><div class="ctlh">Handler</div>
 <div class="seg" id="hsw" role="group" aria-label="Handler"></div>
 <span id="hmsg"></span></div>
-<div><div class="ctlh">Artificial LLM delay · for testing</div><div class="seg" id="dsw" role="group" aria-label="LLM delay">
+<div><div class="ctlh">Question wait</div><div class="seg" id="qsw" role="group" aria-label="Question wait">
+<input id="qms" type="number" min="0" max="10000" step="250" inputmode="numeric" aria-label="Question wait in ms"><span class="unit">ms</span><button class="sb" id="qset">Set</button>
+<button class="sb" data-q="0">Off</button><button class="sb" data-q="2000">2 s</button></div>
+<span id="qmsg"></span></div>
+<div><div class="ctlh">LLM delay · for testing</div><div class="seg" id="dsw" role="group" aria-label="LLM delay">
 <input id="dms" type="number" min="0" max="20000" step="500" inputmode="numeric" aria-label="Delay in ms"><span class="unit">ms</span><button class="sb" id="dset">Set</button>
 <button class="sb" data-d="0">0</button><button class="sb" data-d="4000">4 s</button></div>
 <span id="ctlmsg"></span></div>
 </div>
-<p class="try" style="margin-bottom:14px">Needs the <b>jev</b> or <b>embedding</b> mode above, because the Handler starts after the acknowledgement. The LLM usually answers in 1–3 s, too soon to hear the typing, so set a delay of <b>4 s</b> to hear it every turn. Only the LLM is delayed, not the acknowledgement.</p>
+<p class="try" style="margin-bottom:14px">Needs the <b>jev</b> or <b>embedding</b> mode above, because the Handler starts after the acknowledgement. With the Handler <b>Off</b>, every piece goes straight to the LLM. A Question wait of <b>0</b> turns off waiting for more words. The LLM delay is for testing only: the LLM usually answers in 1–3 s, too soon to hear the hold sound, so a delay of <b>4 s</b> makes it audible every turn.</p>
 
-<svg viewBox="0 0 1100 190" role="img" aria-label="Without the Handler, the caller's question goes straight to the LLM and the caller hears silence until the answer">
+<svg viewBox="0 0 1100 190" role="img" aria-label="Without the Handler, the caller's question goes straight to the LLM and the caller hears silence until the answer, and may get an answer to half a question">
 <text x="20" y="24" class="m" style="font-weight:700;letter-spacing:.1em">WITHOUT HANDLER</text>
 <circle cx="70" cy="95" r="34" fill="#0F1936" stroke="#9AA6C0" stroke-width="1.5"/>
 <circle cx="70" cy="84" r="8" fill="none" stroke="#F2F5FB" stroke-width="2.5"/><path d="M53 114a17 15 0 0 1 34 0" fill="none" stroke="#F2F5FB" stroke-width="2.5" stroke-linecap="round"/>
-<text x="70" y="152" text-anchor="middle">Caller</text><text class="m" x="70" y="168" text-anchor="middle">asks a question</text>
+<text x="70" y="152" text-anchor="middle">Caller</text><text class="m" x="70" y="168" text-anchor="middle">speaks in pieces</text>
 <rect x="560" y="63" width="200" height="64" rx="12" fill="#0F1936" stroke="#F22F46" stroke-width="1.6"/>
 <text x="660" y="89" text-anchor="middle" style="font-weight:700">LLM</text><text class="m" x="660" y="107" text-anchor="middle">thinks · 1–3 s</text>
 <rect x="890" y="63" width="190" height="64" rx="12" fill="#0F1936" stroke="#5FD6A4" stroke-width="1.6"/>
@@ -157,45 +161,69 @@ text{fill:var(--fg);font-family:Inter,sans-serif;font-size:12px}.m{fill:var(--mu
 <line x1="104" y1="95" x2="558" y2="95"/>
 <line x1="760" y1="95" x2="888" y2="95" stroke="#F22F46"/>
 </g>
-<text x="330" y="84" class="m" text-anchor="middle">question goes straight to the LLM</text>
+<text x="330" y="84" class="m" text-anchor="middle">every piece goes straight to the LLM</text>
 <text x="330" y="118" text-anchor="middle" style="fill:#F22F46;font-weight:700">the caller hears nothing</text>
 <text x="824" y="84" text-anchor="middle" style="fill:#F22F46;font-weight:700">answer</text>
+<text x="550" y="170" text-anchor="middle" class="m">it may answer half a question, or talk over the caller</text>
 </svg>
 
 <div style="border-top:1px dotted var(--line2);margin:14px 0"></div>
 
-<svg viewBox="0 0 1100 290" role="img" aria-label="With the Handler, the Handler takes the caller's question first, says Okay at once, plays a typing sound while the LLM thinks, hands the question to the LLM, and steps aside when the answer starts">
+<svg viewBox="0 0 1160 330" role="img" aria-label="With the Handler, for every piece the caller says the Handler acknowledges at once, plays a hold sound while the caller waits, classifies the piece, and either sends the complete question to the LLM or waits up to Question wait for more words">
 <text x="20" y="24" class="m" style="font-weight:700;letter-spacing:.1em">WITH HANDLER</text>
-<circle cx="70" cy="150" r="34" fill="#0F1936" stroke="#9AA6C0" stroke-width="1.5"/>
-<circle cx="70" cy="139" r="8" fill="none" stroke="#F2F5FB" stroke-width="2.5"/><path d="M53 169a17 15 0 0 1 34 0" fill="none" stroke="#F2F5FB" stroke-width="2.5" stroke-linecap="round"/>
-<text x="70" y="207" text-anchor="middle">Caller</text><text class="m" x="70" y="223" text-anchor="middle">asks a question</text>
-<rect x="210" y="118" width="200" height="64" rx="12" fill="#0F1936" stroke="#F08A2C" stroke-width="1.6"/>
-<text x="310" y="144" text-anchor="middle" style="font-weight:700">Handler</text><text class="m" x="310" y="162" text-anchor="middle">takes the question first</text>
-<rect x="560" y="118" width="200" height="64" rx="12" fill="#0F1936" stroke="#F22F46" stroke-width="1.6"/>
-<text x="660" y="144" text-anchor="middle" style="font-weight:700">LLM</text><text class="m" x="660" y="162" text-anchor="middle">thinks · 1–3 s</text>
-<rect x="890" y="118" width="190" height="64" rx="12" fill="#0F1936" stroke="#5FD6A4" stroke-width="1.6"/>
-<text x="985" y="144" text-anchor="middle" style="font-weight:700">Voice out</text><text class="m" x="985" y="162" text-anchor="middle">answer takes over</text>
+<g transform="translate(0,28)">
+<circle cx="64" cy="150" r="34" fill="#0F1936" stroke="#9AA6C0" stroke-width="1.5"/>
+<circle cx="64" cy="139" r="8" fill="none" stroke="#F2F5FB" stroke-width="2.5"/><path d="M47 169a17 15 0 0 1 34 0" fill="none" stroke="#F2F5FB" stroke-width="2.5" stroke-linecap="round"/>
+<text x="64" y="207" text-anchor="middle">Caller</text><text class="m" x="64" y="223" text-anchor="middle">speaks in pieces</text>
+<rect x="170" y="26" width="480" height="260" rx="14" fill="#050F2E" stroke="#F08A2C" stroke-width="1.6"/>
+<text x="190" y="52" style="font-weight:800;font-size:14px">Handler</text><text x="252" y="52" class="m">takes every piece first</text>
+<rect x="194" y="70" width="200" height="56" rx="10" fill="#0F1936" stroke="#5FD6A4" stroke-width="1.6"/>
+<text x="294" y="94" text-anchor="middle" style="font-weight:700">1 · Acknowledge</text><text class="m" x="294" y="112" text-anchor="middle">"Okay." at once</text>
+<rect x="194" y="142" width="200" height="56" rx="10" fill="#0F1936" stroke="#F08A2C" stroke-width="1.6"/>
+<text x="294" y="166" text-anchor="middle" style="font-weight:700">2 · Hold sound</text><text class="m" x="294" y="184" text-anchor="middle">typing while the caller waits</text>
+<rect x="426" y="70" width="200" height="56" rx="10" fill="#0F1936" stroke="#1FB5E0" stroke-width="1.6"/>
+<text x="526" y="94" text-anchor="middle" style="font-weight:700">3 · Classify</text><text class="m" x="526" y="112" text-anchor="middle">Jev or embedding</text>
+<rect x="426" y="142" width="200" height="56" rx="10" fill="#0F1936" stroke="#F08A2C" stroke-width="1.6" stroke-dasharray="5 4"/>
+<text x="526" y="166" text-anchor="middle" style="font-weight:700">4 · Complete?</text><text class="m" x="526" y="184" text-anchor="middle">else wait ≤ Question wait</text>
+<text x="410" y="222" text-anchor="middle" class="m"><tspan style="fill:#1FB5E0;font-weight:700">question</tspan> → send now · <tspan style="fill:#F08A2C;font-weight:700">statement, filler</tspan> → wait</text>
+<text x="410" y="240" text-anchor="middle" class="m"><tspan style="fill:#F22F46;font-weight:700">changed mind</tspan> → send the whole sentence now</text>
+<text x="410" y="258" text-anchor="middle" class="m">classifier fails → send now</text>
+<text x="410" y="276" text-anchor="middle" class="m">caller talks over the "Okay." or hold sound → wait restarts</text>
+<rect x="730" y="142" width="180" height="56" rx="12" fill="#0F1936" stroke="#F22F46" stroke-width="1.6"/>
+<text x="820" y="166" text-anchor="middle" style="font-weight:700">LLM</text><text class="m" x="820" y="184" text-anchor="middle">starts on the full sentence</text>
+<rect x="970" y="92" width="170" height="60" rx="12" fill="#0F1936" stroke="#5FD6A4" stroke-width="1.6"/>
+<text x="1055" y="118" text-anchor="middle" style="font-weight:700">Voice out</text><text class="m" x="1055" y="136" text-anchor="middle">one conversation</text>
 <g fill="none" stroke="#9AA6C0" stroke-width="1.8" marker-end="url(#a)">
-<line x1="104" y1="150" x2="208" y2="150"/>
-<line x1="410" y1="150" x2="558" y2="150" stroke="#F08A2C"/>
-<path d="M360 116 C380 40 760 30 888 134" stroke="#5FD6A4"/>
-<path d="M360 184 C380 262 760 270 888 166" stroke="#F08A2C" stroke-dasharray="5 4"/>
-<line x1="760" y1="150" x2="888" y2="150" stroke="#F22F46"/>
+<line x1="98" y1="150" x2="168" y2="150"/>
+<line x1="394" y1="98" x2="424" y2="98" stroke="#5FD6A4"/>
+<line x1="526" y1="126" x2="526" y2="140" stroke="#1FB5E0"/>
+<line x1="394" y1="170" x2="424" y2="170" stroke="#F08A2C"/>
+<path d="M650 98 C780 98 870 106 968 112" stroke="#F08A2C"/>
+<line x1="626" y1="170" x2="728" y2="170" stroke="#F22F46"/>
+<path d="M910 170 C940 170 940 140 968 136" stroke="#F22F46"/>
 </g>
-<text x="156" y="140" class="m" text-anchor="middle">question</text>
-<text x="484" y="140" text-anchor="middle" style="fill:#F08A2C;font-weight:700">hands over</text>
-<text x="640" y="40" text-anchor="middle" style="fill:#5FD6A4;font-weight:700">"Okay." at once</text>
-<text x="640" y="276" text-anchor="middle" style="fill:#F08A2C;font-weight:700">typing while it waits</text>
-<text x="824" y="140" text-anchor="middle" style="fill:#F22F46;font-weight:700">answer</text>
+<text x="800" y="88" text-anchor="middle" style="fill:#F08A2C;font-weight:700">"Okay." then typing</text>
+<text x="692" y="160" text-anchor="middle" style="fill:#F22F46;font-weight:700">full</text><text x="692" y="190" text-anchor="middle" style="fill:#F22F46;font-weight:700">sentence</text>
+<text x="950" y="196" text-anchor="middle" style="fill:#F22F46;font-weight:700">answer</text>
+</g>
 </svg>
-
-<div class="parts">
-<div class="part" style="--c:#5FD6A4"><b>1 · Acknowledge</b><span>The Handler answers the caller at once with a short "Okay.", so they know they were heard.</span></div>
-<div class="part" style="--c:#F08A2C"><b>2 · Keep the line alive</b><span>While the LLM thinks, a soft typing sound tells the caller someone is working on it.</span></div>
-<div class="part" style="--c:#F22F46"><b>3 · Hand over</b><span>The Handler passes the question to the LLM. When the answer starts, it steps aside and the typing stops.</span></div>
+<div class="parts" style="grid-template-columns:repeat(4,1fr)">
+<div class="part" style="--c:#1FB5E0"><b>Question</b><span>"Why is my bill so high?" A complete ask, so it goes to the LLM now.</span></div>
+<div class="part" style="--c:#F08A2C"><b>Statement</b><span>"I got my bill yesterday." Context, and a question may follow, so wait up to Question wait.</span></div>
+<div class="part" style="--c:#9AA6C0"><b>Filler</b><span>"Um, so…" "Hang on." Not finished, so wait up to Question wait, then send what there is.</span></div>
+<div class="part" style="--c:#F22F46"><b>Changed mind</b><span>"Actually, no…" Send the whole sentence now. The "actually, no" carries the correction.</span></div>
 </div>
-<div class="lg" style="margin-top:22px"><span><i style="background:#9AA6C0"></i>caller</span><span><i style="background:#5FD6A4"></i>acknowledgement</span><span><i style="background:#0F1936;border:1px dashed #F08A2C"></i>pause</span><span><i style="background:#F08A2C"></i>typing</span><span><i style="background:#F22F46"></i>first LLM token</span></div>
+</div>
+
+<div class="panel" style="margin-top:14px">
+<div class="ctlh">Measured · one call</div>
+<div class="lg"><span><i style="background:#9AA6C0"></i>caller</span><span><i style="background:#5FD6A4"></i>acknowledgement</span><span><i style="background:#0F1936;border:1px dashed #F08A2C"></i>pause</span><span><i style="background:#F08A2C"></i>typing</span><span><i style="background:#F22F46"></i>first LLM token</span></div>
 <div id="hcharts"></div>
+<div style="border-top:1px dotted var(--line2);margin:22px 0 14px"></div>
+<div class="ctlh">Estimated · not measured</div>
+<div class="lg"><span><i style="background:#9AA6C0"></i>caller speaking</span><span><i style="background:#1FB5E0"></i>classify</span><span><i style="background:#5FD6A4"></i>acknowledgement</span><span><i style="background:#0F1936;border:1px dashed #F08A2C"></i>pause / waiting</span><span><i style="background:#F08A2C"></i>typing</span><span><i style="background:#243564"></i>LLM thinking</span><span><i style="background:#F22F46"></i>LLM speaks</span></div>
+<p class="note">Assumed: classify 250 ms (Jev), LLM first token 1.5 s after it is sent, Question wait 2000 ms, "Okay." takes about 0.6 s to say, and the caller's words reach the Handler about 0.2 s after they stop. 0 s is when the first piece arrives.</p>
+<div id="ccharts"></div>
 </div>
 
 </div>
@@ -249,6 +277,53 @@ function hchart(t){
  return `<div class="tt">${t.name}</div>`+s+`</svg><p class="note">${t.note}</p>`;
 }
 
+// Estimated, not measured, not measured. ms after the first prompt arrives.
+// seg: [row, from, to, kind, label]. kinds: caller, cls, ack, wait, typing, think, llm
+const CCOL={caller:'#9AA6C0',cls:'#1FB5E0',ack:'#5FD6A4',wait:'#0F1936',typing:'#F08A2C',think:'#243564',llm:'#F22F46'};
+const CROWS=["Caller","Classify","Acknowledge","Hold sound","Waiting","LLM"];
+const CCALLS=[
+ {name:'1 · Complete question · "What\'s my balance?"',
+  segs:[[0,0,40,'caller'],[1,0,250,'cls','question'],[2,250,850,'ack','"Okay."'],[3,850,1750,'wait','pause, answer arrives first'],
+        [5,250,1750,'think','sent at 250 ms'],[5,1750,2300,'llm','answer · 1750 ms']],
+  note:'Sent at once, because it is a question. The cost is the classification: about 250 ms later than today, which answers at about 1500 ms.'},
+ {name:'2a · Today · "I got my bill yesterday." … "Why is it so high?"',rows:["Caller","Acknowledge","LLM turn 1","LLM turn 2"],
+  segs:[[0,0,40,'caller'],[0,900,1700,'caller','"why is it so high?"'],[1,350,950,'ack','"Okay."'],
+        [2,0,1500,'think','half a question'],[2,1500,1700,'llm',''],[2,1700,2700,'wait','talks over the caller, cut off'],
+        [3,1900,3400,'think','second turn'],[3,3400,3950,'llm','answer · 3400 ms']],
+  note:'Each piece is its own turn. The LLM answers "I got my bill yesterday" while the caller is still talking, and is cut off.'},
+ {name:'2b · With the Handler · same call',
+  segs:[[0,0,40,'caller'],[0,900,1700,'caller','"why is it so high?"'],[1,0,250,'cls','statement'],[1,1900,2150,'cls','question'],
+        [2,250,850,'ack','"Okay."'],[2,2150,2550,'ack','"Okay."'],[3,850,900,'wait',''],[3,2550,3550,'wait','pause'],[3,3550,3650,'typing',''],
+        [4,250,1900,'wait','wait for more · next piece at 1900 ms'],[5,2150,3650,'think','full sentence sent at 2150 ms'],[5,3650,4200,'llm','answer · 3650 ms']],
+  note:'The statement waits. The caller\'s next words stop the hold sound, and the second piece arrives inside Question wait. Each piece gets the same "Okay.". One complete question goes to the LLM, and it is answered once.'},
+ {name:'3 · Filler, nothing follows · "Um, so…"',
+  segs:[[0,0,40,'caller'],[1,0,250,'cls','filler'],[2,250,650,'ack','"Okay."'],[3,650,1650,'wait','pause'],[3,1650,3750,'typing','typing'],
+        [4,250,2250,'wait','Question wait · 2000 ms, nothing more'],[5,2250,3750,'think','sent at 2250 ms'],[5,3750,4300,'llm','"Go on…"']],
+  note:'The caller never finishes, so Question wait expires and the Handler sends what there is. The typing covers the wait, so the caller still hears no dead air.'},
+ {name:'4 · Changed mind · "I\'d like to change my plan." … "Actually, no, just cancel it."',
+  segs:[[0,0,40,'caller'],[0,1000,2000,'caller','"actually, no, just cancel it"'],[1,0,250,'cls','statement'],[1,2200,2450,'cls','changed mind'],
+        [2,250,850,'ack','"Okay."'],[2,2450,2850,'ack','"Okay."'],[3,850,1000,'wait',''],
+        [4,250,2200,'wait','wait for more'],[5,2450,3950,'think','whole sentence sent now'],[5,3950,4500,'llm','answer · 3950 ms']],
+  note:'The LLM gets the whole sentence at once: "I\'d like to change my plan… actually, no, just cancel it". The "actually, no" carries the correction, and "it" still has the first piece to point to.'}
+];
+const CMAX=4500;
+document.getElementById('ccharts').innerHTML=CCALLS.map(cchart).join('');
+function cchart(t){
+ const rows=t.rows||CROWS,W=1100,L=110,R=24,T=26,RH=32,x=ms=>L+(W-L-R)*ms/CMAX,CH=T+rows.length*RH+6;
+ let s=`<svg viewBox="0 0 ${W} ${CH}" role="img" aria-label="${t.name.replace(/"/g,'&quot;')}">`;
+ for(let ms=0;ms<=CMAX;ms+=500){const X=x(ms);s+=`<line x1="${X}" x2="${X}" y1="${T-6}" y2="${CH-2}" stroke="#1B2850"/><text class="m" x="${X}" y="14" text-anchor="middle">${(ms/1000).toFixed(1)}s</text>`}
+ rows.forEach((r,i)=>s+=`<text class="m" x="4" y="${T+i*RH+19}">${r}</text>`);
+ for(const [r,a,b,k,label] of t.segs){
+  const y=T+r*RH+5,w=Math.max(4,x(b)-x(a)),dash=k==='wait',dark=k==='think'||dash;
+  s+=`<rect x="${x(a)}" y="${y}" width="${w}" height="19" rx="4" fill="${CCOL[k]}"${dash?' stroke="#F08A2C" stroke-dasharray="4 3"':''}/>`;
+  if(!label)continue;
+  const fits=label.length*6.6+12<w;
+  s+=fits?`<text x="${x(a)+7}" y="${y+14}" style="fill:${dark?'#9AA6C0':'#030B24'};font-weight:700">${label}</text>`
+         :`<text x="${x(b)+6}" y="${y+14}" style="fill:${CCOL[k]==='#0F1936'?'#9AA6C0':CCOL[k]};font-weight:700">${label}</text>`;
+ }
+ return `<div class="tt">${t.name}</div>${s}</svg><p class="note">${t.note}</p>`;
+}
+
 // Handler and delay controls.
 const hsw=document.getElementById('hsw'),dms=document.getElementById('dms'),cmsg=document.getElementById('ctlmsg'),hmsg=document.getElementById('hmsg'),dsw=document.getElementById('dsw');
 let hOn=null,dCur=null;
@@ -268,6 +343,19 @@ const setDelay=ms=>put('/latency/delay',{ms}).then(r=>{dCur=r.ms;dms.value=r.ms;
 dsw.addEventListener('click',e=>{const b=e.target.closest('[data-d]');if(b)setDelay(Number(b.dataset.d))});
 document.getElementById('dset').addEventListener('click',()=>setDelay(Math.round(Number(dms.value))));
 dms.addEventListener('keydown',e=>{if(e.key==='Enter')setDelay(Math.round(Number(dms.value)))});
+
+// Question wait control. Its own status line, so a missing endpoint never touches the other controls.
+const qms=document.getElementById('qms'),qmsg=document.getElementById('qmsg'),qsw=document.getElementById('qsw');
+let qCur=null;
+function paintQ(){
+ [...qsw.querySelectorAll('[data-q]')].forEach(b=>{const on=Number(b.dataset.q)===qCur;b.classList.toggle('on',on);b.setAttribute('aria-pressed',on)});
+ if(qCur!==null&&document.activeElement!==qms)qms.value=qCur;
+ qmsg.className='';qmsg.textContent=qCur===null?'':qCur===0?'Waiting for more words is off':`Question wait ${qCur} ms`}
+const setQ=ms=>put('/latency/question-wait',{ms}).then(r=>{qCur=r.ms;qms.value=r.ms;paintQ()}).catch(e=>cfail(e,qmsg));
+fetch('/latency/question-wait').then(j).then(r=>{qCur=r.ms;paintQ()}).catch(e=>cfail(e,qmsg));
+qsw.addEventListener('click',e=>{const b=e.target.closest('[data-q]');if(b)setQ(Number(b.dataset.q))});
+document.getElementById('qset').addEventListener('click',()=>setQ(Math.round(Number(qms.value))));
+qms.addEventListener('keydown',e=>{if(e.key==='Enter')setQ(Math.round(Number(qms.value)))});
 
 // Mode switch: same origin as the server that served this page, so no URL to paste.
 const INFO={none:{c:'#9AA6C0',t:'Baseline. Nothing is said while the LLM thinks.'},
