@@ -1,0 +1,227 @@
+{
+  "date": "2026-11-23",
+  "machine": "Apple M4, macOS 26.6.2",
+  "versions": {
+    "laya": "0.5.2",
+    "torch": "2.15.0",
+    "transformers": "5.24.0",
+    "ollama": "0.34.4 (Docker)",
+    "node_script": "scripts/eval/eval-match.mts, eval-coherence.mts"
+  },
+  "method": "one session, back to back, concurrency 1, each engine committed default threshold/margin, no tuning on holdout; p50/p95 are client-side ranking-call ms",
+  "jev_billable_calls": {
+    "dev": 66,
+    "holdout": 150,
+    "coherence": 40,
+    "coherence_warmup": 1,
+    "total": 257
+  },
+  "engines": {
+    "jev": {
+      "meta": {
+        "where": "remote (api.typesafe.ai, HTTPS)",
+        "cost": "billable per call (Jev API)",
+        "threshold": 0.5,
+        "margin": 0,
+        "ram_mb": null,
+        "disk": "none locally (hosted)",
+        "warm": "TLS keep-alive warm via HEAD (~tens of ms); no model load",
+        "mode": "jev"
+      },
+      "sets": {
+        "dev": {
+          "total": 66,
+          "correct": 64,
+          "wrong": 1,
+          "fallback": 1,
+          "errors": 0,
+          "usefulRate": 0.97,
+          "wrongMatchRateAmongMatches": 0.015,
+          "p50Ms": 237.328,
+          "p95Ms": 324.946
+        },
+        "holdout": {
+          "total": 150,
+          "correct": 132,
+          "wrong": 10,
+          "fallback": 8,
+          "errors": 0,
+          "usefulRate": 0.88,
+          "wrongMatchRateAmongMatches": 0.075,
+          "p50Ms": 230.068,
+          "p95Ms": 284.9
+        },
+        "coherence": {
+          "correct": 39,
+          "total": 40,
+          "errors": 0,
+          "perClass": {
+            "question": "10/10",
+            "statement": "9/10",
+            "filler": "10/10",
+            "changed-mind": "10/10"
+          },
+          "p50Ms": 187.60000000000002,
+          "p95Ms": 235.7
+        }
+      }
+    },
+    "embedding": {
+      "meta": {
+        "where": "local (Ollama nomic-embed-text in Docker, CPU)",
+        "cost": "free (local compute)",
+        "threshold": 0.6,
+        "margin": 0,
+        "ram_mb": 538,
+        "disk": "274 MB (nomic-embed-text)",
+        "warm": "bank embed on first use (+1 warm-up embed); model loads on first request, unloads after ~5 min idle",
+        "mode": "embedding"
+      },
+      "sets": {
+        "dev": {
+          "total": 66,
+          "correct": 47,
+          "wrong": 1,
+          "fallback": 18,
+          "errors": 0,
+          "usefulRate": 0.712,
+          "wrongMatchRateAmongMatches": 0.021,
+          "p50Ms": 17.387,
+          "p95Ms": 58.306
+        },
+        "holdout": {
+          "total": 150,
+          "correct": 91,
+          "wrong": 10,
+          "fallback": 49,
+          "errors": 0,
+          "usefulRate": 0.607,
+          "wrongMatchRateAmongMatches": 0.114,
+          "p50Ms": 23.625,
+          "p95Ms": 61.229
+        },
+        "coherence": {
+          "correct": 31,
+          "total": 40,
+          "errors": 0,
+          "perClass": {
+            "question": "6/10",
+            "statement": "6/10",
+            "filler": "10/10",
+            "changed-mind": "9/10"
+          },
+          "p50Ms": 20.95,
+          "p95Ms": 44.6
+        }
+      }
+    },
+    "laya-base": {
+      "meta": {
+        "where": "local (laya-serve on MPS, :8000, model english)",
+        "cost": "free (local compute)",
+        "threshold": 0.6,
+        "margin": 0,
+        "ram_mb": 231,
+        "disk": "804 MB (model.safetensors)",
+        "warm": "server ready ~5 s after launch; first MPS call ~0.3 s with warm Metal cache (~13 s on a never-compiled machine per README)",
+        "mode": "laya"
+      },
+      "sets": {
+        "dev": {
+          "total": 66,
+          "correct": 21,
+          "wrong": 37,
+          "fallback": 8,
+          "errors": 0,
+          "usefulRate": 0.318,
+          "wrongMatchRateAmongMatches": 0.638,
+          "p50Ms": 208.085,
+          "p95Ms": 219.604
+        },
+        "holdout": {
+          "total": 150,
+          "correct": 46,
+          "wrong": 83,
+          "fallback": 21,
+          "errors": 0,
+          "usefulRate": 0.307,
+          "wrongMatchRateAmongMatches": 0.648,
+          "p50Ms": 215.852,
+          "p95Ms": 228.707
+        },
+        "coherence": {
+          "correct": 15,
+          "total": 40,
+          "errors": 0,
+          "perClass": {
+            "question": "0/10",
+            "statement": "8/10",
+            "filler": "1/10",
+            "changed-mind": "6/10"
+          },
+          "p50Ms": 81.95,
+          "p95Ms": 86.9
+        }
+      }
+    },
+    "laya-typed": {
+      "meta": {
+        "where": "local (laya-serve on MPS, :8001, model typed-decisions)",
+        "cost": "free (local compute)",
+        "threshold": 0.6,
+        "margin": 0,
+        "ram_mb": 282,
+        "disk": "807 MB (typed-decisions/)",
+        "warm": "server ready ~5.0 s after launch; first call 0.33 s, then ~30 ms direct (measured on typed-decisions)",
+        "mode": "laya"
+      },
+      "sets": {
+        "dev": {
+          "total": 66,
+          "correct": 18,
+          "wrong": 25,
+          "fallback": 23,
+          "errors": 0,
+          "usefulRate": 0.273,
+          "wrongMatchRateAmongMatches": 0.581,
+          "p50Ms": 220.473,
+          "p95Ms": 234.923
+        },
+        "holdout": {
+          "total": 150,
+          "correct": 48,
+          "wrong": 60,
+          "fallback": 42,
+          "errors": 0,
+          "usefulRate": 0.32,
+          "wrongMatchRateAmongMatches": 0.6,
+          "p50Ms": 223.603,
+          "p95Ms": 234.992
+        },
+        "coherence": {
+          "correct": 12,
+          "total": 40,
+          "errors": 0,
+          "perClass": {
+            "question": "0/10",
+            "statement": "2/10",
+            "filler": "0/10",
+            "changed-mind": "10/10"
+          },
+          "p50Ms": 89.35,
+          "p95Ms": 102.2
+        }
+      }
+    }
+  },
+  "caveats": [
+    "Laya filler matching puts all 102 filler options in one choice question, split into tournament groups of 64 (LAYA_TOURNAMENT_GROUP); the model card says accuracy degrades above ~20 options, so Laya is run outside its intended regime here and 'probabilities' only cover the finalists.",
+    "Thresholds (jev 0.5, embedding 0.6, laya 0.6) were chosen on dev only; holdout was not used for tuning. Laya probabilities are over-confident, so its threshold barely separates right from wrong.",
+    "laya-serve warns that the checkpoint ships invalid temperatures (values outside [0.5, 5]) so confidence from affected entries is uncalibrated; this likely hurts thresholding.",
+    "Coherence 'question' scored 0/10 on both Laya checkpoints. Client, labels and response mapping were verified correct (valid responses, choice names match); probabilities are near-uniform (top ~0.3-0.45). Retrying without the per-class 'examples' lists flipped one probe to question, so the long examples payload may hurt, but prompts were not reworded: Laya receives the same question text as Jev.",
+    "Latency is not like-for-like: Jev p50 includes network+TLS to a hosted API; Laya includes local HTTP to MPS-backed laya-serve; embedding runs Ollama on CPU inside Docker (Ollama has no GPU access on macOS Docker). Coherence per-call times are lower than filler times because the coherence question has 4 options vs 102.",
+    "Laya RSS is the server process only (MPS/unified-memory weights are partly outside RSS), sampled after the runs with both checkpoints running; the Ollama figure is the whole Docker container (docker stats), not the model alone.",
+    "Dev/holdout sets are small (66/150), so differences of a few points are within noise. Only one run per engine; no repeat variance measured.",
+    "ServerConfig.test 'leaves outboundApiKey undefined when unset' fails because the local server/.env sets OUTBOUND_API_KEY to an empty string; it passes on v4.low-latency in a clean worktree without .env and fails there too once .env is copied in. Not caused by the laya changes."
+  ]
+}
