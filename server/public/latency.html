@@ -46,7 +46,8 @@ text{fill:var(--fg);font-family:Inter,sans-serif;font-size:12px}.m{fill:var(--mu
 .note{color:var(--mute);font-size:12.5px;margin:2px 0 0}
 .lg{display:flex;gap:18px;flex-wrap:wrap;color:var(--mute);font-size:12px;margin:0 2px 8px}
 .lg i{display:inline-block;width:12px;height:12px;border-radius:3px;margin-right:6px;vertical-align:-2px}
-@media(max-width:700px){.stats{grid-template-columns:1fr}.brow{grid-template-columns:1fr}}
+@media(max-width:700px){.stats,.stats.two{grid-template-columns:1fr}.brow{grid-template-columns:1fr}}
+.stats.two{grid-template-columns:repeat(2,1fr);margin:10px 0 12px}
 .ctl{display:grid;grid-template-columns:repeat(3,1fr);gap:12px;margin-bottom:6px}
 @media(max-width:700px){.ctl{grid-template-columns:1fr}}
 .ctlh{font-size:12px;font-weight:700;letter-spacing:.08em;text-transform:uppercase;color:var(--mute);margin-bottom:6px}
@@ -220,9 +221,13 @@ text{fill:var(--fg);font-family:Inter,sans-serif;font-size:12px}.m{fill:var(--mu
 <div class="lg"><span><i style="background:#9AA6C0"></i>caller</span><span><i style="background:#5FD6A4"></i>acknowledgement</span><span><i style="background:#0F1936;border:1px dashed #F08A2C"></i>pause</span><span><i style="background:#F08A2C"></i>typing</span><span><i style="background:#F22F46"></i>first LLM token</span></div>
 <div id="hcharts"></div>
 <div style="border-top:1px dotted var(--line2);margin:22px 0 14px"></div>
-<div class="ctlh">Estimated · not measured</div>
-<div class="lg"><span><i style="background:#9AA6C0"></i>caller speaking</span><span><i style="background:#1FB5E0"></i>classify</span><span><i style="background:#5FD6A4"></i>acknowledgement</span><span><i style="background:#0F1936;border:1px dashed #F08A2C"></i>pause / waiting</span><span><i style="background:#F08A2C"></i>typing</span><span><i style="background:#243564"></i>LLM thinking</span><span><i style="background:#F22F46"></i>LLM speaks</span></div>
-<p class="note">Assumed: classify 250 ms (Jev), LLM first token 1.5 s after it is sent, Question wait 2000 ms, "Okay." takes about 0.6 s to say, and the caller's words reach the Handler about 0.2 s after they stop. 0 s is when the first piece arrives.</p>
+<div class="ctlh">Two real calls · the same three questions</div>
+<div class="stats two">
+<div class="stat r"><b>3 LLM calls</b><span>without merge · 1 question lost</span></div>
+<div class="stat g"><b>1 LLM call</b><span>with merge · all 3 answered</span></div>
+</div>
+<p class="note" style="margin-bottom:10px">Both calls used a 4 s artificial LLM delay. Times are from the server log, rounded to the second, apart from the ms values. 0 s is the first question.</p>
+<div class="lg"><span><i style="background:#9AA6C0"></i>caller speaking</span><span><i style="background:#1FB5E0"></i>classify</span><span><i style="background:#5FD6A4"></i>acknowledgement</span><span><i style="background:#F08A2C"></i>hold sound</span><span><i style="background:#243564"></i>LLM thinking</span><span><i style="background:#F22F46"></i>LLM speaks</span></div>
 <div id="ccharts"></div>
 </div>
 
@@ -277,50 +282,49 @@ function hchart(t){
  return `<div class="tt">${t.name}</div>`+s+`</svg><p class="note">${t.note}</p>`;
 }
 
-// Estimated, not measured, not measured. ms after the first prompt arrives.
-// seg: [row, from, to, kind, label]. kinds: caller, cls, ack, wait, typing, think, llm
-const CCOL={caller:'#9AA6C0',cls:'#1FB5E0',ack:'#5FD6A4',wait:'#0F1936',typing:'#F08A2C',think:'#243564',llm:'#F22F46'};
-const CROWS=["Caller","Classify","Acknowledge","Hold sound","Waiting","LLM"];
+// Two real calls, same three questions. ms after the first question. Times from the server log.
+// seg: [row, from, to, kind, label, pos]. kinds: caller, cls, ack, typing (hold sound), think, llm.
+// pos: 'l' or 'r' forces the label outside the bar; otherwise inside if it fits, else right.
+// tag: [row, at, text] free text after a bar.
+const CCOL={caller:'#9AA6C0',cls:'#1FB5E0',ack:'#5FD6A4',typing:'#F08A2C',think:'#243564',llm:'#F22F46'};
 const CCALLS=[
- {name:'1 · Complete question · "What\'s my balance?"',
-  segs:[[0,0,40,'caller'],[1,0,250,'cls','question'],[2,250,850,'ack','"Okay."'],[3,850,1750,'wait','pause, answer arrives first'],
-        [5,250,1750,'think','sent at 250 ms'],[5,1750,2300,'llm','answer · 1750 ms']],
-  note:'Sent at once, because it is a question. The cost is the classification: about 250 ms later than today, which answers at about 1500 ms.'},
- {name:'2a · Today · "I got my bill yesterday." … "Why is it so high?"',rows:["Caller","Acknowledge","LLM turn 1","LLM turn 2"],
-  segs:[[0,0,40,'caller'],[0,900,1700,'caller','"why is it so high?"'],[1,350,950,'ack','"Okay."'],
-        [2,0,1500,'think','half a question'],[2,1500,1700,'llm',''],[2,1700,2700,'wait','talks over the caller, cut off'],
-        [3,1900,3400,'think','second turn'],[3,3400,3950,'llm','answer · 3400 ms']],
-  note:'Each piece is its own turn. The LLM answers "I got my bill yesterday" while the caller is still talking, and is cut off.'},
- {name:'2b · With the Handler · same call',
-  segs:[[0,0,40,'caller'],[0,900,1700,'caller','"why is it so high?"'],[1,0,250,'cls','statement'],[1,1900,2150,'cls','question'],
-        [2,250,850,'ack','"Okay."'],[2,2150,2550,'ack','"Okay."'],[3,850,900,'wait',''],[3,2550,3550,'wait','pause'],[3,3550,3650,'typing',''],
-        [4,250,1900,'wait','wait for more · next piece at 1900 ms'],[5,2150,3650,'think','full sentence sent at 2150 ms'],[5,3650,4200,'llm','answer · 3650 ms']],
-  note:'The statement waits. The caller\'s next words stop the hold sound, and the second piece arrives inside Question wait. Each piece gets the same "Okay.". One complete question goes to the LLM, and it is answered once.'},
- {name:'3 · Filler, nothing follows · "Um, so…"',
-  segs:[[0,0,40,'caller'],[1,0,250,'cls','filler'],[2,250,650,'ack','"Okay."'],[3,650,1650,'wait','pause'],[3,1650,3750,'typing','typing'],
-        [4,250,2250,'wait','Question wait · 2000 ms, nothing more'],[5,2250,3750,'think','sent at 2250 ms'],[5,3750,4300,'llm','"Go on…"']],
-  note:'The caller never finishes, so Question wait expires and the Handler sends what there is. The typing covers the wait, so the caller still hears no dead air.'},
- {name:'4 · Changed mind · "I\'d like to change my plan." … "Actually, no, just cancel it."',
-  segs:[[0,0,40,'caller'],[0,1000,2000,'caller','"actually, no, just cancel it"'],[1,0,250,'cls','statement'],[1,2200,2450,'cls','changed mind'],
-        [2,250,850,'ack','"Okay."'],[2,2450,2850,'ack','"Okay."'],[3,850,1000,'wait',''],
-        [4,250,2200,'wait','wait for more'],[5,2450,3950,'think','whole sentence sent now'],[5,3950,4500,'llm','answer · 3950 ms']],
-  note:'The LLM gets the whole sentence at once: "I\'d like to change my plan… actually, no, just cancel it". The "actually, no" carries the correction, and "it" still has the first piece to point to.'}
+ {name:'Without merge · call CAe55f4f, before the fix: each piece sent on its own',
+  rows:["Caller","Classify","Acknowledge","Hold sound","LLM 1","LLM 2","LLM 3"],
+  segs:[[0,0,50,'caller','do you do SMS?'],[0,3000,3400,'caller','talks over hold'],[0,5200,6000,'caller','voice?'],[0,6400,7000,'caller','and what kind of voice?'],
+        [1,0,424,'cls','question'],[1,6000,6195,'cls'],[1,7000,7214,'cls','question'],
+        [2,383,900,'ack','Jev too slow · 383 ms','r'],[2,6240,6900,'ack','Good question, let me answer…','l'],[2,7290,8000,'ack','Let me clarify which one I mean · mismatched'],
+        [3,380,3000,'typing','stopped by caller'],[3,6240,7000,'typing'],[3,7290,12100,'typing','ran 4.8 s · stopped by answer'],
+        [4,420,6000,'think','SMS question · sent 0.42 s'],
+        [5,6200,11000,'think','do you do voice · sent 6.2 s'],
+        [6,7200,12100,'think','what kind of voice · sent 7.2 s'],[6,12100,12550,'llm','answer']],
+  tags:[[4,6000,'✕ lost · killed by the interrupt, never answered'],[5,11000,'✕ superseded']],
+  note:'Three separate LLM calls. The interrupt from talking over our own hold sound killed the SMS answer, and the second was superseded. The caller heard one answer, about voice only. SMS was never answered. The caller talked over the hold sound at ~3.0 s, then asked "Actually, do you do voice?" at ~6.0 s and "And what kind of voice?" at ~7.0 s. The acknowledgements were "Good question, let me answer that for you." and "Let me clarify which one I mean." (mismatched). The SMS request starts after the delay at ~4.4 s. The voice request would start at ~10.2 s and was abandoned at ~11 s. The last request\'s first token came at ~12.1 s, 5135 ms after that piece.'},
+ {name:'With merge · call CAdb229c, just completed: one question, answered once',
+  rows:["Caller","Classify","Acknowledge","Hold sound","LLM 1","LLM 2"],
+  segs:[[0,0,50,'caller','do you do SMS?'],[0,2000,2400,'caller','talks over'],[0,3600,5000,'caller','Actually, do you do voice? · And what kind of voice?','r'],
+        [1,0,352,'cls','question'],[1,5000,5310,'cls','changed mind · 3 pieces merged'],
+        [2,385,900,'ack','neutral fallback · 385 ms'],[2,5260,5900,'ack','neutral fallback'],
+        [3,385,2000,'typing','stopped by caller'],[3,5260,10200,'typing','ran 4.96 s · stopped by answer'],
+        [4,350,5000,'think','SMS question · sent 0.35 s'],
+        [5,5300,10200,'think','merged question · sent 5.3 s'],[5,10200,10750,'llm','one answer to all three']],
+  tags:[[4,5000,'retracted, merged']],
+  note:'Talking over the hold sound no longer kills the pending answer. The unanswered SMS question was taken back and merged with the two new pieces into one question. The caller heard one answer covering SMS, voice and the kinds of voice. The interrupt at ~2.0 s was not forwarded ("caller still talking"). Both new pieces arrived at ~5.0 s, and the acknowledgement for "Actually, do you do voice?" was dropped because a newer piece had arrived. The SMS request was in flight after the delay (~4.35 s) when it was retracted. The merged question was sent at ~5.3 s, and its first token came at ~10.2 s, 5221 ms after the last piece.'}
 ];
-const CMAX=4500;
+const CMAX=13000;
 document.getElementById('ccharts').innerHTML=CCALLS.map(cchart).join('');
 function cchart(t){
- const rows=t.rows||CROWS,W=1100,L=110,R=24,T=26,RH=32,x=ms=>L+(W-L-R)*ms/CMAX,CH=T+rows.length*RH+6;
- let s=`<svg viewBox="0 0 ${W} ${CH}" role="img" aria-label="${t.name.replace(/"/g,'&quot;')}">`;
- for(let ms=0;ms<=CMAX;ms+=500){const X=x(ms);s+=`<line x1="${X}" x2="${X}" y1="${T-6}" y2="${CH-2}" stroke="#1B2850"/><text class="m" x="${X}" y="14" text-anchor="middle">${(ms/1000).toFixed(1)}s</text>`}
+ const rows=t.rows,W=1100,L=110,R=24,T=26,RH=32,x=ms=>L+(W-L-R)*ms/CMAX,CH=T+rows.length*RH+6;
+ let s=`<svg viewBox="0 0 ${W} ${CH}" role="img" aria-label="${t.name}">`;
+ for(let ms=0;ms<=CMAX;ms+=1000){const X=x(ms);s+=`<line x1="${X}" x2="${X}" y1="${T-6}" y2="${CH-2}" stroke="#1B2850"/><text class="m" x="${X}" y="14" text-anchor="middle">${ms/1000}s</text>`}
  rows.forEach((r,i)=>s+=`<text class="m" x="4" y="${T+i*RH+19}">${r}</text>`);
- for(const [r,a,b,k,label] of t.segs){
-  const y=T+r*RH+5,w=Math.max(4,x(b)-x(a)),dash=k==='wait',dark=k==='think'||dash;
-  s+=`<rect x="${x(a)}" y="${y}" width="${w}" height="19" rx="4" fill="${CCOL[k]}"${dash?' stroke="#F08A2C" stroke-dasharray="4 3"':''}/>`;
+ for(const [r,a,b,k,label,pos] of t.segs){
+  const y=T+r*RH+5,w=Math.max(4,x(b)-x(a)),think=k==='think';
+  s+=`<rect x="${x(a)}" y="${y}" width="${w}" height="19" rx="4" fill="${CCOL[k]}"/>`;
   if(!label)continue;
-  const fits=label.length*6.6+12<w;
-  s+=fits?`<text x="${x(a)+7}" y="${y+14}" style="fill:${dark?'#9AA6C0':'#030B24'};font-weight:700">${label}</text>`
-         :`<text x="${x(b)+6}" y="${y+14}" style="fill:${CCOL[k]==='#0F1936'?'#9AA6C0':CCOL[k]};font-weight:700">${label}</text>`;
+  s+=!pos&&label.length*7+12<w?`<text x="${x(a)+7}" y="${y+14}" style="fill:${think?'#9AA6C0':'#030B24'};font-weight:700">${label}</text>`
+   :`<text x="${pos==='l'?x(a)-6:x(b)+6}" y="${y+14}"${pos==='l'?' text-anchor="end"':''} style="fill:${think?'#9AA6C0':CCOL[k]};font-weight:700">${label}</text>`;
  }
+ for(const [r,a,label] of t.tags||[])s+=`<text x="${x(a)+6}" y="${T+r*RH+19}" style="font-weight:700">${label}</text>`;
  return `<div class="tt">${t.name}</div>${s}</svg><p class="note">${t.note}</p>`;
 }
 
