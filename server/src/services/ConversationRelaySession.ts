@@ -24,8 +24,8 @@
 import { logOut, logError } from '../utils/logger.js';
 import { matchFiller, type MissReason } from '../latency/matchFiller.js';
 import { classifyCoherence } from '../latency/coherence.js';
-import { getMode, getLlmDelayMs, getQuestionWaitMs, isHandlerEnabled, isJevWarmEnabled } from '../latency/mode.js';
-import { warmJev } from '../latency/jev.js';
+import { getMode, getLlmDelayMs, getQuestionWaitMs, isHandlerEnabled, isJevWarmEnabled, isLayaWarmEnabled } from '../latency/mode.js';
+import { warmJev, warmLaya } from '../latency/jev.js';
 import { nextFallback } from '../latency/fallbackFillers.js';
 import { opener } from '../latency/fillers.js';
 import { SilenceHandler } from './SilenceHandler.js';
@@ -240,6 +240,7 @@ export class ConversationRelaySession {
 
         // Open the Jev TLS connection now so the first filler/coherence call reuses a warm socket.
         if (getMode() === 'jev' && isJevWarmEnabled()) void warmJev();
+        if (getMode() === 'laya' && isLayaWarmEnabled()) void warmLaya();
 
         this.silenceHandler?.start();
         logOut('Session', `${this.logPrefix} Setup complete`);
@@ -461,7 +462,7 @@ export class ConversationRelaySession {
     }
 
     /**
-     * Acknowledge every caller prompt (modes jev/embedding), in parallel with the LLM: the matched
+     * Acknowledge every caller prompt (modes jev/embedding/laya), in parallel with the LLM: the matched
      * filler if it is good and arrives within LATENCY_FILLER_BUDGET_MS, otherwise a neutral fallback.
      * At the budget the fallback goes out without waiting for the matcher; a late match is dropped.
      * Exactly one acknowledgement per turn. Dropped if the turn moved on, the LLM already spoke,

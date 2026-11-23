@@ -1,6 +1,6 @@
 /**
  * Offline eval of the coherence classifier: no server, no WebSocket, no OpenAI.
- * npx tsx scripts/eval/eval-coherence.mts [--set scripts/eval/coherence.json] --mode embedding|jev [--concurrency N] [--out <path>]
+ * npx tsx scripts/eval/eval-coherence.mts [--set scripts/eval/coherence.json] --mode embedding|jev|laya [--concurrency N] [--out <path>]
  * Needs local Ollama (embedding) or JEV_API_KEY in server/.env (jev, billable: one call per phrase).
  * Phrase: { text, expect, context?: string[] } where expect is question|statement|filler|changed-mind.
  */
@@ -16,8 +16,8 @@ const { values: a } = parseArgs({
     options: { set: { type: 'string', default: path.join(here, 'coherence.json') }, mode: { type: 'string' }, concurrency: { type: 'string', default: '4' }, out: { type: 'string' } },
 });
 const die = (m: string): never => { console.error(m); process.exit(1); };
-if (a.mode !== 'embedding' && a.mode !== 'jev') die('--mode must be embedding or jev');
-const mode = a.mode as 'embedding' | 'jev';
+if (a.mode !== 'embedding' && a.mode !== 'jev' && a.mode !== 'laya') die('--mode must be embedding, jev or laya');
+const mode = a.mode as 'embedding' | 'jev' | 'laya';
 
 interface Phrase { text: string; expect: CoherenceClass; context?: string[] }
 const phrases: Phrase[] = JSON.parse(readFileSync(a.set!, 'utf8'));
@@ -26,7 +26,7 @@ phrases.forEach((p, i) => {
     if (!COHERENCE_CLASSES.includes(p.expect)) die(`phrase[${i}] (${p.text}): expect must be one of ${COHERENCE_CLASSES.join('|')}`);
 });
 const concurrency = Math.max(1, Number(a.concurrency) || 4);
-console.log(mode === 'jev' ? `Jev mode: ${phrases.length} billable Jev call(s), concurrency ${concurrency}` : `Embedding mode: ${phrases.length} query embeds + 1 bank embed (local Ollama), concurrency ${concurrency}`);
+console.log(mode === 'jev' ? `Jev mode: ${phrases.length} billable Jev call(s), concurrency ${concurrency}` : mode === 'laya' ? `Laya mode: ${phrases.length} call(s) to ${process.env.LAYA_BASE_URL ?? 'http://localhost:8000'} (model ${process.env.LAYA_MODEL ?? 'auto'}), concurrency ${concurrency}` : `Embedding mode: ${phrases.length} query embeds + 1 bank embed (local Ollama), concurrency ${concurrency}`);
 
 interface Row { text: string; context: string[]; expect: CoherenceClass; got: CoherenceClass | null; score: number | null; ms: number; error?: string }
 const median = (xs: number[]) => { if (!xs.length) return null; const s = [...xs].sort((x, y) => x - y); const m = s.length >> 1; return s.length % 2 ? s[m] : (s[m - 1] + s[m]) / 2; };

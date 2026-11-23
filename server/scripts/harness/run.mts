@@ -1,6 +1,6 @@
 /**
  * Fake Twilio ConversationRelay client.
- * npx tsx scripts/harness/run.mts --phrases scripts/harness/phrases.json --modes none,jev,embedding --host localhost:3007
+ * npx tsx scripts/harness/run.mts --phrases scripts/harness/phrases.json --modes none,jev,embedding,laya --host localhost:3007
  * See README.md. Reads AUTH_TOKEN from server/.env (never printed) to sign the WS upgrade.
  */
 import 'dotenv/config';
@@ -46,7 +46,7 @@ const llmCalls = modes.length * phrases.length;
 console.log(
     `Run: ${modes.length} mode(s) x ${phrases.length} phrase(s) = ${llmCalls} sessions; ` +
         (noWait ? 'closing after first frame (LLM call still started, ~' + llmCalls + ' OpenAI calls, partially consumed)' : `~${llmCalls} full OpenAI calls`) +
-        (modes.some((m) => m !== 'none') ? `; plus jev/embedding calls for ${phrases.length * modes.filter((m) => m !== 'none').length} turns` : '')
+        (modes.some((m) => m !== 'none') ? `; plus jev/embedding/laya calls for ${phrases.length * modes.filter((m) => m !== 'none').length} turns` : '')
 );
 
 const wsUrl = `wss://${host}/conversation-relay`; // the URL Twilio would sign

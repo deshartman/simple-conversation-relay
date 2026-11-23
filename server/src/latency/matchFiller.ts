@@ -2,12 +2,12 @@
  * Match the caller's utterance to a filler phrase, per the current latency mode.
  * Never throws: any failure is logged and returns null (no filler).
  *
- * `score` is cosine similarity (embedding) or the chosen option's Jev probability (jev).
+ * `score` is cosine similarity (embedding) or the chosen option's Jev/Laya probability (jev, laya).
  */
-import { getMode, type LatencyMode } from './mode.js';
+import { getMode, type LatencyMode, type DecisionMode } from './mode.js';
 import { loadFillers, fillerDocuments, fillerById, opener, type Filler } from './fillers.js';
 import { embed, cosine } from './embeddings.js';
-import { jevEvaluate } from './jev.js';
+import { jevEvaluate, layaEvaluate } from './jev.js';
 import { logOut, logError } from '../utils/logger.js';
 
 export interface FillerMatch { filler: Filler; score: number; mode: LatencyMode; ms: number }
@@ -25,8 +25,13 @@ export interface MatchOptions {
 const allowed = (f: Filler, o: MatchOptions): boolean => !o.avoidOpeners?.has(opener(f.say));
 
 const JEV_TIMEOUT_MS = 600;
+// Local laya-serve: ~350 ms warm on MPS, ~670 ms on CPU.
+const LAYA_TIMEOUT_MS = 1000;
 // The explicit out inside the Jev question: always pick something, this is the safe default.
 const CATCH_ALL = 'generic-ack';
+// Initial Laya gate, chosen on scripts/eval/dev.json only.
+export const LAYA_DEFAULT_THRESHOLD = 0.6;
+export const LAYA_DEFAULT_MARGIN = 0;
 
 const num = (name: string, fallback: number): number => {
     const n = Number(process.env[name]);
@@ -85,17 +90,17 @@ async function rankEmbedding(text: string, o: MatchOptions): Promise<Ranked | nu
     return scored.length ? { filler: scored[0].filler, score: scored[0].score, margin: scored[0].score - (scored[1]?.score ?? 0) } : null;
 }
 
-async function rankJev(text: string, o: MatchOptions): Promise<Ranked> {
+async function rankJev(text: string, o: MatchOptions, evaluate = jevEvaluate, timeoutMs = JEV_TIMEOUT_MS): Promise<Ranked> {
     const fillers = loadFillers(o.fillersPath);
     const criteria: Record<string, unknown> = {};
     for (const f of fillers.filter((f) => allowed(f, o))) criteria[f.id] = { what: f.when, examples: f.examples };
     criteria[CATCH_ALL] = {
         what: 'Use when the utterance has no request or answer that matches any other option: off-topic chatter, side talk to someone else in the room, background noise, or fragments with no request. Prefer it over any specific option that only shares a word with the utterance.',
     };
-    const r = await jevEvaluate(
+    const r = await evaluate(
         text,
         { filler: { type: 'choice', instructions: 'Which option best describes what the caller just said?', criteria } },
-        JEV_TIMEOUT_MS,
+        timeoutMs,
     );
     if (!r.ok) throw new Error(r.error);
     const a = r.answers.filler;
@@ -106,17 +111,19 @@ async function rankJev(text: string, o: MatchOptions): Promise<Ranked> {
 }
 
 /** Raw top-1 for a mode, no threshold applied. Throws on infrastructure failure. */
-export function rank(mode: 'embedding' | 'jev', text: string, o: MatchOptions = {}): Promise<Ranked | null> {
-    return mode === 'embedding' ? rankEmbedding(text, o) : rankJev(text, o);
+export function rank(mode: DecisionMode, text: string, o: MatchOptions = {}): Promise<Ranked | null> {
+    return mode === 'embedding' ? rankEmbedding(text, o) : mode === 'laya' ? rankJev(text, o, layaEvaluate, LAYA_TIMEOUT_MS) : rankJev(text, o);
 }
 
 /** Apply catch-all / threshold / margin gating. Returns the filler, or why it was a miss. */
-export function gate(mode: 'embedding' | 'jev', r: Ranked | null, o: MatchOptions = {}): { filler: Filler; score: number } | MissReason {
+export function gate(mode: DecisionMode, r: Ranked | null, o: MatchOptions = {}): { filler: Filler; score: number } | MissReason {
     if (!r) return 'no-match';
     if (!r.filler || r.filler.category === 'catch-all') return 'catch-all';
-    const min = o.threshold ?? num(mode === 'embedding' ? 'LATENCY_EMBED_THRESHOLD' : 'LATENCY_JEV_THRESHOLD', mode === 'embedding' ? 0.59 : 0.5);
+    const min = o.threshold ?? (mode === 'laya' ? num('LATENCY_LAYA_THRESHOLD', LAYA_DEFAULT_THRESHOLD)
+        : num(mode === 'embedding' ? 'LATENCY_EMBED_THRESHOLD' : 'LATENCY_JEV_THRESHOLD', mode === 'embedding' ? 0.59 : 0.5));
     if (r.score < min) return 'below-threshold';
-    if (r.margin < (o.margin ?? num(mode === 'embedding' ? 'LATENCY_EMBED_MARGIN' : 'LATENCY_JEV_MARGIN', mode === 'embedding' ? 0.01 : 0))) return 'low-margin';
+    if (r.margin < (o.margin ?? (mode === 'laya' ? num('LATENCY_LAYA_MARGIN', LAYA_DEFAULT_MARGIN)
+        : num(mode === 'embedding' ? 'LATENCY_EMBED_MARGIN' : 'LATENCY_JEV_MARGIN', mode === 'embedding' ? 0.01 : 0)))) return 'low-margin';
     return { filler: r.filler, score: r.score };
 }
 

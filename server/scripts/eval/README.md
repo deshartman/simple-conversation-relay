@@ -1,11 +1,12 @@
 # Offline filler-matcher eval
 
-Scores `matchFiller`'s internals (`rank` + `gate` in `src/latency/matchFiller.ts`) against a labelled phrase set. No server, WebSocket or OpenAI. Embedding mode needs local Ollama; jev mode needs `JEV_API_KEY` (read from `server/.env` by dotenv, never printed) and is billable.
+Scores `matchFiller`'s internals (`rank` + `gate` in `src/latency/matchFiller.ts`) against a labelled phrase set. No server, WebSocket or OpenAI. Embedding mode needs local Ollama; jev mode needs `JEV_API_KEY` (read from `server/.env` by dotenv, never printed) and is billable. laya mode needs a running `scripts/laya/start.sh` (see `scripts/laya/README.md`); point it with `LAYA_BASE_URL` and pin the checkpoint with `LAYA_MODEL=english|typed-decisions`.
 
     npx tsx scripts/eval/eval-match.mts --set scripts/eval/dev.json --mode embedding
     npx tsx scripts/eval/eval-match.mts --set scripts/eval/dev.json --mode jev --concurrency 4
+    LAYA_MODEL=english npx tsx scripts/eval/eval-match.mts --set scripts/eval/dev.json --mode laya --concurrency 1
 
-Flags: `--set <phrases.json>` and `--mode embedding|jev` (required); `--fillers <path>` alternative dictionary (validated like `fillers.json`);
+Flags: `--set <phrases.json>` and `--mode embedding|jev|laya` (required); `--fillers <path>` alternative dictionary (validated like `fillers.json`);
 `--threshold N`, `--margin N`, `--score-by max|when-only|mean-top2` (embedding only); `--concurrency N` (default 4); `--out <path>` (default `out/eval-<mode>-<set>-<ts>.json`, git-ignored).
 The call count is printed up front. Run it with `FILLERS_PATH=<path>` set and the matcher in the server also uses that dictionary.
 
@@ -19,8 +20,8 @@ Each phrase needs `expectCategory`, `acceptCategories` or `expectFallback`. `dev
 | Env | Per-call | Meaning |
 | --- | --- | --- |
 | `FILLERS_PATH` | `fillersPath` | dictionary file instead of bundled `fillers.json`; one embedded bank per dictionary |
-| `LATENCY_EMBED_THRESHOLD` (0.6) / `LATENCY_JEV_THRESHOLD` (0.5) | `threshold` | min top-1 score |
-| `LATENCY_EMBED_MARGIN` / `LATENCY_JEV_MARGIN` (0 = off) | `margin` | min top-1 minus top-2 (embedding: best vs. second-best *filler*; jev: top two probabilities); miss reason `low-margin` |
+| `LATENCY_EMBED_THRESHOLD` (0.6) / `LATENCY_JEV_THRESHOLD` (0.5) / `LATENCY_LAYA_THRESHOLD` (0.6) | `threshold` | min top-1 score |
+| `LATENCY_EMBED_MARGIN` / `LATENCY_JEV_MARGIN` / `LATENCY_LAYA_MARGIN` (0 = off) | `margin` | min top-1 minus top-2 (embedding: best vs. second-best *filler*; jev: top two probabilities); miss reason `low-margin` |
 | `LATENCY_EMBED_SCORE_BY` (`max`) | `scoreBy` | per-filler score: best doc / the `when` doc only / mean of its two best docs |
 
 A best match whose filler category is `catch-all` is a miss (`catch-all`), in both modes (jev also treats its own `generic-ack` option that way).

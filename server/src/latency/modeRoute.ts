@@ -4,9 +4,9 @@ import { fileURLToPath } from 'node:url';
 import {
     LATENCY_MODES, getMode, setMode, isLatencyMode,
     MAX_LLM_DELAY_MS, isValidDelayMs, getLlmDelayMs, setLlmDelayMs, isHandlerEnabled, setHandlerEnabled,
-    MAX_QUESTION_WAIT_MS, isValidQuestionWaitMs, getQuestionWaitMs, setQuestionWaitMs, isJevWarmEnabled,
+    MAX_QUESTION_WAIT_MS, isValidQuestionWaitMs, getQuestionWaitMs, setQuestionWaitMs, isJevWarmEnabled, isLayaWarmEnabled,
 } from './mode.js';
-import { warmJev } from './jev.js';
+import { warmJev, warmLaya } from './jev.js';
 import { warmFillerBank } from './matchFiller.js';
 import { warmCoherenceBank } from './coherence.js';
 import { logOut } from '../utils/logger.js';
@@ -59,6 +59,7 @@ export function createLatencyModeRouter(): Router {
         logOut('Latency', `Mode changed: ${previous} -> ${mode}`);
         if (mode === 'embedding') { warmFillerBank(); warmCoherenceBank(); }
         if (mode === 'jev' && isJevWarmEnabled()) void warmJev();
+        if (mode === 'laya' && isLayaWarmEnabled()) void warmLaya();
         res.json({ mode, previous });
     };
     router.put('/mode', set);

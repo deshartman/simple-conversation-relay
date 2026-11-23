@@ -5,10 +5,14 @@
  *   none      - stock behaviour, no filler
  *   jev       - src/latency/jev.ts
  *   embedding - src/latency/embeddings.ts
+ *   laya      - local laya-serve over the Jev protocol (src/latency/jev.ts)
  */
 
-export const LATENCY_MODES = ['none', 'jev', 'embedding'] as const;
+export const LATENCY_MODES = ['none', 'jev', 'embedding', 'laya'] as const;
 export type LatencyMode = (typeof LATENCY_MODES)[number];
+
+/** Modes that actually pick a filler. */
+export type DecisionMode = Exclude<LatencyMode, 'none'>;
 
 export function isLatencyMode(x: unknown): x is LatencyMode {
     return typeof x === 'string' && (LATENCY_MODES as readonly string[]).includes(x);
@@ -84,6 +88,21 @@ export function isJevWarmEnabled(): boolean {
 
 export function setJevWarmEnabled(b: boolean): void {
     jevWarmEnabled = b;
+}
+
+/** Laya server warm-up at call start / mode switch. Default LATENCY_LAYA_WARM: 'off' | 'false' | '0' -> off; else on. */
+let layaWarmEnabled: boolean | undefined;
+
+export function isLayaWarmEnabled(): boolean {
+    if (layaWarmEnabled === undefined) {
+        const fromEnv = process.env.LATENCY_LAYA_WARM?.trim().toLowerCase();
+        layaWarmEnabled = !(fromEnv === 'off' || fromEnv === 'false' || fromEnv === '0');
+    }
+    return layaWarmEnabled;
+}
+
+export function setLayaWarmEnabled(b: boolean): void {
+    layaWarmEnabled = b;
 }
 
 export const MAX_QUESTION_WAIT_MS = 10000;

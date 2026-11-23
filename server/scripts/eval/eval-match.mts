@@ -1,6 +1,6 @@
 /**
  * Offline eval of the filler matcher: no server, no WebSocket, no OpenAI.
- * npx tsx scripts/eval/eval-match.mts --set scripts/eval/dev.json --mode embedding|jev [--fillers <path>]
+ * npx tsx scripts/eval/eval-match.mts --set scripts/eval/dev.json --mode embedding|jev|laya [--fillers <path>]
  *   [--threshold N] [--margin N] [--score-by max|when-only|mean-top2] [--concurrency N] [--out <path>]
  * See README.md. Needs local Ollama (embedding) or JEV_API_KEY in server/.env (jev, billable).
  */
@@ -9,7 +9,7 @@ import { readFileSync, writeFileSync, mkdirSync } from 'node:fs';
 import { fileURLToPath } from 'node:url';
 import path from 'node:path';
 import { parseArgs } from 'node:util';
-import { rank, gate, SCORE_BYS, type Ranked, type ScoreBy, type MatchOptions } from '../../src/latency/matchFiller.js';
+import { rank, gate, SCORE_BYS, LAYA_DEFAULT_THRESHOLD, LAYA_DEFAULT_MARGIN, type Ranked, type ScoreBy, type MatchOptions } from '../../src/latency/matchFiller.js';
 import { loadFillers } from '../../src/latency/fillers.js';
 
 const here = path.dirname(fileURLToPath(import.meta.url));
@@ -22,10 +22,10 @@ const { values: a } = parseArgs({
 });
 const die = (m: string): never => { console.error(m); process.exit(1); };
 if (!a.set) die('--set <phrases.json> is required');
-if (a.mode !== 'embedding' && a.mode !== 'jev') die('--mode must be embedding or jev');
-const mode = a.mode as 'embedding' | 'jev';
+if (a.mode !== 'embedding' && a.mode !== 'jev' && a.mode !== 'laya') die('--mode must be embedding, jev or laya');
+const mode = a.mode as 'embedding' | 'jev' | 'laya';
 if (a['score-by'] && !(SCORE_BYS as readonly string[]).includes(a['score-by'])) die(`--score-by must be one of ${SCORE_BYS.join('|')}`);
-if (a['score-by'] && mode === 'jev') die('--score-by applies to embedding mode only');
+if (a['score-by'] && mode !== 'embedding') die('--score-by applies to embedding mode only');
 
 interface Phrase { text: string; expectCategory?: string; acceptCategories?: string[]; ambiguous?: boolean; expectFallback?: boolean }
 const raw = JSON.parse(readFileSync(a.set!, 'utf8'));
@@ -49,12 +49,15 @@ const opts: MatchOptions = {
     scoreBy: a['score-by'] as ScoreBy | undefined,
 };
 const concurrency = Math.max(1, Number(a.concurrency) || 4);
-const effThreshold = opts.threshold ?? (Number(process.env[mode === 'embedding' ? 'LATENCY_EMBED_THRESHOLD' : 'LATENCY_JEV_THRESHOLD']) || (mode === 'embedding' ? 0.6 : 0.5));
-const effMargin = opts.margin ?? (Number(process.env[mode === 'embedding' ? 'LATENCY_EMBED_MARGIN' : 'LATENCY_JEV_MARGIN']) || 0);
+const envKey = (what: 'THRESHOLD' | 'MARGIN') => `LATENCY_${mode === 'embedding' ? 'EMBED' : mode.toUpperCase()}_${what}`;
+const effThreshold = opts.threshold ?? (Number(process.env[envKey('THRESHOLD')]) || (mode === 'embedding' ? 0.6 : mode === 'laya' ? LAYA_DEFAULT_THRESHOLD : 0.5));
+const effMargin = opts.margin ?? (Number(process.env[envKey('MARGIN')]) || (mode === 'laya' ? LAYA_DEFAULT_MARGIN : 0));
 
 console.log(
     mode === 'jev'
         ? `Jev mode: ${phrases.length} billable Jev call(s), concurrency ${concurrency}`
+        : mode === 'laya'
+        ? `Laya mode: ${phrases.length} call(s) to ${process.env.LAYA_BASE_URL ?? 'http://localhost:8000'} (model ${process.env.LAYA_MODEL ?? 'auto'}), concurrency ${concurrency}`
         : `Embedding mode: ${phrases.length} query embedding call(s) + 1 bank embed + 1 warm-up (local Ollama), concurrency ${concurrency}`,
 );
 

@@ -488,6 +488,7 @@ qms.addEventListener('keydown',e=>{if(e.key==='Enter')setQ(Math.round(Number(qms
 // Mode switch: same origin as the server that served this page, so no URL to paste.
 const INFO={none:{c:'#9AA6C0',t:'Baseline. Nothing is said while the LLM thinks.'},
  jev:{c:'#1FB5E0',t:'Hosted classifier picks the line. About 250 ms, most accurate (87% useful).'},
+ laya:{c:'#F5B84B',t:'Local Laya model (laya-serve). About 350 ms warm on Apple MPS.'},
  embedding:{c:'#5FD6A4',t:'Local vector match. About 50 to 110 ms, fastest (61% useful, more plain "Okay.").'}};
 let avail=['none','jev','embedding'];const API='/latency/mode',swEl=document.getElementById('sw'),msg=document.getElementById('swmsg');
 function paint(mode,a){avail=a||avail;

@@ -38,6 +38,7 @@ describe('mode.ts', () => {
     it('isLatencyMode accepts only the valid set', async () => {
         const { isLatencyMode } = await freshMode();
         expect(isLatencyMode('embedding')).toBe(true);
+        expect(isLatencyMode('laya')).toBe(true);
         for (const bad of ['', 'JEV', 'other', null, undefined, 1, {}]) {
             expect(isLatencyMode(bad)).toBe(false);
         }
@@ -79,7 +80,7 @@ describe('/latency/mode route', () => {
     it('GET returns mode and available', async () => {
         const res = await send('GET');
         expect(res.status).toBe(200);
-        expect(await res.json()).toEqual({ mode: 'none', available: ['none', 'jev', 'embedding'] });
+        expect(await res.json()).toEqual({ mode: 'none', available: ['none', 'jev', 'embedding', 'laya'] });
     });
     it.each(['PUT', 'POST'])('%s sets a valid mode and GET reflects it', async (method) => {
         const res = await send(method, { mode: 'embedding' });
@@ -92,7 +93,7 @@ describe('/latency/mode route', () => {
         for (const body of [{ mode: 'bogus' }, {}, { mode: 5 }]) {
             const res = await send('PUT', body);
             expect(res.status).toBe(400);
-            expect((await res.json()).error).toMatch(/none, jev, embedding/);
+            expect((await res.json()).error).toMatch(/none, jev, embedding, laya/);
         }
         expect((await (await send('GET')).json()).mode).toBe('jev');
     });

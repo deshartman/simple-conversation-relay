@@ -8,12 +8,13 @@
  * Throws on infrastructure failure or timeout; the caller fails open.
  */
 import { embed, cosine } from './embeddings.js';
-import { jevEvaluate } from './jev.js';
+import { jevEvaluate, layaEvaluate } from './jev.js';
+import type { DecisionMode } from './mode.js';
 import { logOut, logError } from '../utils/logger.js';
 
 export const COHERENCE_CLASSES = ['question', 'statement', 'filler', 'changed-mind'] as const;
 export type CoherenceClass = (typeof COHERENCE_CLASSES)[number];
-export interface CoherenceResult { cls: CoherenceClass; source: 'jev' | 'embedding'; ms: number; score: number }
+export interface CoherenceResult { cls: CoherenceClass; source: DecisionMode; ms: number; score: number }
 
 const timeoutMs = (): number => {
     const n = Number(process.env.LATENCY_COHERENCE_TIMEOUT_MS);
@@ -115,13 +116,13 @@ async function viaEmbedding(latest: string): Promise<{ cls: CoherenceClass; scor
     return nearestClass(q, vectors, owner);
 }
 
-async function viaJev(latest: string, context: string[]): Promise<{ cls: CoherenceClass; score: number }> {
+async function viaJev(latest: string, context: string[], evaluate = jevEvaluate): Promise<{ cls: CoherenceClass; score: number }> {
     const criteria: Record<string, unknown> = {};
     for (const c of COHERENCE_CLASSES) criteria[c] = { what: CLASS_INFO[c].what, examples: CLASS_INFO[c].examples };
     const state = context.length
         ? `Earlier in this turn, the caller said: ${context.map((c) => `"${c}"`).join(' ')}\nThe caller's latest words: "${latest}"`
         : `The caller's latest words: "${latest}"`;
-    const r = await jevEvaluate(
+    const r = await evaluate(
         state,
         { coherence: { type: 'choice', instructions: "Which option best describes the caller's latest words, given what they said earlier?", criteria } },
         timeoutMs(),
@@ -130,12 +131,12 @@ async function viaJev(latest: string, context: string[]): Promise<{ cls: Coheren
     return jevChoiceToClass(r.answers.coherence);
 }
 
-export async function classifyCoherence(mode: 'jev' | 'embedding', latest: string, context: string[] = []): Promise<CoherenceResult> {
+export async function classifyCoherence(mode: DecisionMode, latest: string, context: string[] = []): Promise<CoherenceResult> {
     const t0 = performance.now();
     let timer: NodeJS.Timeout | undefined;
     try {
         const r = await Promise.race([
-            mode === 'embedding' ? viaEmbedding(latest) : viaJev(latest, context),
+            mode === 'embedding' ? viaEmbedding(latest) : viaJev(latest, context, mode === 'laya' ? layaEvaluate : jevEvaluate),
             new Promise<never>((_, rej) => { timer = setTimeout(() => rej(new Error(`timeout after ${timeoutMs()}ms`)), timeoutMs()); }),
         ]);
         return { ...r, source: mode, ms: performance.now() - t0 };
