@@ -1,5 +1,39 @@
 # Changelog
 
+## Unreleased — `v4.low-latency` branch
+
+### Low-latency acknowledgement and Handler
+
+Removes dead air between the caller finishing and the LLM speaking. Test bed only; every setting is in memory. Tests: **296 passing**, 1 known `ServerConfig` failure (empty `OUTBOUND_API_KEY=` in `.env`).
+
+#### ✨ Features
+
+**Acknowledgement**
+- A short spoken line ("Okay.", "Good question.") sent as `text {last:false}` while the LLM runs. Picked by Jev or a local Ollama embedding matcher from a 101-entry generic dictionary; a neutral fallback is spoken if no match lands within `LATENCY_FILLER_BUDGET_MS` (now 400), and a late match is dropped. The same opening word is not repeated within a call.
+- Offline evals: `scripts/eval/eval-match.mts` (held-out set, Jev 87% useful vs embedding 61%) and `scripts/harness/` for WebSocket runs.
+
+**Handler**
+- Hold sound (`public/media/hold.wav`, served at `/media`, built by `scripts/make-hold-clip.mts`) sent once per turn after the acknowledgement and preempted by the first LLM token.
+- Coherence (`src/latency/coherence.ts`): classifies each piece as question, statement, filler or changed-mind and waits up to `question_wait` for the rest. Offline `scripts/eval/eval-coherence.mts`: Jev 39/40 at ~194 ms, embedding 31/40 at ~80 ms.
+- Merge before answer: a new piece before the first LLM token is merged into the unanswered question (new `retract` event to `OpenAIResponseService`).
+- Take-back: an interrupt before the first LLM token is not forwarded; the pending question is taken back and the next piece merged.
+- Jev connection warm-up at call start and on switching to `jev`.
+
+**Endpoints and page**
+- `/latency/mode`, `/latency/handler`, `/latency/question-wait` (0..10000 ms) and `/latency/delay` (0..20000 ms, test only), each `GET` plus `PUT`/`POST`.
+- `/latency/` explainer page with live controls and charts from real calls.
+
+**Env** (see `server/.env.example`): `LATENCY_MODE`, `LATENCY_EMBED_*`, `LATENCY_JEV_*`, `LATENCY_FILLER_BUDGET_MS` (400), `LATENCY_HOLD_URL`, `LATENCY_HOLD_LOOP`, `LATENCY_HANDLER`, `LATENCY_QUESTION_WAIT_MS`, `LATENCY_TAKEBACK_WAIT_MS` (4000), `LATENCY_COHERENCE_TIMEOUT_MS` (600), `LATENCY_JEV_WARM`, `LATENCY_TEST_LLM_DELAY_MS`, plus `JEV_*`, `OLLAMA_*` and `OPENAI_REASONING_EFFORT`.
+
+#### 🐛 Fixes
+- **Early interrupt lost the answer.** Talking over our own acknowledgement or hold sound sent an empty interrupt that killed the in-flight stream silently (call CAe55f4f). Interrupts before the first token are no longer forwarded; the stream stop is now logged.
+- **Pending answer started while the caller was still talking** (call {UK_NATIONAL_INSURANCE_NUMBER}). Fixed by the take-back; confirmed on CAd4bda9, where the taken-back question and the next piece became one prompt and one answer (CAdb229c showed the merge of three pieces).
+- **Take-back wait too short.** Now at least `LATENCY_TAKEBACK_WAIT_MS` (4000): the caller's words arrived ~3 s after the interrupt.
+- **Filler budget too tight.** 350 -> 400 ms: the first Jev match took 354 ms even when warm.
+
+#### ⚠️ Notes
+- The hold clip uses the ConversationAgent project's `typing.mp3`, which has no recorded licence. Confirm before anything leaves the test bed.
+
 ## Release v4.14.0
 
 ### Transport / ResponseService Separation

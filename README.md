@@ -21,6 +21,22 @@
 
 ---
 
+## This branch: low-latency Handler test bed (`v4.low-latency`)
+
+An experiment on top of v4.14 to remove dead air on voice calls. It adds:
+
+- **Acknowledgement:** a short spoken "Okay." chosen by Jev or a local embedding matcher while the LLM thinks, with a neutral fallback if no match lands within 400 ms.
+- **Handler:** for every piece the caller says it acknowledges, plays a hold sound until the LLM speaks, and waits up to a `question_wait` for the rest of the question. A piece that arrives before the answer is merged into the unanswered question, and an early interrupt takes the pending question back instead of killing the answer.
+- **Coherence:** a classifier (question / statement / filler / changed-mind) decides whether the caller has finished.
+
+The explainer page and live controls are at `/latency/` (for example `http://localhost:3007/latency/`). Settings are in memory and reset on restart: `/latency/mode` (`none|jev|embedding`), `/latency/handler`, `/latency/question-wait` and, for testing only, `/latency/delay`. The `LATENCY_*` env defaults are in `server/.env.example`.
+
+Check the coherence classifier offline with `cd server && npx tsx scripts/eval/eval-coherence.mts --mode jev` (or `embedding`). Jev scored 39/40 at ~194 ms and embedding 31/40 at ~80 ms.
+
+Details: `.claude/skills/low-latency-reaction/SKILL.md` and the plan `.claude/plans/MEDIA-PLAYBACK.md` (kept in the parent folder, outside this repo).
+
+---
+
 This is a reference implementation aimed at introducing the key concepts of Conversation Relay. The key here is to ensure it is a workable environment that can be used to understand the basic concepts of Conversation Relay. It is intentionally simple and only the minimum has been done to ensure the understanding is focussed on the core concepts.
 
 ## Release v4.14.0 - Transport / ResponseService Separation
@@ -77,10 +93,14 @@ Twilio signature validation, an authenticated and rate-limited `/outboundCall`, 
 │   │   ├── defaultContext.md    # Default LLM system prompt (markdown)
 │   │   ├── serverConfig.json    # TwiML config, silence detection, listen mode
 │   │   └── legs/                # Optional per-leg context.md overrides
+│   ├── public/
+│   │   ├── latency.html     # Low-latency explainer and controls (v4.low-latency)
+│   │   └── media/           # hold.wav, played while the LLM thinks
 │   └── src/
 │       ├── server.ts                    # Express + WebSocket entrypoint
 │       ├── config/
 │       │   └── ServerConfig.ts          # Centralised env + config (v4.10)
+│       ├── latency/                     # Acknowledgement matcher, coherence, /latency routes (v4.low-latency)
 │       ├── interfaces/                  # Type definitions (.d.ts)
 │       │   ├── ConversationRelay.d.ts   # Re-exports + TwiML types + SessionData
 │       │   ├── ResponseService.d.ts     # ResponseService + ResponseHandler interfaces

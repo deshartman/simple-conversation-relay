@@ -70,7 +70,7 @@ text{fill:var(--fg);font-family:Inter,sans-serif;font-size:12px}.m{fill:var(--mu
 
 <div class="stats">
 <div class="stat r"><b>1–3 s</b><span>of silence before the LLM starts talking</span></div>
-<div class="stat g"><b>≤ 355 ms</b><span>to the first spoken acknowledgement</span></div>
+<div class="stat g"><b>≤ 355 ms</b><span>to the first spoken acknowledgement, on the calls below (the budget is now 400 ms)</span></div>
 <div class="stat c"><b>0</b><span>silent turns, in both modes</span></div>
 </div>
 
@@ -125,7 +125,7 @@ text{fill:var(--fg);font-family:Inter,sans-serif;font-size:12px}.m{fill:var(--mu
 </div></div>
 
 <h2>Handler · never leave the caller in dead air, never answer half a question</h2>
-<p class="sub" style="max-width:760px">With the Handler on, the Handler takes the caller's question first, then hands the LLM one complete question. For every piece the caller says, it acknowledges at once, plays a hold sound while the caller waits, and decides whether the caller has finished, waiting a little for more words if not. The LLM answers once, and the Handler steps aside when the answer starts. No dead air, and no answering half a question or talking over the caller.</p>
+<p class="sub" style="max-width:760px">With the Handler on, the Handler takes the caller's question first, then hands the LLM one complete question. For every piece the caller says, it acknowledges at once, plays a hold sound while the caller waits, and decides whether the caller has finished, waiting a little for more words if not. If the caller talks over the "Okay." or the hold sound before the answer starts, the Handler takes the pending question back and merges the next words into it. The LLM answers once, and the Handler steps aside when the answer starts. No dead air, and no answering half a question or talking over the caller.</p>
 <div class="stats" style="margin-top:18px">
 <div class="stat r"><b>4.5 s</b><span>of silence after "Okay." without the Handler</span></div>
 <div class="stat g"><b>382 ms</b><span>until the caller hears "Okay."</span></div>
@@ -147,7 +147,7 @@ text{fill:var(--fg);font-family:Inter,sans-serif;font-size:12px}.m{fill:var(--mu
 <button class="sb" data-d="0">0</button><button class="sb" data-d="4000">4 s</button></div>
 <span id="ctlmsg"></span></div>
 </div>
-<p class="try" style="margin-bottom:14px">Needs the <b>jev</b> or <b>embedding</b> mode above, because the Handler starts after the acknowledgement. With the Handler <b>Off</b>, every piece goes straight to the LLM. A Question wait of <b>0</b> turns off waiting for more words. The LLM delay is for testing only: the LLM usually answers in 1–3 s, too soon to hear the hold sound, so a delay of <b>4 s</b> makes it audible every turn.</p>
+<p class="try" style="margin-bottom:14px">Needs the <b>jev</b> or <b>embedding</b> mode above, because the Handler starts after the acknowledgement. With the Handler <b>Off</b>, every piece goes straight to the LLM: no hold sound, no waiting, no merging. A Question wait of <b>0</b> keeps the hold sound and the merge, but turns off waiting for more words. The LLM delay is for testing only: the LLM usually answers in 1–3 s, too soon to hear the hold sound, so a delay of <b>4 s</b> makes it audible every turn.</p>
 
 <svg viewBox="0 0 1100 190" role="img" aria-label="Without the Handler, the caller's question goes straight to the LLM and the caller hears silence until the answer, and may get an answer to half a question">
 <text x="20" y="24" class="m" style="font-weight:700;letter-spacing:.1em">WITHOUT HANDLER</text>
@@ -189,7 +189,7 @@ text{fill:var(--fg);font-family:Inter,sans-serif;font-size:12px}.m{fill:var(--mu
 <text x="410" y="222" text-anchor="middle" class="m"><tspan style="fill:#1FB5E0;font-weight:700">question</tspan> → send now · <tspan style="fill:#F08A2C;font-weight:700">statement, filler</tspan> → wait</text>
 <text x="410" y="240" text-anchor="middle" class="m"><tspan style="fill:#F22F46;font-weight:700">changed mind</tspan> → send the whole sentence now</text>
 <text x="410" y="258" text-anchor="middle" class="m">classifier fails → send now</text>
-<text x="410" y="276" text-anchor="middle" class="m">caller talks over the "Okay." or hold sound → wait restarts</text>
+<text x="410" y="276" text-anchor="middle" class="m">caller talks over the "Okay." or hold sound → question taken back, wait restarts (≥ 4 s)</text>
 <rect x="730" y="142" width="180" height="56" rx="12" fill="#0F1936" stroke="#F22F46" stroke-width="1.6"/>
 <text x="820" y="166" text-anchor="middle" style="font-weight:700">LLM</text><text class="m" x="820" y="184" text-anchor="middle">starts on the full sentence</text>
 <rect x="970" y="92" width="170" height="60" rx="12" fill="#0F1936" stroke="#5FD6A4" stroke-width="1.6"/>
@@ -253,7 +253,7 @@ function chart(t){
  s+=bar(1,0,t.match,'#1FB5E0',t.match+' ms'+(t.match>t.ack&&t.mode==='jev'?' · too late':''));
  s+=bar(2,t.ack,t.ack+120,'#5FD6A4',t.ackKind+' · '+t.ack+' ms');
  s+=bar(3,0,t.llm,'#243564','')+bar(3,t.llm,t.llm+110,'#F22F46',t.llm+' ms');
- s+=`<line x1="${x(350)}" x2="${x(350)}" y1="${T-6}" y2="${H-18}" stroke="#F08A2C" stroke-dasharray="4 3"/><text x="${x(350)+5}" y="${H-5}" style="fill:#F08A2C">350 ms budget</text></svg>`;
+ s+=`<line x1="${x(350)}" x2="${x(350)}" y1="${T-6}" y2="${H-18}" stroke="#F08A2C" stroke-dasharray="4 3"/><text x="${x(350)+5}" y="${H-5}" style="fill:#F08A2C">350 ms budget on this call</text></svg>`;
  return `<div class="tt">${t.name}</div>`+s+(t.note?`<p class="note">${t.note}</p>`:'');
 }
 
