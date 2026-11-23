@@ -106,6 +106,13 @@ export type CallEvent =
           parameters: Record<string, any>;
       }
     | { type: 'prompt'; text: string; lang?: string }
+    | {
+          type: 'retract';
+          /**
+           * The transport is merging a newer caller prompt into the last one before any answer
+           * started: drop that unanswered user message and stop its stream.
+           */
+      }
     | { type: 'dtmf'; digit: string }
     | {
           type: 'interrupt';

@@ -573,6 +573,8 @@ describe('ConversationRelaySession', () => {
 
             await session.handleIncoming({ type: 'prompt', voicePrompt: 'hi', lang: 'en-US' } as any);
             await session.handleIncoming({ type: 'dtmf', digit: '5' } as any);
+            // Once the answer has started, an interrupt is forwarded (before that it is the caller still talking).
+            responseService.handler.content({ type: 'text', token: 'Hello', last: false });
             await session.handleIncoming({ type: 'interrupt', utteranceUntilInterrupt: 'Hel' } as any);
 
             expect(responseService.handleEvent.mock.calls.map(c => c[0])).toEqual([

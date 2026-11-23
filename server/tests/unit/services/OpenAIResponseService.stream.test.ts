@@ -18,6 +18,9 @@ import { OpenAIResponseService } from '../../../src/services/OpenAIResponseServi
 import { ServerConfig } from '../../../src/config/ServerConfig.js';
 import { ToolRegistry } from '../../../src/tools/tool-registry.js';
 import { defineTool } from '../../../src/tools/define-tool.js';
+import { logOut } from '../../../src/utils/logger.js';
+
+vi.mock('../../../src/utils/logger.js', async (orig) => ({ ...(await orig<any>()), logOut: vi.fn(), logError: vi.fn() }));
 
 const { createMock } = vi.hoisted(() => ({ createMock: vi.fn() }));
 
@@ -223,6 +226,64 @@ describe('OpenAIResponseService — stream handling', () => {
             await service.generateResponse('user', 'hello');
 
             expect(tokens.join('')).toBe('one two three');
+        });
+    });
+
+    describe('retract and interrupt', () => {
+        const messages = (service: any) => service.inputMessages as any[];
+
+        it('retract removes the last user message when it is unanswered', async () => {
+            const { service } = makeService(registry);
+            await service.insertMessage('user', 'first');
+            await service.insertMessage('assistant', 'answer');
+            await service.insertMessage('user', 'Do you do SMS?');
+            await service.handleEvent({ type: 'retract' });
+            expect(messages(service).map(m => m.content)).toEqual(['first', 'answer']);
+            expect(vi.mocked(logOut).mock.calls.some(c => String(c[1]).includes('retracted unanswered prompt'))).toBe(true);
+        });
+
+        it('retract leaves the history alone when an assistant or tool message follows the user message', async () => {
+            const { service } = makeService(registry);
+            await service.insertMessage('user', 'q');
+            await service.insertMessage('assistant', 'a');
+            await service.handleEvent({ type: 'retract' });
+            expect(messages(service)).toHaveLength(2);
+            (service as any).inputMessages.push({ type: 'function_call_output', call_id: 'c', output: '{}' });
+            await service.handleEvent({ type: 'retract' });
+            expect(messages(service)).toHaveLength(3);
+        });
+
+        it('retract stops the old stream (superseded generation) and the merged prompt leaves one user message', async () => {
+            let release!: () => void;
+            const gate = new Promise<void>(r => (release = r));
+            createMock.mockReturnValueOnce({
+                async *[Symbol.asyncIterator]() {
+                    await gate;
+                    yield { type: 'response.output_text.delta', delta: 'SMS answer' };
+                },
+            });
+            createMock.mockReturnValueOnce(fakeStream(textEvents('merged answer')));
+            const { service, tokens } = makeService(registry);
+
+            const first = service.handleEvent({ type: 'prompt', text: 'Do you do SMS?' });
+            await service.handleEvent({ type: 'retract' });
+            release();
+            await first;
+            expect(tokens).toEqual([]);
+
+            await service.handleEvent({ type: 'prompt', text: 'Do you do SMS? and voice?' });
+            expect(tokens).toEqual(['merged answer']);
+            expect(messages(service).filter(m => m.role === 'user').map(m => m.content)).toEqual(['Do you do SMS? and voice?']);
+        });
+
+        it('logs when a stream is stopped by an interrupt', async () => {
+            createMock.mockReturnValueOnce(fakeStream(textEvents('hello')));
+            const { service, tokens } = makeService(registry);
+            const run = service.handleEvent({ type: 'prompt', text: 'hi' });
+            await service.handleEvent({ type: 'interrupt' });
+            await run;
+            expect(tokens).toEqual([]);
+            expect(vi.mocked(logOut).mock.calls.some(c => String(c[1]).includes('stream stopped by interrupt (generation 1)'))).toBe(true);
         });
     });
 });

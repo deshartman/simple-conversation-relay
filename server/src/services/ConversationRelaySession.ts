@@ -139,6 +139,14 @@ export class ConversationRelaySession {
     private bufferLang: string | undefined;
     /** Bumped per buffered prompt so a slow classification of an older fragment is ignored. */
     private coherenceSeq = 0;
+    /**
+     * Pending answer: from a flush until the LLM's first content token. While no LLM text has been sent
+     * and no tool has started, a new caller prompt is merged into it. Our own filler and hold don't count.
+     */
+    private pending: { seq: number; text: string; pieces: number; sent: boolean; toolStarted: boolean; merged: boolean } | null = null;
+    private flushSeq = 0;
+    /** Flush whose test LLM delay was overtaken by a merge: it must not send. */
+    private cancelledFlushSeq = 0;
 
     constructor(opts: ConversationRelaySessionOptions) {
         this.responseService = opts.responseService;
@@ -253,6 +261,8 @@ export class ConversationRelaySession {
                         this.promptAt = performance.now();
                         void this.sendFiller(message.voicePrompt || '', turn);
                     }
+                    // Both run synchronously up to the buffer push, so pieces arriving together keep their order.
+                    this.mergePending();
                     await this.routePrompt(message.voicePrompt || '', message.lang);
                     break;
                 case 'dtmf':
@@ -272,6 +282,12 @@ export class ConversationRelaySession {
                     this.holdActive = false;
                     // Caller spoke over the acknowledgement/hold: they are mid-sentence, so keep waiting.
                     if (this.waitTimer) this.startWaitTimer();
+                    // Before the answer started, the caller talking over our acknowledgement/hold is not
+                    // a request to stop the answer: forwarding would silently kill the in-flight stream.
+                    if (this.pendingWindowOpen()) {
+                        logOut('Session', `${this.logPrefix} interrupt before answer: treated as caller still talking`);
+                        break;
+                    }
                     await this.responseService.handleEvent({
                         type: 'interrupt',
                         heard: message.utteranceUntilInterrupt,
@@ -313,6 +329,30 @@ export class ConversationRelaySession {
     // =========================================================================
     // Outgoing — the single path back to Twilio
     // =========================================================================
+
+    /** True while an answer is pending (flushed, no LLM text, no tool) and the Handler is on. */
+    private pendingWindowOpen(): boolean {
+        return isHandlerEnabled() && !!this.pending && !this.pending.toolStarted && !this.llmStarted;
+    }
+
+    /**
+     * A new caller prompt inside the pending window: take back the unanswered text so it is sent
+     * again together with the new piece. Still in the test LLM delay: cancel that send. Already
+     * with the LLM: retract its user message and stop its stream.
+     */
+    private mergePending(): void {
+        const p = this.pending;
+        if (!p || p.merged || !this.pendingWindowOpen()) return;
+        p.merged = true;
+        this.promptBuffer.unshift(p.text);
+        // Not awaited: awaiting here let a piece arriving at the same moment reach the buffer first
+        // (call CAdb229c). The retract is done long before the merged prompt is sent (after classify).
+        if (p.sent) {
+            this.responseService.handleEvent({ type: 'retract' }).catch((e) =>
+                logError('Latency', `${this.logPrefix} retract failed: ${e instanceof Error ? e.message : String(e)}`));
+        } else this.cancelledFlushSeq = p.seq;
+        logOut('Latency', `${this.logPrefix} coherence merge state=${p.sent ? 'in-flight' : 'delay'} pieces=${p.pieces + 1}`);
+    }
 
     /**
      * Coherence (part of the Handler): decide when a caller prompt goes to the LLM. With the Handler
@@ -367,10 +407,18 @@ export class ConversationRelaySession {
         this.promptBuffer = [];
         if (!pieces) return;
         logOut('Latency', `${this.logPrefix} coherence flush reason=${reason} pieces=${pieces}`);
+        const seq = ++this.flushSeq;
+        const pending = { seq, text, pieces, sent: false, toolStarted: false, merged: false };
+        this.pending = pending;
         // Test-only: hold back the LLM so the hold sound gets a chance to play. 0 = off.
         if (getLlmDelayMs() > 0) {
             await new Promise((r) => setTimeout(r, getLlmDelayMs()));
         }
+        if (this.cancelledFlushSeq === seq) {
+            logOut('Latency', `${this.logPrefix} coherence flush skipped (merged into a newer prompt)`);
+            return;
+        }
+        pending.sent = true;
         await this.responseService.handleEvent({ type: 'prompt', text, lang: this.bufferLang });
     }
 
@@ -656,11 +704,13 @@ export class ConversationRelaySession {
             content: (response: ContentResponse) => {
                 if (response.token && !this.llmStarted) {
                     this.llmStarted = true;
+                    this.pending = null;
                     if (!this.firstTokenLogged) {
                         this.firstTokenLogged = true;
                         logOut('Latency', `${this.logPrefix} first LLM token ${Math.round(performance.now() - this.promptAt)}ms after prompt`);
                     }
                 }
+                if (response.last) this.pending = null;
                 if (this.holdActive && response.token?.trim()) {
                     this.holdActive = false;
                     logOut('Latency', `${this.logPrefix} hold preempted ${Math.round(performance.now() - this.holdSentAt)}ms after hold sent`);
@@ -706,6 +756,7 @@ export class ConversationRelaySession {
             },
 
             toolCallStart: (promise: Promise<unknown>) => {
+                if (this.pending) this.pending.toolStarted = true;
                 this.trackToolCall(promise);
             },
         };

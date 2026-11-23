@@ -175,6 +175,7 @@ describe('ConversationRelaySession coherence', () => {
         answer('question');
         const { session, rs } = makeSession();
         await prompt(session, 'first?');
+        rs.handler.content({ type: 'text', token: 'Answer.', last: true }); // answered, so the window is closed
         await prompt(session, 'second?');
         expect(prompts(rs).map((e: any) => e.text)).toEqual(['first?', 'second?']);
     });
@@ -192,5 +193,128 @@ describe('ConversationRelaySession coherence', () => {
         expect(rs.handleEvent).not.toHaveBeenCalled();
         await vi.advanceTimersByTimeAsync(5);
         expect(prompts(rs)).toHaveLength(1);
+    });
+
+    describe('merge before answer', () => {
+        const logged = (text: string) => vi.mocked(logOut).mock.calls.some(c => String(c[1]).includes(text));
+        const events = (rs: any, type: string) => rs.handleEvent.mock.calls.map((c: any[]) => c[0]).filter((e: any) => e.type === type);
+
+        it('merges in the LLM delay: one send with the joined text, the stale send skipped', async () => {
+            setLlmDelayMs(500);
+            answer('question');
+            answer('question');
+            const { session, rs } = makeSession();
+            void prompt(session, 'Do you do voice?');
+            await vi.advanceTimersByTimeAsync(100);
+            void prompt(session, 'And what kind of voice?');
+            await vi.advanceTimersByTimeAsync(2000);
+            expect(prompts(rs)).toEqual([{ type: 'prompt', text: 'Do you do voice? And what kind of voice?', lang: 'en-US' }]);
+            expect(events(rs, 'retract')).toHaveLength(0);
+            expect(logged('coherence merge state=delay pieces=2')).toBe(true);
+        });
+
+        it('merges in flight: retract, then one merged prompt', async () => {
+            answer('question');
+            answer('question');
+            const { session, rs } = makeSession();
+            await prompt(session, 'Do you do SMS?');
+            await prompt(session, 'And voice?');
+            expect(rs.handleEvent.mock.calls.map((c: any[]) => c[0].type)).toEqual(['prompt', 'retract', 'prompt']);
+            expect(prompts(rs)[1].text).toBe('Do you do SMS? And voice?');
+            expect(logged('coherence merge state=in-flight pieces=2')).toBe(true);
+        });
+
+        it('keeps arrival order when two pieces arrive together during a retract (call CAdb229c)', async () => {
+            answer('question');
+            answer('question');
+            answer('question');
+            const { session, rs } = makeSession();
+            await prompt(session, 'Do you do SMS?');
+            const p2 = prompt(session, 'Actually, do you do voice?');
+            const p3 = prompt(session, 'And what kind of voice?');
+            await Promise.all([p2, p3]);
+            await vi.advanceTimersByTimeAsync(10);
+            const last = prompts(rs).at(-1);
+            expect(last.text).toBe('Do you do SMS? Actually, do you do voice? And what kind of voice?');
+        });
+
+        it('does not merge after the first LLM token', async () => {
+            answer('question');
+            answer('question');
+            const { session, rs } = makeSession();
+            await prompt(session, 'first?');
+            rs.handler.content({ type: 'text', token: 'Yes', last: false });
+            await prompt(session, 'second?');
+            expect(events(rs, 'retract')).toHaveLength(0);
+            expect(prompts(rs).map((e: any) => e.text)).toEqual(['first?', 'second?']);
+        });
+
+        it('does not merge after a tool started', async () => {
+            answer('question');
+            answer('question');
+            const { session, rs } = makeSession();
+            await prompt(session, 'first?');
+            rs.handler.toolCallStart(new Promise(() => {}));
+            await prompt(session, 'second?');
+            expect(events(rs, 'retract')).toHaveLength(0);
+            expect(prompts(rs).map((e: any) => e.text)).toEqual(['first?', 'second?']);
+        });
+
+        it('an interrupt before the answer is not forwarded and restarts the wait', async () => {
+            answer('question');
+            answer('statement');
+            const { session, rs } = makeSession();
+            await prompt(session, 'Do you do SMS?');
+            await prompt(session, 'um also'); // merged, now waiting
+            expect(prompts(rs)).toHaveLength(1);
+            await vi.advanceTimersByTimeAsync(1500);
+            await session.handleIncoming({ type: 'interrupt', utteranceUntilInterrupt: '' } as any);
+            expect(events(rs, 'interrupt')).toHaveLength(0);
+            expect(logged('interrupt before answer: treated as caller still talking')).toBe(true);
+            await vi.advanceTimersByTimeAsync(1500);
+            expect(prompts(rs)).toHaveLength(1);
+            await vi.advanceTimersByTimeAsync(600);
+            expect(prompts(rs)).toHaveLength(2);
+        });
+
+        it('an interrupt after the first token is forwarded', async () => {
+            answer('question');
+            const { session, rs } = makeSession();
+            await prompt(session, 'Do you do SMS?');
+            rs.handler.content({ type: 'text', token: 'Yes', last: false });
+            await session.handleIncoming({ type: 'interrupt', utteranceUntilInterrupt: 'Yes' } as any);
+            expect(rs.handleEvent).toHaveBeenCalledWith({ type: 'interrupt', heard: 'Yes' });
+        });
+
+        it('merges with question_wait 0 when the Handler is on', async () => {
+            setQuestionWaitMs(0);
+            const { session, rs } = makeSession();
+            await prompt(session, 'Do you do SMS?');
+            await prompt(session, 'And voice?');
+            expect(events(rs, 'retract')).toHaveLength(1);
+            expect(prompts(rs)[1].text).toBe('Do you do SMS? And voice?');
+        });
+
+        it('Handler off: no merge and every interrupt is forwarded', async () => {
+            setHandlerEnabled(false);
+            const { session, rs } = makeSession();
+            await prompt(session, 'Do you do SMS?');
+            await session.handleIncoming({ type: 'interrupt', utteranceUntilInterrupt: '' } as any);
+            expect(rs.handleEvent).toHaveBeenCalledWith({ type: 'interrupt', heard: '' });
+            await prompt(session, 'And voice?');
+            expect(events(rs, 'retract')).toHaveLength(0);
+            expect(prompts(rs).map((e: any) => e.text)).toEqual(['Do you do SMS?', 'And voice?']);
+        });
+
+        it('Handler off: two prompts inside the LLM delay are both sent', async () => {
+            setHandlerEnabled(false);
+            setLlmDelayMs(500);
+            const { session, rs } = makeSession();
+            void prompt(session, 'one');
+            await vi.advanceTimersByTimeAsync(100);
+            void prompt(session, 'two');
+            await vi.advanceTimersByTimeAsync(1000);
+            expect(prompts(rs).map((e: any) => e.text)).toEqual(['one', 'two']);
+        });
     });
 });

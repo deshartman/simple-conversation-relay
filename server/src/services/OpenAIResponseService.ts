@@ -135,6 +135,9 @@ class OpenAIResponseService implements ResponseService {
             case 'prompt':
                 await this.generateResponse('user', event.text);
                 break;
+            case 'retract':
+                this.retractUnanswered();
+                break;
             case 'interrupt':
                 this.interrupt();
                 break;
@@ -231,6 +234,21 @@ class OpenAIResponseService implements ResponseService {
         this.isInterrupted = true;
     }
 
+    /**
+     * Take back the last user message when nothing has answered it, and stop its stream by
+     * claiming a new generation. Used when the caller adds to a question before any answer.
+     */
+    retractUnanswered(): void {
+        this.generation++;
+        const last = this.inputMessages[this.inputMessages.length - 1] as { role?: string } | undefined;
+        if (last?.role === 'user') {
+            this.inputMessages.pop();
+            logOut('OpenAIResponseService', 'retracted unanswered prompt');
+        } else {
+            logOut('OpenAIResponseService', 'retract skipped: last message is already answered');
+        }
+    }
+
     resetInterrupt(): void {
         this.isInterrupted = false;
     }
@@ -279,7 +297,10 @@ class OpenAIResponseService implements ResponseService {
 
         // @ts-ignore — OpenAI stream's async-iterator typing lags behind.
         for await (const event of stream) {
-            if (this.isInterrupted) break;
+            if (this.isInterrupted) {
+                logOut('OpenAIResponseService', `stream stopped by interrupt (generation ${generation})`);
+                break;
+            }
 
             // A newer prompt has arrived; this stream's output is stale and
             // must not reach the wire alongside the newer response.
