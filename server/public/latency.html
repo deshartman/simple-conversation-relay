@@ -95,7 +95,17 @@ text{fill:var(--fg);font-family:Inter,sans-serif;font-size:12px}.m{fill:var(--mu
 .otab{width:100%;border-collapse:collapse;font-size:13px}
 .otab th{text-align:left;color:var(--mute);font-weight:600;font-size:12px;letter-spacing:.06em;text-transform:uppercase;padding:8px 10px;border-bottom:1px solid var(--line2)}
 .otab td{vertical-align:top;padding:10px;border-bottom:1px solid var(--line)}
-.otab td:first-child{font-weight:600;width:24%}
+.otab td:first-child{font-weight:600;width:20%}
+.cmp{overflow-x:auto;-webkit-overflow-scrolling:touch;border:1px solid var(--line);border-radius:10px}
+.cmp table{border-collapse:collapse;font-size:13px;min-width:1180px;width:100%}
+.cmp th{text-align:left;color:var(--mute);font-weight:600;font-size:11px;letter-spacing:.06em;text-transform:uppercase;padding:10px;border-bottom:1px solid var(--line2);white-space:nowrap}
+.cmp td{vertical-align:top;padding:10px;border-bottom:1px solid var(--line);min-width:90px}
+.cmp tr:last-child td{border-bottom:0}
+.cmp td:first-child,.cmp th:first-child{position:sticky;left:0;background:var(--panel);font-weight:700;white-space:nowrap;border-right:1px solid var(--line)}
+.cmp td:first-child i{display:inline-block;width:10px;height:10px;border-radius:50%;margin-right:8px}
+.cmp .wide{min-width:200px}
+.cav{color:var(--mute);font-size:13.5px;margin:14px 0 0 18px;display:grid;gap:6px}.cav b{color:var(--fg)}
+.take{margin-top:16px;border-left:3px solid var(--cyan);background:var(--node);border-radius:10px;padding:12px 16px;font-size:15px}
 .otab .v{display:inline-block;font-size:11px;font-weight:800;letter-spacing:.06em;text-transform:uppercase;border-radius:6px;padding:1px 7px;margin-bottom:4px;color:#030B24}
 .otab .say{display:block;color:var(--fg)}.otab .why{display:block;color:var(--mute);font-size:12px}
 @media(max-width:700px){.otab thead{display:none}.otab tr{display:block;border-bottom:1px solid var(--line2);padding:6px 0}.otab td{display:block;width:auto!important;border:0;padding:4px 0}.otab td[data-h]::before{content:attr(data-h);display:block;color:var(--mute);font-size:11px;letter-spacing:.06em;text-transform:uppercase}}
@@ -115,18 +125,18 @@ text{fill:var(--fg);font-family:Inter,sans-serif;font-size:12px}.m{fill:var(--mu
 <div class="panel swrow">
 <div class="sw" id="sw" role="group" aria-label="Latency mode"></div>
 <span id="swmsg">loading…</span>
-<p class="try">Pick a mode, then call the number and ask the same question in each. Listen for the gap before the first word: <b>none</b> is silent until the answer, <b>jev</b> and <b>embedding</b> say a short "Okay." first.</p>
+<p class="try">Pick a mode, then call the number and ask the same question in each. Listen for the gap before the first word: <b>none</b> is silent until the answer, <b>jev</b>, <b>embedding</b> and <b>laya</b> say a short "Okay." first.</p>
 </div>
 
-<h2>Under the hood · how jev and embedding pick the "Okay."</h2>
-<p class="sub" style="max-width:760px;margin-bottom:14px">Both modes <b style="color:var(--fg)">classify</b> the caller's words into one of 101 pre-written lines. Neither writes an answer. Data from one probe run, 23 Nov 2026.</p>
+<h2>Under the hood · how jev, embedding and laya pick the "Okay."</h2>
+<p class="sub" style="max-width:760px;margin-bottom:14px">All three modes <b style="color:var(--fg)">classify</b> the caller's words into one of 101 pre-written lines. None writes an answer. Data from one probe run, 23 Nov 2026.</p>
 
 <div class="panel">
 <div class="ctlh" style="color:var(--cyan)">1 · Jev as a System 1</div>
 <div class="kt" style="--c:var(--cyan)">
 <div><b>System 1 · Jev</b><span>Classifies the prompt by answering set questions, and gives a confidence for each answer. Trained to classify prompts accurately.</span></div>
 <div><b>System 2 · the LLM</b><span>Generates the response. Trained to answer people.</span></div>
-<div><b>Online service</b><span>A hosted API, called over HTTPS. About 250 ms per call.</span></div>
+<div><b>Online service</b><span>A hosted API, called over HTTPS. About 230 ms per call (median, 150 held-out phrases).</span></div>
 </div>
 <div class="qrow">
 <div class="qcard" style="--c:var(--cyan)"><b>filler</b>: choice
@@ -162,16 +172,45 @@ text{fill:var(--fg);font-family:Inter,sans-serif;font-size:12px}.m{fill:var(--mu
 </div>
 
 <div class="panel" style="margin-top:14px">
-<div class="ctlh" style="color:var(--amber)">3 · How the matcher picks what to say</div>
-<p class="try" style="margin:0 0 12px">Same gates for both modes. Fail any gate → neutral fallback ("Sure thing!").</p>
+<div class="ctlh" style="color:#F5B84B">3 · Laya, a local System 1</div>
+<div class="kt" style="--c:#F5B84B">
+<div><b>Non-generative encoder</b><span>Laya (Convai Innovations, Apache-2.0) is ModernBERT-large, 421M parameters. It returns probabilities over typed options in one forward pass. It writes no text.</span></div>
+<div><b>Local laya-serve</b><span>Runs on this machine (Apple M4, MPS). It exposes the same <code>/v1/systemone</code> API as Jev, so the same client and the same questions are reused. Free, but about 0.8 GB of disk.</span></div>
+<div><b>Two checkpoints tested</b><span>base (<code>english</code>) and <code>typed-decisions</code>. Both are scored below.</span></div>
+</div>
+<div class="qrow">
+<div class="qcard" style="--c:#F5B84B"><b>filler</b>: choice  (typed choice question)
+"Which option best describes what
+ the caller just said?"
+  charge-shock   { what, examples }
+  want-human     { what, examples }
+  … 101 fillers
+  <b>generic-ack</b>    ← "none of these"
+  = 102 options, but the server caps
+    one choice at 100</div>
+<div class="qcard" style="--c:var(--amber)"><b>tournament grouping</b>
+ 102 options → groups of 64
+ each group: one forward pass,
+   probabilities over its options
+ group winners → a final round
+ the final winner's probability
+   goes through the same gate:
+   threshold 0.6 · margin 0</div>
+</div>
+<p class="note">Probabilities are over each group's finalists, not over all 102 options, and the checkpoint's temperatures are uncalibrated, so they run over-confident. The gate barely separates right from wrong (see the table below).</p>
+</div>
+
+<div class="panel" style="margin-top:14px">
+<div class="ctlh" style="color:var(--amber)">4 · How the matcher picks what to say</div>
+<p class="try" style="margin:0 0 12px">Same gates for all three modes. Fail any gate → neutral fallback ("Sure thing!").</p>
 <div class="steps">
 <div class="part" style="--c:#1FB5E0"><b><em>1</em>Rank</b><span>score fillers · skip recently used openers</span></div>
 <div class="part" style="--c:#9AA6C0"><b><em>2</em>Catch-all</b><span>nothing fits → fallback</span></div>
-<div class="part" style="--c:#F08A2C"><b><em>3</em>Threshold</b><span>Jev ≥ 0.5 · embedding ≥ 0.59</span></div>
-<div class="part" style="--c:#F22F46"><b><em>4</em>Margin</b><span>beat runner-up · Jev off · embedding ≥ 0.01</span></div>
+<div class="part" style="--c:#F08A2C"><b><em>3</em>Threshold</b><span>Jev ≥ 0.5 · embedding ≥ 0.59 · Laya ≥ 0.6</span></div>
+<div class="part" style="--c:#F22F46"><b><em>4</em>Margin</b><span>beat runner-up · Jev off · embedding ≥ 0.01 · Laya off</span></div>
 <div class="part" style="--c:#5FD6A4"><b><em>5</em>Budget</b><span>≤ 400 ms, else fallback · one per turn</span></div>
 </div>
-<table class="otab"><thead><tr><th>Caller says</th><th>Jev</th><th>Embedding</th></tr></thead><tbody id="otab"></tbody></table>
+<table class="otab"><thead><tr><th>Caller says</th><th>Jev</th><th>Embedding</th><th>Laya</th></tr></thead><tbody id="otab"></tbody></table>
 <p class="note" style="margin-top:8px">*cold connection. The server pre-warms it (<code>warmJev</code>); warm calls took 255–271 ms.</p>
 </div>
 
@@ -188,7 +227,7 @@ text{fill:var(--fg);font-family:Inter,sans-serif;font-size:12px}.m{fill:var(--mu
 <text x="265" y="122" text-anchor="middle" style="font-weight:700">Server</text><text class="m" x="265" y="140" text-anchor="middle">prompt arrives</text>
 <!-- fork -->
 <rect x="470" y="30" width="220" height="64" rx="12" fill="#0F1936" stroke="#1FB5E0" stroke-width="1.6"/>
-<text x="580" y="56" text-anchor="middle" style="font-weight:700">Matcher</text><text class="m" x="580" y="74" text-anchor="middle">embedding or Jev · 50–250 ms</text>
+<text x="580" y="56" text-anchor="middle" style="font-weight:700">Matcher</text><text class="m" x="580" y="74" text-anchor="middle">embedding, Jev or Laya · 25–230 ms</text>
 <rect x="470" y="156" width="220" height="64" rx="12" fill="#0F1936" stroke="#F22F46" stroke-width="1.6"/>
 <text x="580" y="182" text-anchor="middle" style="font-weight:700">LLM</text><text class="m" x="580" y="200" text-anchor="middle">real answer · 1–3 s</text>
 <!-- speak -->
@@ -214,9 +253,11 @@ text{fill:var(--fg);font-family:Inter,sans-serif;font-size:12px}.m{fill:var(--mu
 
 <h2>Match quality · 150 held-out phrases</h2>
 <div class="panel"><div class="bars">
-<div class="brow"><b>Jev</b><div><div class="track"><div class="fill" style="width:87.3%;background:var(--cyan)">87% useful</div></div><div class="cap">7.5% wrong · median 245 ms</div></div></div>
-<div class="brow"><b>Embedding</b><div><div class="track"><div class="fill" style="width:60.7%;background:var(--green)">61% useful</div></div><div class="cap">11.4% wrong · median 113 ms · the rest get a neutral "Okay."</div></div></div>
-</div></div>
+<div class="brow"><b>Jev</b><div><div class="track"><div class="fill" style="width:88%;background:var(--cyan)">88% useful</div></div><div class="cap">7.5% wrong of matches · median 230 ms</div></div></div>
+<div class="brow"><b>Embedding</b><div><div class="track"><div class="fill" style="width:60.7%;background:var(--green)">61% useful</div></div><div class="cap">11.4% wrong of matches · median 24 ms · the rest get a neutral "Okay."</div></div></div>
+<div class="brow"><b>Laya · base</b><div><div class="track"><div class="fill" style="width:30.7%;background:#F5B84B">31% useful</div></div><div class="cap">64.8% wrong of matches · median 216 ms</div></div></div>
+<div class="brow"><b>Laya · typed</b><div><div class="track"><div class="fill" style="width:32%;background:#F5B84B">32% useful</div></div><div class="cap">60.0% wrong of matches · median 224 ms</div></div></div>
+</div><p class="note" style="margin-top:10px">Useful = the right line was spoken. Each engine ran with its committed threshold, tuned on the dev set only. Source: engine-comparison.md, 23 Nov 2026.</p></div>
 
 <h2>Handler · never leave the caller in dead air, never answer half a question</h2>
 <p class="sub" style="max-width:760px">With the Handler on, the Handler takes the caller's question first, then hands the LLM one complete question. For every piece the caller says, it acknowledges at once, plays a hold sound while the caller waits, and decides whether the caller has finished, waiting a little for more words if not. If the caller talks over the "Okay." or the hold sound before the answer starts, the Handler takes the pending question back and merges the next words into it. The LLM answers once, and the Handler steps aside when the answer starts. No dead air, and no answering half a question or talking over the caller.</p>
@@ -241,7 +282,7 @@ text{fill:var(--fg);font-family:Inter,sans-serif;font-size:12px}.m{fill:var(--mu
 <button class="sb" data-d="0">0</button><button class="sb" data-d="4000">4 s</button></div>
 <span id="ctlmsg"></span></div>
 </div>
-<p class="try" style="margin-bottom:14px">Needs the <b>jev</b> or <b>embedding</b> mode above, because the Handler starts after the acknowledgement. With the Handler <b>Off</b>, every piece goes straight to the LLM: no hold sound, no waiting, no merging. A Question wait of <b>0</b> keeps the hold sound and the merge, but turns off waiting for more words. The LLM delay is for testing only: the LLM usually answers in 1–3 s, too soon to hear the hold sound, so a delay of <b>4 s</b> makes it audible every turn.</p>
+<p class="try" style="margin-bottom:14px">Needs the <b>jev</b>, <b>embedding</b> or <b>laya</b> mode above, because the Handler starts after the acknowledgement. With the Handler <b>Off</b>, every piece goes straight to the LLM: no hold sound, no waiting, no merging. A Question wait of <b>0</b> keeps the hold sound and the merge, but turns off waiting for more words. The LLM delay is for testing only: the LLM usually answers in 1–3 s, too soon to hear the hold sound, so a delay of <b>4 s</b> makes it audible every turn.</p>
 
 <svg viewBox="0 0 1100 190" role="img" aria-label="Without the Handler, the caller's question goes straight to the LLM and the caller hears silence until the answer, and may get an answer to half a question">
 <text x="20" y="24" class="m" style="font-weight:700;letter-spacing:.1em">WITHOUT HANDLER</text>
@@ -277,7 +318,7 @@ text{fill:var(--fg);font-family:Inter,sans-serif;font-size:12px}.m{fill:var(--mu
 <rect x="194" y="142" width="200" height="56" rx="10" fill="#0F1936" stroke="#F08A2C" stroke-width="1.6"/>
 <text x="294" y="166" text-anchor="middle" style="font-weight:700">2 · Hold sound</text><text class="m" x="294" y="184" text-anchor="middle">typing while the caller waits</text>
 <rect x="426" y="70" width="200" height="56" rx="10" fill="#0F1936" stroke="#1FB5E0" stroke-width="1.6"/>
-<text x="526" y="94" text-anchor="middle" style="font-weight:700">3 · Classify</text><text class="m" x="526" y="112" text-anchor="middle">Jev or embedding</text>
+<text x="526" y="94" text-anchor="middle" style="font-weight:700">3 · Classify</text><text class="m" x="526" y="112" text-anchor="middle">Jev, embedding or Laya</text>
 <rect x="426" y="142" width="200" height="56" rx="10" fill="#0F1936" stroke="#F08A2C" stroke-width="1.6" stroke-dasharray="5 4"/>
 <text x="526" y="166" text-anchor="middle" style="font-weight:700">4 · Complete?</text><text class="m" x="526" y="184" text-anchor="middle">else wait ≤ Question wait</text>
 <text x="410" y="222" text-anchor="middle" class="m"><tspan style="fill:#1FB5E0;font-weight:700">question</tspan> → send now · <tspan style="fill:#F08A2C;font-weight:700">statement, filler</tspan> → wait</text>
@@ -323,6 +364,29 @@ text{fill:var(--fg);font-family:Inter,sans-serif;font-size:12px}.m{fill:var(--mu
 <p class="note" style="margin-bottom:10px">Both calls used a 4 s artificial LLM delay. Times are from the server log, rounded to the second, apart from the ms values. 0 s is the first question.</p>
 <div class="lg"><span><i style="background:#9AA6C0"></i>caller speaking</span><span><i style="background:#1FB5E0"></i>classify</span><span><i style="background:#5FD6A4"></i>acknowledgement</span><span><i style="background:#F08A2C"></i>hold sound</span><span><i style="background:#243564"></i>LLM thinking</span><span><i style="background:#F22F46"></i>LLM speaks</span></div>
 <div id="ccharts"></div>
+</div>
+
+
+<h2>Three engines, side by side</h2>
+<div class="panel">
+<div class="cmp" tabindex="0" role="region" aria-label="Engine comparison table, scrolls sideways"><table>
+<thead><tr><th>Engine</th><th class="wide">Where it runs</th><th class="wide">Model and size</th><th>Cost</th><th>Holdout useful</th><th>Wrong among matches</th><th>Fallback</th><th>Coherence</th><th>Holdout p50 / p95</th><th>RAM</th><th>Disk</th><th class="wide">Warm-up</th></tr></thead>
+<tbody>
+<tr><td><i style="background:var(--cyan)"></i>Jev</td><td>Remote: hosted API (api.typesafe.ai, HTTPS)</td><td>Hosted System 1 (size not stated)</td><td>Billable per call</td><td>88.0%</td><td>7.5%</td><td>5.3%</td><td>39/40</td><td>230 / 285 ms</td><td>n/a (remote)</td><td>None locally</td><td>TLS keep-alive warmed with a HEAD, tens of ms; no model load</td></tr>
+<tr><td><i style="background:var(--green)"></i>Embedding</td><td>Local: Ollama in Docker, CPU</td><td>nomic-embed-text, 768-dim vectors</td><td>Free (local compute)</td><td>60.7%</td><td>11.4%</td><td>32.7%</td><td>31/40</td><td>24 / 61 ms</td><td>538 MB (whole container)</td><td>274 MB</td><td>Filler bank embedded on first use; model loads on first request, unloads after about 5 min idle</td></tr>
+<tr><td><i style="background:#F5B84B"></i>Laya (base)</td><td>Local: laya-serve on Apple M4 MPS</td><td>ModernBERT-large, 421M params, <code>english</code> checkpoint</td><td>Free (local compute)</td><td>30.7%</td><td>64.8%</td><td>14.0%</td><td>15/40</td><td>216 / 229 ms</td><td>231 MB (server process)</td><td>804 MB</td><td>Ready about 5 s after launch; first MPS call about 0.3 s with a warm Metal cache, about 13 s on a never-compiled machine</td></tr>
+<tr><td><i style="background:#F5B84B"></i>Laya (typed-decisions)</td><td>Local: laya-serve on Apple M4 MPS</td><td>ModernBERT-large, 421M params, <code>typed-decisions</code> checkpoint</td><td>Free (local compute)</td><td>32.0%</td><td>60.0%</td><td>28.0%</td><td>12/40</td><td>224 / 235 ms</td><td>282 MB (server process)</td><td>807 MB</td><td>Ready about 5 s after launch; first call 0.33 s</td></tr>
+</tbody></table></div>
+<p class="note" style="margin-top:8px">150 held-out phrases and 40 coherence phrases · one session on an Apple M4, 23 Nov 2026 · scroll the table sideways on a phone.</p>
+<ul class="cav">
+<li><b>Outside Laya's intended range.</b> All 102 options go in one choice question, split into tournament groups of 64. The model card says accuracy degrades above about 20 options.</li>
+<li><b>Uncalibrated probabilities.</b> Laya's confidences are over-confident (the checkpoint ships temperatures outside the valid range), so its threshold barely separates right from wrong.</li>
+<li><b>Latency is not like-for-like.</b> Jev includes the network and TLS to a hosted API, Laya runs on the M4's GPU (MPS), and embedding runs on CPU inside Docker.</li>
+<li><b>Small sets, one run.</b> 66 dev and 150 holdout phrases, one run per engine. Differences of a few points are within noise.</li>
+<li><b>Thresholds tuned on dev only.</b> Jev 0.5, embedding 0.6, Laya 0.6. The holdout set was not used for tuning.</li>
+<li><b>Laya's coherence "question" class scored 0/10</b> on both checkpoints, with near-uniform probabilities. The prompts were not reworded.</li>
+</ul>
+<p class="take"><b>Takeaway:</b> Jev is the most accurate, embedding is the fastest, and Laya is free and local but not yet accurate enough to pick among 100+ fillers.</p>
 </div>
 
 </div>
@@ -487,9 +551,9 @@ qms.addEventListener('keydown',e=>{if(e.key==='Enter')setQ(Math.round(Number(qms
 
 // Mode switch: same origin as the server that served this page, so no URL to paste.
 const INFO={none:{c:'#9AA6C0',t:'Baseline. Nothing is said while the LLM thinks.'},
- jev:{c:'#1FB5E0',t:'Hosted classifier picks the line. About 250 ms, most accurate (87% useful).'},
- laya:{c:'#F5B84B',t:'Local Laya model (laya-serve). About 350 ms warm on Apple MPS.'},
- embedding:{c:'#5FD6A4',t:'Local vector match. About 50 to 110 ms, fastest (61% useful, more plain "Okay.").'}};
+ jev:{c:'#1FB5E0',t:'Hosted classifier picks the line. About 230 ms median, most accurate (88% useful).'},
+ laya:{c:'#F5B84B',t:'Local Laya model (laya-serve). Runs locally, free. About 220 ms median on Apple MPS, but only about 31% useful on 100+ options.'},
+ embedding:{c:'#5FD6A4',t:'Local vector match. About 24 ms median, fastest (61% useful, more plain "Okay.").'}};
 let avail=['none','jev','embedding'];const API='/latency/mode',swEl=document.getElementById('sw'),msg=document.getElementById('swmsg');
 function paint(mode,a){avail=a||avail;
  swEl.innerHTML=avail.map(m=>{const i=INFO[m]||{c:'#9AA6C0',t:''};
@@ -551,8 +615,9 @@ const OUT=[
  ['Hang on, my dog is barking',
   [OK,'match','"Sure, take your time."','hold-on p 0.75 · conf 0.64'],
   [FB,'below threshold','"Sure thing!"','wait-no 0.577 &lt; 0.59 · avoided a wrong line']]];
+const NA=[FB,'—','—','not run on these four phrases'];
 const cell=([c,v,say,why],h)=>`<td data-h="${h}"><span class="v" style="background:${c}">${v}</span><span class="say">${say}</span><span class="why">${why}</span></td>`;
-document.getElementById('otab').innerHTML=OUT.map(([p,j,e])=>`<tr><td>"${esc(p)}"</td>${cell(j,'Jev')}${cell(e,'Embedding')}</tr>`).join('');
+document.getElementById('otab').innerHTML=OUT.map(([p,j,e])=>`<tr><td>"${esc(p)}"</td>${cell(j,'Jev')}${cell(e,'Embedding')}${cell(NA,'Laya')}</tr>`).join('');
 
 // 3D embedding space: real nomic-embed-text vectors, PCA to 3 components.
 const G={'charge-shock':['#F08A2C','charge-shock'],'long-wait-complaint':['#F22F46','long-wait-complaint'],'want-human':['#5FD6A4','want-human'],query:['#1FB5E0','caller utterance']};
