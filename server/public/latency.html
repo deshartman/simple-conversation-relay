@@ -1,6 +1,6 @@
 <!DOCTYPE html>
 <html lang="en"><head><meta charset="UTF-8"><meta name="viewport" content="width=device-width, initial-scale=1.0">
-<title>Low-Latency Acknowledgement</title>
+<title>Low-Latency Handler</title>
 <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&display=swap" rel="stylesheet">
 <style>
 *{margin:0;padding:0;box-sizing:border-box}
@@ -109,83 +109,114 @@ text{fill:var(--fg);font-family:Inter,sans-serif;font-size:12px}.m{fill:var(--mu
 .otab .v{display:inline-block;font-size:11px;font-weight:800;letter-spacing:.06em;text-transform:uppercase;border-radius:6px;padding:1px 7px;margin-bottom:4px;color:#030B24}
 .otab .say{display:block;color:var(--fg)}.otab .why{display:block;color:var(--mute);font-size:12px}
 @media(max-width:700px){.otab thead{display:none}.otab tr{display:block;border-bottom:1px solid var(--line2);padding:6px 0}.otab td{display:block;width:auto!important;border:0;padding:4px 0}.otab td[data-h]::before{content:attr(data-h);display:block;color:var(--mute);font-size:11px;letter-spacing:.06em;text-transform:uppercase}}
+.toc{display:flex;flex-wrap:wrap;gap:8px;margin:24px 0 0}
+.toc a{color:var(--fg);text-decoration:none;font-size:13px;font-weight:700;background:var(--node);border:1px solid var(--line2);border-left:3px solid var(--c);border-radius:999px;padding:7px 14px}
+.toc a:hover{border-color:var(--c)}
+.probs{display:grid;grid-template-columns:1fr 1fr;gap:14px;margin-top:26px}
+@media(max-width:860px){.probs{grid-template-columns:1fr}}
+.prob{background:var(--panel);border:1px solid var(--line);border-top:4px solid var(--c);border-radius:14px;padding:18px 20px}
+.prob .n,.sec-h .k{font-size:11px;font-weight:800;letter-spacing:.14em;text-transform:uppercase;color:var(--c)}
+.prob h3{font-size:22px;font-weight:800;letter-spacing:-.02em;line-height:1.15;margin:6px 0 8px}
+.prob p{color:var(--mute);font-size:14px}.prob p b{color:var(--fg)}
+.prob .big{font-size:clamp(28px,4vw,40px);font-weight:800;letter-spacing:-.03em;color:var(--c);line-height:1;margin:14px 0 2px}
+.prob .fix{margin-top:14px;font-size:13.5px;border-top:1px dotted var(--line2);padding-top:10px}.prob .fix b{color:var(--c)}
+.part-sec{margin-top:80px;padding-top:30px;border-top:4px solid var(--c);scroll-margin-top:12px}
+.sec-h{display:grid;grid-template-columns:auto 1fr;gap:4px 20px;align-items:end}
+.sec-h .num{grid-row:span 2;font-size:clamp(56px,8vw,96px);font-weight:800;line-height:.85;color:var(--c);letter-spacing:-.05em}
+.sec-h h2.big{font-size:clamp(24px,3.6vw,38px);text-transform:none;letter-spacing:-.02em;color:var(--fg);margin:0;font-weight:800;line-height:1.1}
+.sec-lead{color:var(--mute);font-size:15.5px;max-width:860px;margin:16px 0 0}.sec-lead b{color:var(--fg)}
+.part-sec h2:not(.big)::before{content:"";display:inline-block;width:18px;height:3px;background:var(--c);vertical-align:middle;margin:-2px 10px 0 0;border-radius:2px}
+.part-sec .take{border-left-color:var(--c)}
+.tag{display:inline-block;font-size:10.5px;font-weight:800;letter-spacing:.08em;text-transform:uppercase;border:1px solid var(--c);color:var(--c);border-radius:6px;padding:0 6px;margin-left:6px;vertical-align:1px}
+.hr{border-top:1px dotted var(--line2);margin:18px 0 14px}
+.sumtab td:first-child{width:18%}.sumtab td b{color:var(--fg)}
 </style></head><body><div class="wrap">
 
 <div class="eyebrow">Low-latency reaction · ConversationRelay</div>
-<h1>Acknowledge in <em>50 ms</em>.<br>Answer properly in <span>2 s</span>.</h1>
-<p class="sub">The model needs time to think. The caller shouldn't hear silence while it does.</p>
+<h1>Two problems while <em>the LLM thinks</em>.</h1>
+<p class="sub">A voice agent waits 1–3 s for the LLM's first word. That wait causes two separate problems. The Handler, a step between the caller and the LLM, fixes both.</p>
 
-<div class="stats">
-<div class="stat r"><b>1–3 s</b><span>of silence before the LLM starts talking</span></div>
-<div class="stat g"><b>≤ 355 ms</b><span>to the first spoken acknowledgement, on the calls below (the budget is now 400 ms)</span></div>
-<div class="stat c"><b>0</b><span>silent turns, in both modes</span></div>
+<div class="probs">
+<div class="prob" style="--c:var(--green)"><div class="n">Problem 1</div><h3>The gap before the answer</h3>
+<p>The caller stops speaking and hears <b>silence</b> until the LLM's first token. Callers think the line has dropped, or start talking again.</p>
+<div class="big">1–3 s</div><p>of silence on a normal turn, longer on a slow one</p>
+<div class="fix"><b>Part 1 · fill the gap.</b> Say a short acknowledgement ("Okay.") within 400 ms, then play a hold sound until the answer starts.</div></div>
+<div class="prob" style="--c:var(--amber)"><div class="n">Problem 2</div><h3>A very large gap: overlapping answers</h3>
+<p>On a long gap the caller fills the silence: they add a question, correct themselves or say "hang on". Without the Handler <b>each piece goes to the LLM on its own</b>, so answers overlap, an interrupt kills the first answer and a question is <b>lost</b>.</p>
+<div class="big">3 LLM calls</div><p>for one caller's three pieces on a real call, and 1 question never answered</p>
+<div class="fix"><b>Part 2 · one coherent question.</b> The Handler asks Jev whether the caller has finished, merges the pieces and sends the LLM one question.</div></div>
 </div>
 
-<h2>Live mode</h2>
-<div class="panel swrow">
+<div class="panel" style="margin-top:14px">
+<svg viewBox="0 0 1100 190" role="img" aria-label="Without the Handler, the caller's question goes straight to the LLM and the caller hears silence until the answer, and may get an answer to half a question">
+<text x="20" y="24" class="m" style="font-weight:700;letter-spacing:.1em">WITHOUT HANDLER</text>
+<circle cx="70" cy="95" r="34" fill="#0F1936" stroke="#9AA6C0" stroke-width="1.5"/>
+<circle cx="70" cy="84" r="8" fill="none" stroke="#F2F5FB" stroke-width="2.5"/><path d="M53 114a17 15 0 0 1 34 0" fill="none" stroke="#F2F5FB" stroke-width="2.5" stroke-linecap="round"/>
+<text x="70" y="152" text-anchor="middle">Caller</text><text class="m" x="70" y="168" text-anchor="middle">speaks in pieces</text>
+<rect x="560" y="63" width="200" height="64" rx="12" fill="#0F1936" stroke="#F22F46" stroke-width="1.6"/>
+<text x="660" y="89" text-anchor="middle" style="font-weight:700">LLM</text><text class="m" x="660" y="107" text-anchor="middle">thinks · 1–3 s</text>
+<rect x="890" y="63" width="190" height="64" rx="12" fill="#0F1936" stroke="#5FD6A4" stroke-width="1.6"/>
+<text x="985" y="89" text-anchor="middle" style="font-weight:700">Voice out</text><text class="m" x="985" y="107" text-anchor="middle">the answer, finally</text>
+<g fill="none" stroke="#9AA6C0" stroke-width="1.8" marker-end="url(#a)">
+<line x1="104" y1="95" x2="558" y2="95"/>
+<line x1="760" y1="95" x2="888" y2="95" stroke="#F22F46"/>
+</g>
+<text x="330" y="84" class="m" text-anchor="middle">every piece goes straight to the LLM</text>
+<text x="330" y="118" text-anchor="middle" style="fill:#F22F46;font-weight:700">the caller hears nothing</text>
+<text x="824" y="84" text-anchor="middle" style="fill:#F22F46;font-weight:700">answer</text>
+<text x="550" y="170" text-anchor="middle" class="m">it may answer half a question, or talk over the caller</text>
+</svg>
+</div>
+
+<nav class="toc" aria-label="Sections">
+<a href="#controls" style="--c:var(--mute)">Live controls</a>
+<a href="#part1" style="--c:var(--green)">1 · Fill the gap</a>
+<a href="#part2" style="--c:var(--amber)">2 · One coherent question</a>
+<a href="#summary" style="--c:var(--cyan)">Summary</a>
+<a href="#part3" style="--c:#B18CFF">3 · Under the hood</a>
+</nav>
+
+<h2 id="controls" style="scroll-margin-top:12px">Live controls · change them between calls</h2>
+<div class="panel">
+<div class="ctlh">Mode <span class="tag" style="--c:var(--green)">Part 1</span></div>
+<div class="swrow">
 <div class="sw" id="sw" role="group" aria-label="Latency mode"></div>
 <span id="swmsg">loading…</span>
 <p class="try">Pick a mode, then call the number and ask the same question in each. Listen for the gap before the first word: <b>none</b> is silent until the answer, <b>jev</b>, <b>embedding</b> and <b>laya</b> say a short "Okay." first.</p>
 </div>
-
-<h2>Under the hood · how jev, embedding and laya pick the "Okay."</h2>
-<p class="sub" style="max-width:760px;margin-bottom:14px">All three modes <b style="color:var(--fg)">classify</b> the caller's words into one of 101 pre-written lines. None writes an answer. Data from one probe run, 23 Nov 2026.</p>
-
-<div class="panel">
-<div class="ctlh" style="color:var(--cyan)">1 · Jev as a System 1</div>
-<div class="kt" style="--c:var(--cyan)">
-<div><b>System 1 · Jev</b><span>Classifies the prompt by answering set questions, and gives a confidence for each answer. Trained to classify prompts accurately.</span></div>
-<div><b>System 2 · the LLM</b><span>Generates the response. Trained to answer people.</span></div>
-<div><b>Online service</b><span>A hosted API, called over HTTPS. About 230 ms per call (median, 150 held-out phrases).</span></div>
+<div class="hr"></div>
+<div class="ctl">
+<div><div class="ctlh">Handler <span class="tag" style="--c:var(--green)">Part 1</span><span class="tag" style="--c:var(--amber)">Part 2</span></div>
+<div class="seg" id="hsw" role="group" aria-label="Handler"></div>
+<span id="hmsg"></span></div>
+<div><div class="ctlh">Question wait <span class="tag" style="--c:var(--amber)">Part 2</span></div><div class="seg" id="qsw" role="group" aria-label="Question wait">
+<input id="qms" type="number" min="0" max="10000" step="250" inputmode="numeric" aria-label="Question wait in ms"><span class="unit">ms</span><button class="sb" id="qset">Set</button>
+<button class="sb" data-q="0">Off</button><button class="sb" data-q="2000">2 s</button></div>
+<span id="qmsg"></span></div>
+<div><div class="ctlh">LLM delay · for testing</div><div class="seg" id="dsw" role="group" aria-label="LLM delay">
+<input id="dms" type="number" min="0" max="20000" step="500" inputmode="numeric" aria-label="Delay in ms"><span class="unit">ms</span><button class="sb" id="dset">Set</button>
+<button class="sb" data-d="0">0</button><button class="sb" data-d="4000">4 s</button></div>
+<span id="ctlmsg"></span></div>
 </div>
-<div class="qrow">
-<div class="qcard" style="--c:var(--cyan)"><b>filler</b>: choice
-"Which option best describes what
- the caller just said?"
-  charge-shock   { what, examples }
-  want-human     { what, examples }
-  … 101 fillers
-  <b>generic-ack</b>    ← "none of these"</div>
-<div class="qcard" style="--c:var(--amber)"><b>coherence</b>: choice  (Handler, below)
-"Which option best describes the
- caller's latest words, given what
- they said earlier?"
-  question · statement · filler · changed-mind</div>
-</div>
-<div class="rph" style="margin:6px 0 8px"><div class="lg" style="margin:0"><span><i style="background:#1FB5E0"></i>Jev's choice</span><span><i style="background:#243564"></i>runners-up</span><span><i style="border-left:2px dotted #F08A2C;width:0;border-radius:0"></i>0.5 threshold</span></div><button class="rb" id="jevrb" type="button" aria-label="Replay Jev probabilities">↻ Replay</button></div>
-<div id="jevbars" class="pgrid big"></div>
+<p class="try" style="margin:0">Needs the <b>jev</b>, <b>embedding</b> or <b>laya</b> mode above, because the Handler starts after the acknowledgement. With the Handler <b>Off</b>, every piece goes straight to the LLM: no hold sound, no waiting, no merging. A Question wait of <b>0</b> keeps the hold sound and the merge, but turns off waiting for more words. The LLM delay is for testing only: the LLM usually answers in 1–3 s, too soon to hear the hold sound, so a delay of <b>4 s</b> makes it audible every turn.</p>
+<p class="note" style="margin-top:8px">The settings live in the server's memory. A server restart resets them to the <code>.env</code> defaults.</p>
 </div>
 
-<div class="panel" style="margin-top:14px">
-<div class="ctlh" style="color:var(--green)">2 · Embeddings</div>
-<div class="kt" style="--c:var(--green)">
-<div><b>Vector space</b><span>Each phrase becomes a multi-dimensional vector (768 numbers). Similar concepts clump together.</span></div>
-<div><b>Local classifier</b><span>Used here as a classifier, like Jev, but it runs locally on the server.</span></div>
+<section class="part-sec" id="part1" style="--c:var(--green)">
+<div class="sec-h"><div class="num">1</div><div class="k">Part 1 · Problem 1, the gap</div><h2 class="big">Fill the gap: acknowledge at once, then hold</h2></div>
+<p class="sec-lead">The Handler's first job is to make sure the caller never hears dead air. <b>Step 1</b>: while the LLM thinks, a fast classifier picks one of 101 pre-written acknowledgements ("Okay.", "Good question.") and speaks it within 400 ms. <b>Step 2</b>: if the LLM is still thinking after that, a hold sound plays until the answer starts. The four modes differ only in what picks the acknowledgement.</p>
+<div class="kt" style="margin-top:16px">
+<div style="--c:var(--mute)"><b>none · baseline</b><span>No acknowledgement and no hold. The caller hears 1–3 s of silence. The Handler needs an acknowledgement, so it does not run.</span></div>
+<div style="--c:var(--green)"><b>embedding · local, fastest</b><span>Nearest example phrase, computed on the server. 24 ms, 61% useful, 11.4% wrong among matches.</span></div>
+<div style="--c:var(--cyan)"><b>jev · hosted, most accurate</b><span>One choice question over all 102 options. 230 ms, 88% useful, 7.5% wrong among matches. Recommended.</span></div>
+<div style="--c:#F5B84B"><b>laya · local, not ready</b><span>A local cross-encoder. Base 31% useful at 216 ms; fine-tuned 69% at 809 ms. Evaluated, not recommended.</span></div>
 </div>
-<div class="rph" style="margin:0 0 8px"><div class="lg" id="spacelg" style="margin:0"></div><button class="rb" id="spinrb" type="button" aria-label="Replay embedding rotation">↻ Replay</button></div>
-<svg id="space" viewBox="0 0 900 460" role="img" aria-label="3D projection of phrase embeddings: three clusters of filler examples, with three caller utterances landing near their matching cluster"></svg>
-<p class="note">nomic-embed-text vectors, projected from 768 dimensions to 3 (PCA), so distances are approximate · drag to rotate</p>
-<div class="tt" style="margin-top:18px">Top 3 fillers by cosine score</div>
-<div class="lg"><span><i style="background:#5FD6A4"></i>best filler</span><span><i style="background:#243564"></i>runners-up</span><span><i style="border-left:2px dotted #F08A2C;width:0;border-radius:0"></i>0.59 threshold</span></div>
-<div id="embbars" class="pgrid"></div>
-<p class="note">Narrow band: unrelated phrases still score around 0.5.</p>
-</div>
-
-<div class="panel" style="margin-top:14px">
-<div class="ctlh" style="color:var(--amber)">3 · How the matcher picks what to say</div>
-<p class="try" style="margin:0 0 12px">Same gates for all three modes. Fail any gate → neutral fallback ("Sure thing!").</p>
-<div class="steps">
-<div class="part" style="--c:#1FB5E0"><b><em>1</em>Rank</b><span>score fillers · skip recently used openers</span></div>
-<div class="part" style="--c:#9AA6C0"><b><em>2</em>Catch-all</b><span>nothing fits → fallback</span></div>
-<div class="part" style="--c:#F08A2C"><b><em>3</em>Threshold</b><span>Jev ≥ 0.5 · embedding ≥ 0.59 (benchmark: 0.6) · Laya ≥ 0.6</span></div>
-<div class="part" style="--c:#F22F46"><b><em>4</em>Margin</b><span>beat runner-up · Jev off · embedding ≥ 0.01 (benchmark: 0) · Laya off</span></div>
-<div class="part" style="--c:#5FD6A4"><b><em>5</em>Budget</b><span>≤ 400 ms, else fallback · one per turn</span></div>
-</div>
-<table class="otab"><thead><tr><th>Caller says</th><th>Jev</th><th>Embedding</th><th>Laya</th></tr></thead><tbody id="otab"></tbody></table>
-<p class="note" style="margin-top:8px">*cold connection. The server pre-warms it (<code>warmJev</code>); warm calls took 255–271 ms.</p>
+<div class="stats two" style="margin-top:4px">
+<div class="stat g"><b>≤ 355 ms</b><span>to the first spoken acknowledgement, on the calls below (the budget is now 400 ms)</span></div>
+<div class="stat c"><b>0</b><span>silent turns, with both embedding and Jev</span></div>
 </div>
 
-<h2>How it works</h2>
+<h2>How the acknowledgement works</h2>
 <div class="panel">
 <svg viewBox="0 0 1100 250" role="img" aria-label="The prompt goes to the LLM and to a matcher in parallel; the matcher's acknowledgement is spoken first, then the LLM answer continues">
 <defs><marker id="a" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto"><path d="M0 0L10 5L0 10z" fill="#9AA6C0"/></marker></defs>
@@ -216,6 +247,20 @@ text{fill:var(--fg);font-family:Inter,sans-serif;font-size:12px}.m{fill:var(--mu
 </svg>
 </div>
 
+<h2>Then the hold sound</h2>
+<p class="sub" style="max-width:860px">The "Okay." covers about half a second. On a slow turn the LLM is still thinking after it, so the Handler plays a typing sound (1 s of silence, then typing) once per turn. The LLM's first token cuts it off, so the two never overlap.</p>
+<div class="stats" style="margin-top:18px">
+<div class="stat r"><b>4.5 s</b><span>of silence after "Okay." without the hold sound</span></div>
+<div class="stat g"><b>382 ms</b><span>until the caller hears "Okay."</span></div>
+<div class="stat c"><b>1 play</b><span>of the hold sound per turn, cut off by the first LLM token</span></div>
+</div>
+<p class="note" style="margin-top:8px">Measured on one call (Jev, 2026-11-23) with an artificial 4 s LLM delay so the gap is easy to hear. Normally the LLM answers in 1–3 s.</p>
+<div class="panel" style="margin-top:14px">
+<div class="ctlh">Measured · one call</div>
+<div class="lg"><span><i style="background:#9AA6C0"></i>caller</span><span><i style="background:#5FD6A4"></i>acknowledgement</span><span><i style="background:#0F1936;border:1px dashed #F08A2C"></i>pause</span><span><i style="background:#F08A2C"></i>typing</span><span><i style="background:#F22F46"></i>first LLM token</span></div>
+<div id="hcharts"></div>
+</div>
+
 <h2>Three real calls</h2>
 <div class="panel">
 <div class="lg"><span><i style="background:#9AA6C0"></i>caller</span><span><i style="background:#1FB5E0"></i>matcher</span><span><i style="background:#5FD6A4"></i>acknowledgement</span><span><i style="background:#243564"></i>waiting on LLM</span><span><i style="background:#F22F46"></i>first LLM token</span></div>
@@ -228,54 +273,32 @@ text{fill:var(--fg);font-family:Inter,sans-serif;font-size:12px}.m{fill:var(--mu
 <div class="brow"><b>Embedding</b><div><div class="track"><div class="fill" style="width:60.7%;background:var(--green)">61% useful</div></div><div class="cap">11.4% wrong of matches · median 24 ms · the rest get a neutral "Okay."</div></div></div>
 <div class="brow"><b>Laya · base</b><div><div class="track"><div class="fill" style="width:30.7%;background:#F5B84B">31% useful</div></div><div class="cap">64.8% wrong of matches · median 216 ms</div></div></div>
 <div class="brow"><b>Laya · typed</b><div><div class="track"><div class="fill" style="width:32%;background:#F5B84B">32% useful</div></div><div class="cap">60.0% wrong of matches · median 224 ms</div></div></div>
-</div><p class="note" style="margin-top:10px">Useful = the right line was spoken. Each engine ran with its committed threshold, tuned on the dev set only. Source: engine-comparison.md, 23 Nov 2026. The benchmark ran embedding at threshold 0.6 / margin 0; the probe table above uses the server's current defaults, 0.59 / 0.01.</p></div>
+</div><p class="note" style="margin-top:10px">Useful = the right line was spoken. Each engine ran with its committed threshold, tuned on the dev set only. Source: engine-comparison.md, 23 Nov 2026. The benchmark ran embedding at threshold 0.6 / margin 0; the probe table in Part 3 uses the server's current defaults, 0.59 / 0.01.</p></div>
 
-<h2>Handler · never leave the caller in dead air, never answer half a question</h2>
-<p class="sub" style="max-width:760px">With the Handler on, the Handler takes the caller's question first, then hands the LLM one complete question. For every piece the caller says, it acknowledges at once, plays a hold sound while the caller waits, and decides whether the caller has finished, waiting a little for more words if not. If the caller talks over the "Okay." or the hold sound before the answer starts, the Handler takes the pending question back and merges the next words into it. The LLM answers once, and the Handler steps aside when the answer starts. No dead air, and no answering half a question or talking over the caller.</p>
-<div class="stats" style="margin-top:18px">
-<div class="stat r"><b>4.5 s</b><span>of silence after "Okay." without the Handler</span></div>
-<div class="stat g"><b>382 ms</b><span>until the caller hears "Okay."</span></div>
-<div class="stat c"><b>1 answer</b><span>to a whole question, instead of an answer to half a question</span></div>
+<p class="take" style="margin-top:18px">How each engine works, and why Laya lost, is in <a href="#part3" style="color:#B18CFF">Part 3 · Under the hood</a>.</p>
+
+<p class="take" style="margin-top:22px"><b>Part 1 takeaway:</b> the acknowledgement plus the hold sound remove the dead air on every turn. Jev picks the right line most often (88%, 7.5% wrong); embedding is the free, local fallback (61%, 11.4% wrong); Laya is not accurate or fast enough yet.</p>
+</section>
+
+<section class="part-sec" id="part2" style="--c:var(--amber)">
+<div class="sec-h"><div class="num">2</div><div class="k">Part 2 · Problem 2, overlapping answers</div><h2 class="big">Build one coherent question before the LLM sees it</h2></div>
+<p class="sec-lead">The Handler from Part 1 still acknowledges every piece and plays the hold sound. Part 2 adds a second Jev question, <b>coherence</b>: given what the caller said earlier, is the latest piece a question, a statement, filler or a change of mind? The Handler sends only a complete question, waiting up to <b>Question wait</b> for more words, and merges anything the caller says before the LLM's first token. The backend LLM gets <b>one coherent question and answers once</b>.</p>
+<div class="qrow" style="margin-top:16px;align-items:start">
+<div class="qcard" style="--c:var(--amber)"><b>coherence</b>: choice
+"Which option best describes the
+ caller's latest words, given what
+ they said earlier?"
+  question · statement · filler · changed-mind</div>
+<div class="panel" style="padding:12px 14px"><div class="ctlh">Coherence accuracy · 40 phrases</div><div class="bars" style="gap:8px">
+<div class="brow"><b>Jev</b><div><div class="track"><div class="fill" style="width:97.5%;background:var(--cyan)">39/40 · ~194 ms</div></div></div></div>
+<div class="brow"><b>Embedding</b><div><div class="track"><div class="fill" style="width:77.5%;background:var(--green)">31/40 · ~80 ms</div></div></div></div>
+<div class="brow"><b>Laya tuned</b><div><div class="track"><div class="fill" style="width:67.5%;background:#F5B84B">27/40</div></div></div></div>
+<div class="brow"><b>Laya base</b><div><div class="track"><div class="fill" style="width:37.5%;background:#F5B84B">15/40</div></div></div></div>
+</div><p class="note" style="margin-top:6px">Embedding sees only the latest piece and often reads questions as statements, which costs a needless wait. Jev sees the earlier pieces too.</p></div>
 </div>
-<p class="note" style="margin-top:8px">Silence and "Okay." timings measured on one call (Jev, 2026-11-23) with an artificial 4 s LLM delay so the gap is easy to hear. Normally the LLM answers in 1–3 s.</p>
 
-<div class="panel" style="margin-top:14px">
-<div class="ctl">
-<div><div class="ctlh">Handler</div>
-<div class="seg" id="hsw" role="group" aria-label="Handler"></div>
-<span id="hmsg"></span></div>
-<div><div class="ctlh">Question wait</div><div class="seg" id="qsw" role="group" aria-label="Question wait">
-<input id="qms" type="number" min="0" max="10000" step="250" inputmode="numeric" aria-label="Question wait in ms"><span class="unit">ms</span><button class="sb" id="qset">Set</button>
-<button class="sb" data-q="0">Off</button><button class="sb" data-q="2000">2 s</button></div>
-<span id="qmsg"></span></div>
-<div><div class="ctlh">LLM delay · for testing</div><div class="seg" id="dsw" role="group" aria-label="LLM delay">
-<input id="dms" type="number" min="0" max="20000" step="500" inputmode="numeric" aria-label="Delay in ms"><span class="unit">ms</span><button class="sb" id="dset">Set</button>
-<button class="sb" data-d="0">0</button><button class="sb" data-d="4000">4 s</button></div>
-<span id="ctlmsg"></span></div>
-</div>
-<p class="try" style="margin-bottom:14px">Needs the <b>jev</b>, <b>embedding</b> or <b>laya</b> mode above, because the Handler starts after the acknowledgement. With the Handler <b>Off</b>, every piece goes straight to the LLM: no hold sound, no waiting, no merging. A Question wait of <b>0</b> keeps the hold sound and the merge, but turns off waiting for more words. The LLM delay is for testing only: the LLM usually answers in 1–3 s, too soon to hear the hold sound, so a delay of <b>4 s</b> makes it audible every turn.</p>
-
-<svg viewBox="0 0 1100 190" role="img" aria-label="Without the Handler, the caller's question goes straight to the LLM and the caller hears silence until the answer, and may get an answer to half a question">
-<text x="20" y="24" class="m" style="font-weight:700;letter-spacing:.1em">WITHOUT HANDLER</text>
-<circle cx="70" cy="95" r="34" fill="#0F1936" stroke="#9AA6C0" stroke-width="1.5"/>
-<circle cx="70" cy="84" r="8" fill="none" stroke="#F2F5FB" stroke-width="2.5"/><path d="M53 114a17 15 0 0 1 34 0" fill="none" stroke="#F2F5FB" stroke-width="2.5" stroke-linecap="round"/>
-<text x="70" y="152" text-anchor="middle">Caller</text><text class="m" x="70" y="168" text-anchor="middle">speaks in pieces</text>
-<rect x="560" y="63" width="200" height="64" rx="12" fill="#0F1936" stroke="#F22F46" stroke-width="1.6"/>
-<text x="660" y="89" text-anchor="middle" style="font-weight:700">LLM</text><text class="m" x="660" y="107" text-anchor="middle">thinks · 1–3 s</text>
-<rect x="890" y="63" width="190" height="64" rx="12" fill="#0F1936" stroke="#5FD6A4" stroke-width="1.6"/>
-<text x="985" y="89" text-anchor="middle" style="font-weight:700">Voice out</text><text class="m" x="985" y="107" text-anchor="middle">the answer, finally</text>
-<g fill="none" stroke="#9AA6C0" stroke-width="1.8" marker-end="url(#a)">
-<line x1="104" y1="95" x2="558" y2="95"/>
-<line x1="760" y1="95" x2="888" y2="95" stroke="#F22F46"/>
-</g>
-<text x="330" y="84" class="m" text-anchor="middle">every piece goes straight to the LLM</text>
-<text x="330" y="118" text-anchor="middle" style="fill:#F22F46;font-weight:700">the caller hears nothing</text>
-<text x="824" y="84" text-anchor="middle" style="fill:#F22F46;font-weight:700">answer</text>
-<text x="550" y="170" text-anchor="middle" class="m">it may answer half a question, or talk over the caller</text>
-</svg>
-
-<div style="border-top:1px dotted var(--line2);margin:14px 0"></div>
-
+<h2>The full Handler</h2>
+<div class="panel">
 <svg viewBox="0 0 1160 330" role="img" aria-label="With the Handler, for every piece the caller says the Handler acknowledges at once, plays a hold sound while the caller waits, classifies the piece, and either sends the complete question to the LLM or waits up to Question wait for more words">
 <text x="20" y="24" class="m" style="font-weight:700;letter-spacing:.1em">WITH HANDLER</text>
 <g transform="translate(0,28)">
@@ -322,12 +345,15 @@ text{fill:var(--fg);font-family:Inter,sans-serif;font-size:12px}.m{fill:var(--mu
 </div>
 </div>
 
-<div class="panel" style="margin-top:14px">
-<div class="ctlh">Measured · one call</div>
-<div class="lg"><span><i style="background:#9AA6C0"></i>caller</span><span><i style="background:#5FD6A4"></i>acknowledgement</span><span><i style="background:#0F1936;border:1px dashed #F08A2C"></i>pause</span><span><i style="background:#F08A2C"></i>typing</span><span><i style="background:#F22F46"></i>first LLM token</span></div>
-<div id="hcharts"></div>
-<div style="border-top:1px dotted var(--line2);margin:22px 0 14px"></div>
-<div class="ctlh">Two real calls · the same three questions</div>
+<h2>Merge and take-back</h2>
+<div class="parts">
+<div class="part" style="--c:#F08A2C"><b>Merge</b><span>A new piece that arrives before the LLM's first token is merged into the unanswered question. If the LLM already has it, that stream is stopped and the unanswered message is dropped (retract).</span></div>
+<div class="part" style="--c:#F22F46"><b>Take-back</b><span>If the caller talks over the "Okay." or the hold sound, the interrupt is not passed to the LLM, which would kill the answer. The question is taken back and the next piece merged; if none comes, it is re-sent after max(Question wait, 4 s).</span></div>
+<div class="part" style="--c:#5FD6A4"><b>Step aside</b><span>Once the LLM's first token is spoken, the Handler stops holding and merging. Interrupts then work as normal barge-in.</span></div>
+</div>
+
+<h2>Two real calls · the same three questions</h2>
+<div class="panel">
 <div class="stats two">
 <div class="stat r"><b>3 LLM calls</b><span>without merge · 1 question lost</span></div>
 <div class="stat g"><b>1 LLM call</b><span>with merge · all 3 answered</span></div>
@@ -335,6 +361,77 @@ text{fill:var(--fg);font-family:Inter,sans-serif;font-size:12px}.m{fill:var(--mu
 <p class="note" style="margin-bottom:10px">Both calls used a 4 s artificial LLM delay. Times are from the server log, rounded to the second, apart from the ms values. 0 s is the first question.</p>
 <div class="lg"><span><i style="background:#9AA6C0"></i>caller speaking</span><span><i style="background:#1FB5E0"></i>classify</span><span><i style="background:#5FD6A4"></i>acknowledgement</span><span><i style="background:#F08A2C"></i>hold sound</span><span><i style="background:#243564"></i>LLM thinking</span><span><i style="background:#F22F46"></i>LLM speaks</span></div>
 <div id="ccharts"></div>
+</div>
+<p class="take"><b>Part 2 takeaway:</b> with Jev deciding when the caller has finished, the LLM answered all three pieces in one call. Without it, three calls overlapped and the first question was lost.</p>
+</section>
+
+<section class="part-sec" id="summary" style="--c:var(--cyan)">
+<div class="sec-h"><div class="num">✓</div><div class="k">Summary</div><h2 class="big">One Handler, two fixes</h2></div>
+<div class="panel" style="margin-top:18px">
+<table class="otab sumtab"><thead><tr><th>Problem</th><th>What the Handler does</th><th>Best engine</th><th>Measured result</th></tr></thead><tbody>
+<tr><td><b>1 · The gap</b></td><td>Speaks a matched acknowledgement within 400 ms (or a neutral one), then one hold sound until the first LLM token.</td><td>Jev: 88% useful, 7.5% wrong, 230 ms. Embedding if it must be local and free. Details in Part 3.</td><td>"Okay." at 382 ms instead of 4.5 s of silence; 0 silent turns.</td></tr>
+<tr><td><b>2 · Overlapping answers</b></td><td>Classifies each piece with Jev coherence, waits up to Question wait for more, merges or takes back pieces until the first LLM token.</td><td>Jev: 39/40, ~194 ms. Embedding 31/40 waits needlessly.</td><td>1 LLM call answering all 3 pieces, instead of 3 calls and 1 lost question.</td></tr>
+</tbody></table>
+</div>
+<div class="kt" style="margin-top:14px">
+<div style="--c:var(--cyan)"><b>Settings we test with</b><span>Mode <code>jev</code> · Handler <code>on</code> · Question wait <code>2 s</code> · LLM delay <code>4 s</code> to hear the hold, <code>0</code> otherwise.</span></div>
+<div style="--c:#F5B84B"><b>Not recommended</b><span>Laya: even fine-tuned it is 69% useful, 29.5% wrong and 809 ms, and every filler change needs a 76-minute retrain.</span></div>
+<div style="--c:var(--red)"><b>Still open</b><span>No rule yet for emergency phrases (self-harm, medical, danger) ahead of matching. The typing clip's licence is unconfirmed.</span></div>
+</div>
+</section>
+
+<section class="part-sec" id="part3" style="--c:#B18CFF">
+<div class="sec-h"><div class="num">3</div><div class="k">Part 3 · Under the hood</div><h2 class="big">How Jev, embedding and Laya pick the acknowledgement</h2></div>
+<p class="sec-lead">Part 1 used one of three engines to pick the "Okay." This part looks at how each one works, the gates every match must pass, and why Laya lost even after fine-tuning. None of the three writes an answer: each <b>classifies</b> the caller's words into one of 101 pre-written lines.</p>
+
+<h2>Jev, embedding and the matcher gates</h2>
+<p class="sub" style="max-width:760px;margin-bottom:14px">Data from one probe run, 23 Nov 2026.</p>
+
+<div class="panel">
+<div class="ctlh" style="color:var(--cyan)">1 · Jev as a System 1</div>
+<div class="kt" style="--c:var(--cyan)">
+<div><b>System 1 · Jev</b><span>Classifies the prompt by answering set questions, and gives a confidence for each answer. Trained to classify prompts accurately.</span></div>
+<div><b>System 2 · the LLM</b><span>Generates the response. Trained to answer people.</span></div>
+<div><b>Online service</b><span>A hosted API, called over HTTPS. About 230 ms per call (median, 150 held-out phrases).</span></div>
+</div>
+<div class="qcard" style="--c:var(--cyan);margin-bottom:8px"><b>filler</b>: choice
+"Which option best describes what
+ the caller just said?"
+  charge-shock   { what, examples }
+  want-human     { what, examples }
+  … 101 fillers
+  <b>generic-ack</b>    ← "none of these"</div>
+<div class="rph" style="margin:6px 0 8px"><div class="lg" style="margin:0"><span><i style="background:#1FB5E0"></i>Jev's choice</span><span><i style="background:#243564"></i>runners-up</span><span><i style="border-left:2px dotted #F08A2C;width:0;border-radius:0"></i>0.5 threshold</span></div><button class="rb" id="jevrb" type="button" aria-label="Replay Jev probabilities">↻ Replay</button></div>
+<div id="jevbars" class="pgrid big"></div>
+</div>
+
+<div class="panel" style="margin-top:14px">
+<div class="ctlh" style="color:var(--green)">2 · Embeddings</div>
+<div class="kt" style="--c:var(--green)">
+<div><b>Vector space</b><span>Each phrase becomes a multi-dimensional vector (768 numbers). Similar concepts clump together.</span></div>
+<div><b>Local classifier</b><span>Used here as a classifier, like Jev, but it runs locally on the server.</span></div>
+</div>
+<div class="rph" style="margin:0 0 8px"><div class="lg" id="spacelg" style="margin:0"></div><button class="rb" id="spinrb" type="button" aria-label="Replay embedding rotation">↻ Replay</button></div>
+<svg id="space" viewBox="0 0 900 460" role="img" aria-label="3D projection of phrase embeddings: three clusters of filler examples, with three caller utterances landing near their matching cluster"></svg>
+<p class="note">nomic-embed-text vectors, projected from 768 dimensions to 3 (PCA), so distances are approximate · drag to rotate</p>
+<div class="tt" style="margin-top:18px">Top 3 fillers by cosine score</div>
+<div class="lg"><span><i style="background:#5FD6A4"></i>best filler</span><span><i style="background:#243564"></i>runners-up</span><span><i style="border-left:2px dotted #F08A2C;width:0;border-radius:0"></i>0.59 threshold</span></div>
+<div id="embbars" class="pgrid"></div>
+<p class="note">Narrow band: unrelated phrases still score around 0.5.</p>
+</div>
+
+<div class="panel" style="margin-top:14px">
+<div class="ctlh" style="color:var(--amber)">3 · How the matcher picks what to say</div>
+<p class="try" style="margin:0 0 12px">Same gates for all three modes. Fail any gate → neutral fallback ("Sure thing!").</p>
+<div class="steps">
+<div class="part" style="--c:#1FB5E0"><b><em>1</em>Rank</b><span>score fillers · skip recently used openers</span></div>
+<div class="part" style="--c:#9AA6C0"><b><em>2</em>Catch-all</b><span>nothing fits → fallback</span></div>
+<div class="part" style="--c:#F08A2C"><b><em>3</em>Threshold</b><span>Jev ≥ 0.5 · embedding ≥ 0.59 (benchmark: 0.6) · Laya ≥ 0.6</span></div>
+<div class="part" style="--c:#F22F46"><b><em>4</em>Margin</b><span>beat runner-up · Jev off · embedding ≥ 0.01 (benchmark: 0) · Laya off</span></div>
+<div class="part" style="--c:#5FD6A4"><b><em>5</em>Budget</b><span>≤ 400 ms, else fallback · one per turn</span></div>
+</div>
+<table class="otab"><thead><tr><th>Caller says</th><th>Jev</th><th>Embedding</th><th>Laya</th></tr></thead><tbody id="otab"></tbody></table>
+<p class="note" style="margin-top:8px">*cold connection. The server pre-warms it (<code>warmJev</code>); warm calls took 255–271 ms.</p>
 </div>
 
 
@@ -546,6 +643,10 @@ text{fill:var(--fg);font-family:Inter,sans-serif;font-size:12px}.m{fill:var(--mu
 </ul>
 <p class="take"><b>Takeaway:</b> Fine-tuning fixed what Laya could see, not how it works. A cross-encoder re-reads every option on every call, so with 100+ options, retrieval (Embedding) or one-shot (Jev) wins.</p>
 </div>
+<p class="take" style="margin-top:22px"><b>Part 3 takeaway:</b> Jev reads every option in one call, so it judges intent best. Embedding does its heavy work once at startup, so it is fastest. Laya re-reads every option on every call, which suits a handful of options, not 100+.</p>
+</section>
+
+
 
 </div>
 <script>
