@@ -72,5 +72,5 @@ confidence, and every filler edit needs a retrain. laya-train's own report (78% 
 Smaller tournament groups do not help either (base, holdout): groups of 16 gave 27.3% useful at 828 ms, groups of 12
 23.3% at 935 ms, against 30.7% at 216 ms with 51. `typed-decisions` fell back on 90% of rows at both sizes.
 
-The checkpoint (1.6 GB) and run outputs are in `/tmp/laya-ft/` and `/tmp/laya-group-eval/`, not in the repo. `/tmp` can be
-cleared, so copy them somewhere durable if they are needed again.
+The checkpoint (1.6 GB) and run outputs are outside the repo, in `../laya-artifacts/` next to this repo's root
+(`laya-ft/typed-ft/` is the fine-tuned checkpoint; `laya-ft/` and `laya-group-eval/` hold the eval runs).
