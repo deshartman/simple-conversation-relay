@@ -393,13 +393,13 @@ text{fill:var(--fg);font-family:Inter,sans-serif;font-size:12px}.m{fill:var(--mu
 <p class="note" style="margin-top:8px">Holdout = 150 caller phrases the model never saw. Laya's own 78% training score is measured on its training data, so it isn't evidence.</p>
 
 <div class="tt" style="margin-top:16px">How Laya reads the options</div>
-<p class="try" style="margin:4px 0 8px">Laya picks one filler from a list. It reads the caller's phrase and the options together in one fixed-size box, measured in <b>tokens</b> (word pieces of 3 to 4 letters). The more options in the box, the less room each one gets.</p>
+<p class="try" style="margin:4px 0 8px">Laya picks one filler from a list. It reads the caller's phrase and the options together in one <b>read</b> of fixed size, measured in <b>tokens</b> (word pieces of 3 to 4 letters). The options share a fixed part of that read, the <b>option budget</b>, so the more options in one read, the less room each one gets.</p>
 <table class="otab"><thead><tr><th>Engine and setup</th><th>Room per option</th><th>What it sees of <code>going-to-grab</code></th></tr></thead><tbody>
-<tr><td>Laya base · 51 options in a 192-token box</td><td>~4 tokens</td><td><code>going-to-…</code>, part of the ID</td></tr>
+<tr><td>Laya base · 51 options, 192-token option budget</td><td>~4 tokens</td><td><code>going-to-…</code>, part of the ID</td></tr>
 <tr><td>Laya base · if we sent only 10</td><td>~19 tokens</td><td>the ID and most of its description</td></tr>
 <tr><td>Laya base · if we sent only 5</td><td>~38 tokens</td><td>the ID, its description and an example or two</td></tr>
-<tr><td><b>Laya fine-tuned</b> · 51 options in a 1024-token box</td><td>~19 tokens</td><td>the ID and most of its description, no examples</td></tr>
-<tr><td><b>Jev</b> · all 102 options, no shared box</td><td>all of it: ~42 tokens each, ~4,300 in total</td><td>the ID, its description and all 4 examples</td></tr>
+<tr><td><b>Laya fine-tuned</b> · 51 options, 1024-token option budget</td><td>~19 tokens</td><td>the ID and most of its description, no examples</td></tr>
+<tr><td><b>Jev</b> · all 102 options, no shared option budget</td><td>all of it: ~42 tokens each, ~4,300 in total</td><td>the ID, its description and all 4 examples</td></tr>
 </tbody></table>
 <p class="note" style="margin-top:8px">Token counts measured on our fillers with Laya's tokenizer: an ID alone is about 4 tokens, ID plus description about 17, a full option with its 4 examples about 42 (medians). Jev has no per-option split; its documented limit is 255 options. Laya's docs say its accuracy drops past about 20 options.</p>
 
@@ -428,9 +428,9 @@ text{fill:var(--fg);font-family:Inter,sans-serif;font-size:12px}.m{fill:var(--mu
 <text x="145" y="386" style="fill:var(--cyan);font-weight:700;font-size:13px">going-to-grab <tspan style="fill:var(--fg);font-weight:400">· "Caller says they are fetching a document, card, or number."</tspan></text>
 <text x="145" y="406" style="font-size:12px" class="m">"let me find my account number" · "I'm going to get my card" · "hang on, looking for the paperwork" · "let me check my email"</text>
 </svg>
-<p class="cap">Same Laya model in the first two rows. Fine-tuning made its box bigger, so it reads most of each description. Jev reads everything.</p>
+<p class="cap">The first two rows are different checkpoints: base Laya (192-token option budget) and our fine-tuned one, trained from <code>typed-decisions</code> (256) with the budget raised to 1024. The bigger budget lets it read most of each description. Jev reads everything.</p>
 
-<div class="tt" style="margin-top:16px">How Laya's knockout runs, fine-tuned with the 1024-token box</div>
+<div class="tt" style="margin-top:16px">How Laya's knockout runs, fine-tuned with the 1024-token option budget</div>
 <svg viewBox="0 0 900 370" role="img" aria-label="The caller says hang on, I'm going to get my card. The 102 options are split into group 1, options 1 to 51, which holds the right answer going-to-grab at option 46, and group 2, options 52 to 102. Round 1 reads both groups in one pass, about 19 tokens per option. Each group's best option goes to round 2, a final between 2 options, each read in full. The answer is going-to-grab and the caller hears Take your time, I'll be right here. Two passes take 809 ms. If going-to-grab loses in group 1, the final never sees it.">
 <defs><marker id="ar3" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto"><path d="M0 0L10 5L0 10z" fill="#9AA6C0"/></marker></defs>
 <text x="20" y="18" class="m">Caller: "hang on, I'm going to get my card"</text>
@@ -486,14 +486,14 @@ text{fill:var(--fg);font-family:Inter,sans-serif;font-size:12px}.m{fill:var(--mu
 <li><b>We have 102 options.</b> To send fewer per read, the server splits them into groups and runs a knockout: group winners, then a final.</li>
 <li><b>Smaller groups were slower and no better.</b> More groups means more rounds, and each round is another full read: about 4x the latency, no gain in accuracy in our runs.</li>
 <li><b>Errors add up.</b> Each round is another chance to knock out the right answer before the final.</li>
-<li><b>A bigger box works but is slow.</b> That is the fine-tuned model: it can read all 51 options per group, but takes 809 ms.</li>
+<li><b>A bigger option budget works but is slow.</b> That is the fine-tuned model: it can read all 51 options per group, but takes 809 ms.</li>
 </ul>
 
 <div class="tt" style="margin-top:16px">Why Jev and Embedding don't have this problem</div>
 <div class="kt" style="margin-top:8px">
 <div style="--c:var(--cyan)"><b>Jev · 230 ms</b><span>A large model that reads all 102 options in full (about 4,300 tokens) in one call. Nothing is cut and there is no knockout.</span></div>
-<div style="--c:var(--green)"><b>Embedding · 24 ms</b><span>No box at all. Each example phrase is turned into a vector once, at startup. At call time it only compares the caller's phrase against those, so more fillers cost almost nothing.</span></div>
-<div style="--c:#F5B84B"><b>Laya · 809 ms fine-tuned</b><span>Has to fit the options into its box on every call. With 100+ options it either can't read them or is too slow.</span></div>
+<div style="--c:var(--green)"><b>Embedding · 24 ms</b><span>Nothing to fit into a read. Each example phrase is turned into a vector once, at startup. At call time it only compares the caller's phrase against those, so more fillers cost almost nothing.</span></div>
+<div style="--c:#F5B84B"><b>Laya · 809 ms fine-tuned</b><span>Has to fit the options into its option budget on every call. With 100+ options it either can't read them or is too slow.</span></div>
 </div>
 
 <div class="tt" style="margin-top:16px">Work per call: why Laya is still slow</div>
@@ -533,7 +533,7 @@ text{fill:var(--fg);font-family:Inter,sans-serif;font-size:12px}.m{fill:var(--mu
 
 <div class="tt" style="margin-top:16px">Why it improved</div>
 <ul class="cav" style="margin-top:8px">
-<li><b>It can finally read the options.</b> The token budget was sized for a few options. With 102 options, each was cut to about 4 tokens, roughly its ID. Raising the budget from 192 to 1024 gives each option about 19 tokens: enough for the ID and most of its description, though not its examples.</li>
+<li><b>It can finally read the options.</b> The token budget was sized for a few options. With 102 options, each was cut to about 4 tokens, roughly its ID. Fine-tuning started from the <code>typed-decisions</code> checkpoint (256-token budget, about 5 tokens per option) and raised the budget to 1024, which gives each option about 19 tokens: enough for the ID and most of its description, though not its examples.</li>
 <li><b>Trained on our task.</b> 953 caller phrases built from the filler bank, shaped like the live tournament. No eval rows used.</li>
 <li><b>Option order shuffled.</b> It learns what an option says, not where it sits.</li>
 </ul>
