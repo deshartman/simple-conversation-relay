@@ -19,6 +19,10 @@ Removes dead air between the caller finishing and the LLM speaking. Test bed onl
 - Take-back: an interrupt before the first LLM token is not forwarded; the pending question is taken back and the next piece merged.
 - Jev connection warm-up at call start and on switching to `jev`.
 
+**Laya (local System 1), evaluated, not adopted**
+- `laya` mode: the Jev client pointed at a local `laya-serve` (`scripts/laya/`). Base Laya: 30.7% useful on the holdout, because 102 options share a 192-token budget (~4 tokens each).
+- Fine-tuned on the filler bank (`scripts/laya/train/`, 1024-token budget): 69.3% useful, but 29.5% wrong of matches, wrong answers score ~0.99 even after calibration, and 809 ms p50. Results in `scripts/eval/results/engine-comparison.md`; the `/latency/` page explains the knockout and the token budgets against Jev and embedding.
+
 **Endpoints and page**
 - `/latency/mode`, `/latency/handler`, `/latency/question-wait` (0..10000 ms) and `/latency/delay` (0..20000 ms, test only), each `GET` plus `PUT`/`POST`.
 - `/latency/` explainer page with live controls and charts from real calls.

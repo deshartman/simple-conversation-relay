@@ -392,24 +392,93 @@ text{fill:var(--fg);font-family:Inter,sans-serif;font-size:12px}.m{fill:var(--mu
 </tbody></table>
 <p class="note" style="margin-top:8px">Holdout = 150 caller phrases the model never saw. Laya's own 78% training score is measured on its training data, so it isn't evidence.</p>
 
-<div class="tt" style="margin-top:16px">What Laya can see of each option</div>
-<svg viewBox="0 0 900 280" role="img" aria-label="Laya's input is a fixed-length strip: the caller phrase followed by 51 options. Before fine-tuning the 192-token budget leaves about 4 tokens per option, so a label is cut to going-to-g. After, a 1024-token budget gives about 19 tokens per option, enough for the label and its examples.">
+<div class="tt" style="margin-top:16px">How Laya reads the options</div>
+<p class="try" style="margin:4px 0 8px">Laya picks one filler from a list. It reads the caller's phrase and the options together in one fixed-size box, measured in <b>tokens</b> (word pieces of 3 to 4 letters). The more options in the box, the less room each one gets.</p>
+<table class="otab"><thead><tr><th>Engine and setup</th><th>Room per option</th><th>What it sees of <code>going-to-grab</code></th></tr></thead><tbody>
+<tr><td>Laya base · 51 options in a 192-token box</td><td>~4 tokens</td><td><code>going-to-…</code>, part of the ID</td></tr>
+<tr><td>Laya base · if we sent only 10</td><td>~19 tokens</td><td>the ID and most of its description</td></tr>
+<tr><td>Laya base · if we sent only 5</td><td>~38 tokens</td><td>the ID, its description and an example or two</td></tr>
+<tr><td><b>Laya fine-tuned</b> · 51 options in a 1024-token box</td><td>~19 tokens</td><td>the ID and most of its description, no examples</td></tr>
+<tr><td><b>Jev</b> · all 102 options, no shared box</td><td>all of it: ~42 tokens each, ~4,300 in total</td><td>the ID, its description and all 4 examples</td></tr>
+</tbody></table>
+<p class="note" style="margin-top:8px">Token counts measured on our fillers with Laya's tokenizer: an ID alone is about 4 tokens, ID plus description about 17, a full option with its 4 examples about 42 (medians). Jev has no per-option split; its documented limit is 255 options. Laya's docs say its accuracy drops past about 20 options.</p>
+
+<div class="tt" style="margin-top:16px">What each engine sees of one option</div>
+<svg viewBox="0 0 900 420" role="img" aria-label="Three rows. Before fine-tuning, Laya's 192-token budget leaves about 4 tokens per option, so an option is cut to going-to. After, a 1024-token budget gives about 19 tokens per option: the ID and most of its description, examples cut. Jev reads every option in full, about 42 tokens each and 4,300 for all 102: ID, description and all four examples.">
 <defs><pattern id="slt" width="12" height="36" patternUnits="userSpaceOnUse"><rect x="1" y="0" width="9" height="36" rx="2" fill="#F5B84B" fill-opacity=".3" stroke="#F5B84B" stroke-width="1"/></pattern></defs>
-<text x="20" y="20" style="font-weight:700;fill:#F5B84B">BEFORE · 192-token budget ÷ 51 options ≈ 4 tokens each</text>
+<text x="20" y="20" style="font-weight:700;fill:#F5B84B">LAYA BASE · 192-token budget ÷ 51 options ≈ 4 tokens each</text>
 <rect x="20" y="32" width="100" height="36" rx="6" fill="var(--node)" stroke="var(--line2)"/><text x="70" y="55" text-anchor="middle">caller phrase</text>
 <rect x="130" y="32" width="612" height="36" fill="url(#slt)"/><text x="750" y="55" class="m">51 options</text>
 <path d="M135 68V86" stroke="#F5B84B" stroke-width="1.5" stroke-dasharray="4 3" fill="none"/>
-<rect x="130" y="86" width="330" height="36" rx="8" fill="var(--node)" stroke="#F5B84B" stroke-width="1.5"/><text x="145" y="109" style="fill:#F5B84B;font-weight:700;font-size:14px">going-to-g…</text>
-<text x="470" y="109" class="m">option 1 as Laya saw it: an ID fragment, label cut off</text>
-<text x="20" y="162" style="font-weight:700;fill:var(--green)">AFTER · 1024-token budget ÷ 51 options ≈ 19 tokens each</text>
+<rect x="130" y="86" width="330" height="36" rx="8" fill="var(--node)" stroke="#F5B84B" stroke-width="1.5"/><text x="145" y="109" style="fill:#F5B84B;font-weight:700;font-size:14px">going-to-…</text>
+<text x="470" y="109" class="m">part of the ID, nothing else</text>
+<text x="20" y="162" style="font-weight:700;fill:var(--green)">LAYA FINE-TUNED · 1024-token budget ÷ 51 options ≈ 19 tokens each</text>
 <rect x="20" y="174" width="100" height="36" rx="6" fill="var(--node)" stroke="var(--line2)"/><text x="70" y="197" text-anchor="middle">caller phrase</text>
 <g fill="#5FD6A4" fill-opacity=".25" stroke="#5FD6A4" stroke-width="1.2"><rect x="130" y="174" width="105" height="36" rx="4"/><rect x="242" y="174" width="105" height="36" rx="4"/><rect x="354" y="174" width="105" height="36" rx="4"/><rect x="466" y="174" width="105" height="36" rx="4"/><rect x="578" y="174" width="105" height="36" rx="4"/></g>
 <text x="692" y="197" class="m">… 51 options</text>
 <path d="M135 210V228" stroke="var(--green)" stroke-width="1.5" stroke-dasharray="4 3" fill="none"/>
-<rect x="130" y="228" width="553" height="36" rx="8" fill="var(--node)" stroke="var(--green)" stroke-width="1.5"/><text x="145" y="251" style="fill:var(--green);font-weight:700;font-size:13px">going-to-grab <tspan style="fill:var(--fg);font-weight:400">· "let me check that" · "one sec"…</tspan></text>
-<text x="692" y="251" class="m">label + examples</text>
+<rect x="130" y="228" width="553" height="36" rx="8" fill="var(--node)" stroke="var(--green)" stroke-width="1.5"/><text x="145" y="251" style="fill:var(--green);font-weight:700;font-size:13px">going-to-grab <tspan style="fill:var(--fg);font-weight:400">· "Caller says they are fetching a document, card…</tspan></text>
+<text x="692" y="251" class="m">ID + most of the description</text>
+<text x="20" y="304" style="font-weight:700;fill:var(--cyan)">JEV · no shared budget · every option in full ≈ 42 tokens each, ~4,300 for all 102</text>
+<rect x="20" y="316" width="100" height="36" rx="6" fill="var(--node)" stroke="var(--line2)"/><text x="70" y="339" text-anchor="middle">caller phrase</text>
+<g fill="#1FB5E0" fill-opacity=".25" stroke="#1FB5E0" stroke-width="1.2"><rect x="130" y="316" width="240" height="36" rx="4"/><rect x="378" y="316" width="240" height="36" rx="4"/></g>
+<text x="628" y="339" class="m">… 102 options, one read</text>
+<path d="M135 352V366" stroke="var(--cyan)" stroke-width="1.5" stroke-dasharray="4 3" fill="none"/>
+<rect x="130" y="366" width="750" height="50" rx="8" fill="var(--node)" stroke="var(--cyan)" stroke-width="1.5"/>
+<text x="145" y="386" style="fill:var(--cyan);font-weight:700;font-size:13px">going-to-grab <tspan style="fill:var(--fg);font-weight:400">· "Caller says they are fetching a document, card, or number."</tspan></text>
+<text x="145" y="406" style="font-size:12px" class="m">"let me find my account number" · "I'm going to get my card" · "hang on, looking for the paperwork" · "let me check my email"</text>
 </svg>
-<p class="cap">Same model. Before, it was guessing from ID fragments.</p>
+<p class="cap">Same Laya model in the first two rows. Fine-tuning made its box bigger, so it reads most of each description. Jev reads everything.</p>
+
+<div class="tt" style="margin-top:16px">How Laya's knockout runs, fine-tuned with the 1024-token box</div>
+<svg viewBox="0 0 900 370" role="img" aria-label="The caller says hang on, I'm going to get my card. The 102 options are split into group 1, options 1 to 51, which holds the right answer going-to-grab at option 46, and group 2, options 52 to 102. Round 1 reads both groups in one pass, about 19 tokens per option. Each group's best option goes to round 2, a final between 2 options, each read in full. The answer is going-to-grab and the caller hears Take your time, I'll be right here. Two passes take 809 ms. If going-to-grab loses in group 1, the final never sees it.">
+<defs><marker id="ar3" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto"><path d="M0 0L10 5L0 10z" fill="#9AA6C0"/></marker></defs>
+<text x="20" y="18" class="m">Caller: "hang on, I'm going to get my card"</text>
+<text x="200" y="46" style="font-weight:700;fill:#F5B84B">ROUND 1 · both groups in one pass</text>
+<text x="680" y="126" style="font-weight:700;fill:#F5B84B">ROUND 2 · final</text>
+<rect x="20" y="146" width="140" height="64" rx="8" fill="var(--node)" stroke="var(--line2)"/><text x="90" y="173" text-anchor="middle" style="font-weight:700">102 options</text><text x="90" y="193" text-anchor="middle" class="m">+ caller phrase</text>
+<rect x="200" y="58" width="250" height="74" rx="8" fill="var(--node)" stroke="#F5B84B"/>
+<text x="215" y="80" style="font-weight:700">Group 1 · options 1–51</text>
+<text x="215" y="100" class="m">1024 tokens ÷ 51 ≈ 19 each</text>
+<text x="215" y="120" style="fill:var(--green)">holds going-to-grab (option 46)</text>
+<rect x="200" y="224" width="250" height="74" rx="8" fill="var(--node)" stroke="#F5B84B"/>
+<text x="215" y="246" style="font-weight:700">Group 2 · options 52–102</text>
+<text x="215" y="266" class="m">1024 tokens ÷ 51 ≈ 19 each</text>
+<text x="215" y="286" class="m">the right answer isn't here</text>
+<text x="200" y="152" style="fill:#F22F46;font-size:12px">If going-to-grab loses here, the final never sees it.</text>
+<rect x="490" y="75" width="150" height="40" rx="8" fill="var(--node)" stroke="var(--line2)"/><text x="565" y="100" text-anchor="middle">best of group 1</text>
+<rect x="490" y="241" width="150" height="40" rx="8" fill="var(--node)" stroke="var(--line2)"/><text x="565" y="266" text-anchor="middle">best of group 2</text>
+<rect x="680" y="138" width="200" height="80" rx="8" fill="var(--node)" stroke="#F5B84B"/>
+<text x="780" y="164" text-anchor="middle" style="font-weight:700">2 options</text>
+<text x="780" y="184" text-anchor="middle" class="m">1024 tokens ÷ 2:</text>
+<text x="780" y="202" text-anchor="middle" class="m">each read in full</text>
+<rect x="480" y="318" width="400" height="44" rx="8" fill="var(--node)" stroke="var(--green)" stroke-width="1.5"/>
+<text x="495" y="337" style="fill:var(--green);font-weight:700;font-size:13px">answer: going-to-grab</text>
+<text x="495" y="354" style="font-size:12px">"Take your time, I'll be right here."</text>
+<rect x="20" y="322" width="190" height="36" rx="18" fill="#F5B84B"/><text x="115" y="345" text-anchor="middle" style="fill:#030B24;font-weight:800;font-size:14px">2 passes · 809 ms</text>
+<g fill="none" stroke="#9AA6C0" stroke-width="1.8" marker-end="url(#ar3)">
+<path d="M160 166C180 166 180 95 198 95"/><path d="M160 190C180 190 180 261 198 261"/>
+<path d="M450 95H488"/><path d="M450 261H488"/>
+<path d="M640 95C660 95 660 165 678 165"/><path d="M640 261C660 261 660 192 678 192"/>
+<path d="M780 218V316"/>
+</g>
+</svg>
+<p class="cap">Round 1 is where each option gets only ~19 tokens; the final has room to read both finalists in full. Both passes are on the clock.</p>
+
+<div class="tt" style="margin-top:16px">Why we couldn't just send fewer options</div>
+<ul class="cav" style="margin-top:8px">
+<li><b>We have 102 options.</b> To send fewer per read, the server splits them into groups and runs a knockout: group winners, then a final.</li>
+<li><b>Smaller groups were slower and no better.</b> More groups means more rounds, and each round is another full read: about 4x the latency, no gain in accuracy in our runs.</li>
+<li><b>Errors add up.</b> Each round is another chance to knock out the right answer before the final.</li>
+<li><b>A bigger box works but is slow.</b> That is the fine-tuned model: it can read all 51 options per group, but takes 809 ms.</li>
+</ul>
+
+<div class="tt" style="margin-top:16px">Why Jev and Embedding don't have this problem</div>
+<div class="kt" style="margin-top:8px">
+<div style="--c:var(--cyan)"><b>Jev · 230 ms</b><span>A large model that reads all 102 options in full (about 4,300 tokens) in one call. Nothing is cut and there is no knockout.</span></div>
+<div style="--c:var(--green)"><b>Embedding · 24 ms</b><span>No box at all. Each example phrase is turned into a vector once, at startup. At call time it only compares the caller's phrase against those, so more fillers cost almost nothing.</span></div>
+<div style="--c:#F5B84B"><b>Laya · 809 ms fine-tuned</b><span>Has to fit the options into its box on every call. With 100+ options it either can't read them or is too slow.</span></div>
+</div>
 
 <div class="tt" style="margin-top:16px">Work per call: why Laya is still slow</div>
 <svg viewBox="0 0 900 440" role="img" aria-label="Embedding embeds the caller phrase once and compares it with 404 precomputed vectors: 24 ms. Laya reads the caller phrase with 51 options in each of two groups, then runs a final round on the two winners: 809 ms, close to the 1000 ms timeout. Jev makes one remote call with all options in one context: 230 ms, billed.">
@@ -448,7 +517,7 @@ text{fill:var(--fg);font-family:Inter,sans-serif;font-size:12px}.m{fill:var(--mu
 
 <div class="tt" style="margin-top:16px">Why it improved</div>
 <ul class="cav" style="margin-top:8px">
-<li><b>It can finally read the options.</b> The token budget was sized for a few options. With 102 options, each was cut to about 4 tokens, roughly its ID. Raising the budget from 192 to 1024 gives each option about 19 tokens: enough for the label and its examples.</li>
+<li><b>It can finally read the options.</b> The token budget was sized for a few options. With 102 options, each was cut to about 4 tokens, roughly its ID. Raising the budget from 192 to 1024 gives each option about 19 tokens: enough for the ID and most of its description, though not its examples.</li>
 <li><b>Trained on our task.</b> 953 caller phrases built from the filler bank, shaped like the live tournament. No eval rows used.</li>
 <li><b>Option order shuffled.</b> It learns what an option says, not where it sits.</li>
 </ul>

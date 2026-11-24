@@ -30,7 +30,7 @@ All in memory, no auth, reset on every server restart. `GET` returns the value; 
 
 | Endpoint | Body | Reply | Valid |
 |---|---|---|---|
-| `/latency/mode` | `{"mode":"none\|jev\|embedding"}` | `{mode, previous}` (GET: `{mode, available}`) | one of the three |
+| `/latency/mode` | `{"mode":"none\|jev\|embedding\|laya"}` | `{mode, previous}` (GET: `{mode, available}`) | one of the four. `laya` needs a local laya-serve (`server/scripts/laya/README.md`); evaluated, not recommended |
 | `/latency/handler` | `{"enabled":true}` | `{enabled, previous}` | boolean |
 | `/latency/question-wait` | `{"ms":2000}` | `{ms, previous}` | integer 0..10000, 0 = off |
 | `/latency/delay` | `{"ms":4000}` | `{ms, previous}` | integer 0..20000. TEST ONLY: delays the LLM call so the hold is audible |

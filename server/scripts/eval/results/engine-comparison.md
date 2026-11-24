@@ -47,3 +47,20 @@ Jev billable calls: 257 (66 dev + 150 holdout + 40 coherence + 1 coherence warm-
 - Laya RSS is the server process only (MPS/unified-memory weights are partly outside RSS), sampled after the runs with both checkpoints running; the Ollama figure is the whole Docker container (docker stats), not the model alone.
 - Dev/holdout sets are small (66/150), so differences of a few points are within noise. Only one run per engine; no repeat variance measured.
 - ServerConfig.test 'leaves outboundApiKey undefined when unset' fails because the local server/.env sets OUTBOUND_API_KEY to an empty string; it passes on v4.low-latency in a clean worktree without .env and fails there too once .env is copied in. Not caused by the laya changes.
+
+## Follow-up runs (2026-11-24, same machine and eval scripts, not part of the session above)
+
+Laya fine-tuned on the filler bank (`typed-decisions` base, `head_max_len` 1024, calibrated on dev only). Details and
+steps: `server/scripts/laya/README.md`.
+
+| Engine | Set | C / W / F | Useful | Wrong of matches | p50 | p95 |
+|---|---|---|---|---|---|---|
+| laya-ft | dev (66) | 56 / 6 / 4 | 84.8% | 9.7% | 800 | 827 |
+| laya-ft | holdout (150) | 104 / 38 / 8 | 69.3% | 29.5% | 809 | 833 |
+
+Coherence, laya-ft: 27/40 (question 3/10, statement 4/10, filler 10/10, changed-mind 10/10), p50 94 ms.
+
+Tournament group size, base Laya, holdout: group 16 -> 27.3% useful, 828 ms; group 12 -> 23.3%, 935 ms
+(group 64, i.e. two groups of 51: 30.7%, 216 ms). `typed-decisions` fell back on 90% of holdout rows at both sizes.
+
+After fine-tuning and calibration, wrong answers still score a median 0.991 on the holdout (right: 0.995).
