@@ -465,6 +465,22 @@ text{fill:var(--fg);font-family:Inter,sans-serif;font-size:12px}.m{fill:var(--mu
 </svg>
 <p class="cap">Round 1 is where each option gets only ~19 tokens; the final has room to read both finalists in full. Both passes are on the clock.</p>
 
+<div class="tt" style="margin-top:16px">Fine-tuned Laya vs Jev, for one caller phrase</div>
+<table class="otab" style="margin-top:8px"><thead><tr><th></th><th>Laya fine-tuned</th><th>Jev</th></tr></thead><tbody>
+<tr><td>Size of one read</td><td>1280 tokens (1024 for the options)</td><td>~4,300+ tokens (no published maximum)</td></tr>
+<tr><td>Options in one read</td><td>51</td><td>all 102</td></tr>
+<tr><td>Room per option</td><td>~19 tokens</td><td>~42 tokens (the whole option)</td></tr>
+<tr><td>What it sees of each option</td><td>the ID and most of its description</td><td>the ID, its description and all 4 examples</td></tr>
+<tr><td>Reads per caller phrase</td><td>3 (two groups, then a final)</td><td>1</td></tr>
+<tr><td>Option tokens per caller phrase</td><td>~2,100</td><td>~4,300</td></tr>
+<tr><td>Compares all 102 options at once</td><td>no, 51 at a time</td><td>yes</td></tr>
+<tr><td>Speed (p50)</td><td>809 ms</td><td>230 ms</td></tr>
+<tr><td>Useful answers (holdout)</td><td>69.3%</td><td>88.0%</td></tr>
+<tr><td>Wrong among matches</td><td>29.5%</td><td>7.5%</td></tr>
+<tr><td>Runs</td><td>locally, free</td><td>hosted, billed per call</td></tr>
+</tbody></table>
+<p class="note" style="margin-top:8px">Jev's token counts are measured with Laya's tokenizer; Jev's own isn't published, so treat ~42 and ~4,300 as close estimates.</p>
+
 <div class="tt" style="margin-top:16px">Why we couldn't just send fewer options</div>
 <ul class="cav" style="margin-top:8px">
 <li><b>We have 102 options.</b> To send fewer per read, the server splits them into groups and runs a knockout: group winners, then a final.</li>
