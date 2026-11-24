@@ -1,0 +1,101 @@
+angry-general|I'm absolutely sick of this whole thing|honestly this is unacceptable|I have had it up to here with this|what a joke, seriously|I'm beyond angry right now
+repeat-problem|this is the fourth time I've had to phone about this|it keeps breaking and nobody solves it|I've been through this with you guys again and again|same issue as last week, still not sorted|how many times do I have to call about the same thing
+long-wait-complaint|this is taking ages|I've been stuck on hold for so long|why is everything so slow with you people|I waited two weeks for a reply|it takes forever to get anything done here
+anger-about-charge|you charged me for something I never ordered|this is highway robbery|you keep messing up my bill and I'm furious|I'm tired of paying for your mistakes|why am I being billed again, this is outrageous
+threaten-leave|if you can't fix this I'm switching providers|I'll cancel everything and go to a competitor|I'm about to post about this all over social media|get me someone higher up or I'm done|I'll take my account somewhere else
+disappointed|I honestly expected more from you guys|that's a real letdown|I'm pretty let down by all this|this isn't the service I used to get|after all these years I'm sad to see this
+wrong-info|the last person told me the opposite|your chat said one thing and now you say another|I was quoted a different price before|nobody agrees on what's actually true here|I was promised no fee, now there is one
+want-human|I'd like to talk to an actual person|can I get a real human on the line|put me through to a live person|I don't want the machine, give me a person|is there a human I can speak to
+want-supervisor|can I get your manager|I need to speak with whoever is in charge|let me talk to a supervisor please|I want to escalate this to a manager|is your boss available
+not-a-bot|wait, are you a real person or a computer|is this a recording|am I speaking with a machine right now|you sound like a robot, are you|is there a person on this line or just software
+specific-department|please connect me to the billing team|I need to reach customer support|can you route me to the sales department|I'd like technical support please|transfer me over to the returns people
+specific-person|can I speak to Sarah in the finance office|is Mr. Johnson in today|I need to reach the guy I spoke to last Tuesday, his name is Mike|put me through to Dr. Alvarez's office|I'm trying to get hold of Linda
+callback-request|could someone ring me back later|please have somebody call me at this number|I'd prefer you phone me back|can I get a call back this afternoon|just have an agent call me when they're free
+not-helping|this is going nowhere, you don't get what I'm saying|you keep misunderstanding me, I want someone else|the bot isn't getting it, connect me to somebody|no, that's not what I asked, forget it and transfer me|you aren't any help at all
+hello|hi|hello there|good evening|hey there|howdy
+how-are-you|how are you doing|how's it going|hope your day is going well|how have you been|how's everything with you
+greeting-with-issue|hi, I have a problem with my bill|hello, my internet stopped working|good morning, I'm calling about a delivery that's late|hey there, I've got a question about my plan|hi, something's off with my account
+who-is-this|who am I talking to|which company have I reached|may I ask who this is|what's this number for|whose line is this
+small-talk-weather|it's so hot out today|man, what a week it's been|rainy day here, isn't it|it's been one of those mornings|long day at work today
+are-you-there|hello? can you hear me|is there anyone on the line|hello, did the call drop|I can't tell if you're there|hello, anybody?
+opening-help|I need a bit of help|can you assist me|I have a quick question for you|hoping you can give me a hand|I'm after some help
+thanks|thanks a lot|thank you, that really helps|much appreciated|cheers, thanks for that|that's great, thank you
+goodbye|bye now|talk to you later|okay, goodbye|that's it for me, bye|see you, take care
+nothing-else|no, that's it|I think that's all|nothing more from me|no that covers it|that will be all, thanks
+anything-else-yes|one more question if that's okay|yes, there's something else|there's another thing I wanted to ask|oh wait, I almost forgot something|actually I do have one more|
+well-wishes|you've been so kind|have a lovely day|take care of yourself|you guys are awesome|have a wonderful weekend
+thanks-but-more|ok thanks, so what's next|thank you, is there something I need to do now|alright thanks, and now what happens|thanks, so is that it|great, thanks, what's the next step
+repeat-that|sorry, could you say that once more|what was that again|I didn't catch that, repeat please|come again|can you go over that one more time
+slow-down|please speak a bit slower|you're talking too fast for me|can you take it slower|slow down a little|I can't keep up, slower please
+what-do-you-mean|what does that mean exactly|I'm not following, what do you mean|can you explain what that term means|sorry, I don't get what you're saying|what's that supposed to mean
+say-differently|can you explain it in simpler words|could you rephrase that|that makes no sense to me, say it another way|put it in plain English please|can you break that down for me
+spell-confirm|that's spelled S M I T H|it's Katherine with a K|let me spell my name for you|the email is john dot doe at example dot com, D O E|no it's P as in Peter
+correction|no, I said Friday not Monday|that's wrong, it's the other address|sorry, you misheard me|no, I meant the blue one|that's incorrect
+which-one|which account are you talking about|wait, which order is that|I'm not sure which one you mean|which of those do you mean|what were the choices again
+yes|yes please|yeah|correct|yes, that's fine|absolutely
+no|no way|nah|no, I don't want to|negative|no, not now
+confirm-details|yes, that's my number|that's right, that's the correct address|yep, that is correct|that's me, yes|yes, it matches
+go-ahead|yes, please do that|go for it|okay, make the change|do it|sure, proceed with that
+not-sure|I don't know, I'm unsure|hmm, I'm on the fence|I can't decide right now|let me think, I'm not certain|I'm not really sure about that
+wait-no|no wait, don't do that|stop, I changed my mind|hang on, cancel that|actually no, forget it|wait, hold off on that
+okay-ack|ok|mm hmm|right|I see, okay|got it
+hold-on|one moment please|give me a second, I'll find it|hang on, let me look for it|just a minute while I get my wallet|bear with me a second
+still-there|are you still on the line|hello, did you freeze|you've gone quiet, are you there|is it still working on it|hello, are you still with me
+how-long|how much longer will this take|will this take a while|how long is this going to be|what's the wait time|how soon will this be done
+busy-now|I can't talk right now|can I call you back later|this isn't a good moment|I'm driving, can we do this another time|I'm in a meeting at the moment
+going-to-grab|hold on, I'll get my policy number|let me pull up the document|let me grab my bill|one sec, I'm getting my card out|I need to look in my wallet for it
+please-wait-thinking|and then?|so, what do you think|well, go on|so what's it going to be|okay and?
+noise|[static] hello|ch ch can you|mmmf the, sorry|brrr uh hel|[noise] what
+trailing-off|so I was thinking that|the reason I'm calling is because|well I just wanted to|I was told that maybe|and then|
+filler-words|ummm|uhh let me see|hmm hmm|er, well|mm
+off-topic|what's your favorite color|how tall is Mount Everest|do you know any good restaurants|who's going to win the election|tell me something interesting
+mixed-request|I need three things done today|I have a few things to sort out, billing and a booking|several questions, actually|there are multiple issues I want to cover|I want to pay and also complain and also change my plan
+background-speech|hold on honey, I'm on the phone|yeah I'll be there in a minute, I'm talking to someone|shh, kids, be quiet|no I already ate, leave it there|tell your sister I'll call her back
+bereavement|my father passed away last week|I lost my husband recently and I need to sort out his account|my mom died and I have to cancel her service|my partner died a few days ago|we just buried my grandmother and I'm handling her affairs
+serious-illness|I've just been told I have a serious illness|my daughter is in the hospital|I've been in the hospital for two weeks|my husband has been diagnosed with a terrible condition|I had major surgery and fell behind on everything
+financial-hardship|I've been laid off and can't make the payment|we can't afford the rent this month|I'm struggling to put food on the table|money is really tight and I can't pay anything|I'm about to be evicted
+overwhelmed-crying|I'm sorry, I'm getting emotional|it's all too much for me right now|I can't stop crying, it's just been too much|I feel like I'm falling apart|I just can't handle any more of this
+fear-safety|I'm afraid for my life|somebody is stalking me|I'm scared to go home|my partner is hurting me and he has access to my accounts|I think I'm in danger
+scam-victim|I got tricked into sending money to a fraudster|somebody hacked my account and drained it|I fell for a scam and lost thousands|identity thieves opened cards in my name|they conned me out of my retirement money
+family-crisis|there's been a fire at our home|my house was destroyed in the hurricane|we've had a serious emergency at home|our basement is flooded and we're displaced|the storm wrecked our house
+lost-stolen|my purse was stolen|I can't find my credit card anywhere|someone swiped my phone|I lost my keys and my wallet|my bag got stolen on the train
+accident-damage|I cracked the screen on my laptop|my car was hit in a parking lot|I spilled water all over my computer|there was a collision and the car is wrecked|a tree fell on our roof
+charge-shock|there's a huge charge on my statement|why was I billed so much this month|I see a transaction I don't recognize|my bill is way higher than usual|I was charged twice for the same thing
+delivery-disaster|my parcel never showed up|what I received is totally damaged|they sent me the wrong item|my hotel booking vanished|the delivery came empty
+missed-deadline|I'm late on my payment|I missed the cutoff date|I forgot to pay on time and I'm worried|I didn't make it to my appointment|am I in trouble because I missed the due date
+denied-rejected|they turned down my application|my request was refused|my payment was declined|I was told I wasn't approved|my claim got rejected
+business-impact|this outage is killing my business|we can't operate because of this problem|my staff can't work until this is fixed|I'm losing money every hour this goes on|my store can't take payments right now
+yes-no-demand|just tell me yes or no|will I get charged, yes or no|is it a yes or a no|can you do it, yes or no|answer me directly, yes or no
+exact-policy|what does the contract say exactly|can you read me the exact terms|where in the policy does it state that|what is the precise wording of that rule|I want the specific conditions for that
+exact-figures|how much exactly will it cost|what's the precise percentage|give me the exact number|what's the exact date it's due|tell me the exact total
+timeline-demand|when exactly will this be done|I need a firm date for the fix|give me a concrete deadline|how many days exactly until it's resolved|I want a specific time frame
+accountability|who is to blame for this|why did you do that|who made this decision on my account|whose fault is this|what exactly went wrong here
+prior-commitment|you said last week it would be done|I was told someone would call me and they didn't|the other rep promised me a refund|you people said it was free|someone assured me this was taken care of
+formal-escalation|please put that in writing|I'm filing an official complaint|I'll report you to the ombudsman|I'm getting a lawyer involved|I'll sue if this isn't resolved
+no-script|stop reading from a script|give me the short answer|don't beat around the bush|I don't need the pleasantries, just answer|be straight with me
+data-privacy|are you recording this conversation|who can see my information|what happens to my data|do you sell my personal information|where is my info stored
+look-into-it|can you check my balance|I'd like to look at my recent transactions|please check the status of my order|can you see if my payment went through|could you look up my booking
+we-can-check|can you pull up my account|I'd like a copy of my statement|could you find my order details|I need to see what I owe|can you get my records
+can-help|I want to pay my bill|I'd like to schedule an appointment|please send me a receipt|I need to update my phone number|can you set up a reminder for me
+let-me-get|what's my reference number|I need the tracking number|what's the status of my request|can you tell me my balance|what is my confirmation code
+moment-to-find|can you track down my invoice|I need help locating my order|could you search for my last payment|help me find the document I submitted|can you dig up my contract
+happy-to-help|could you help me out with something|I wonder if you could do me a favor|I'd appreciate some help with my account|can you give me a hand|I have something I need assistance with
+lets-see-what-we-can-do|could you make an exception for me|can you remove the late fee|is it possible to get more time|can you extend the deadline|any chance you can bump it up earlier
+good-question|how does this work|what does my plan cover|how long does it normally take|how do I get started|what are the steps involved
+let-me-check|what time do you open|is this item in stock|how much does that cost|when does my subscription end|are you open on Sundays
+fair-question|do I qualify for that|would this be covered|what are my choices|does that apply in my case|what can I do about it
+right-answer|which is cheaper, the basic or the premium|do I have to come in or can I do it by phone|what's the difference between these plans|what if I wait until next month|which one would be quicker
+find-out|do you know when it will be delivered|what's the procedure for that|is there a cutoff for that|how far in advance do I need to tell you|what do I need to bring
+think-through|what do you suggest|do you think I should upgrade|what's your advice|which one is best|should I wait or do it now
+whats-going-on|I can't log in|the website isn't loading|my card won't work|I'm not receiving any emails|the app won't open
+dig-into-it|I get an error that says invalid token when I log in|it was fine this morning and then it stopped|the page goes white when I press the button|the total on the invoice is different from what I paid|when I click save, nothing happens
+figure-out|something seems off with my account|I don't know why this is happening|this looks strange|I can't work out what went wrong|there's something weird going on
+sorry-trouble|I've had a hard time with this|I'm struggling to get this working|it's been difficult all week|nothing I try works|I keep hitting problems
+closer-look|an item is missing from my order|the price is wrong on my invoice|my name is spelled wrong|the date on this is incorrect|this isn't what I ordered
+beyond-basics|I already tried turning it off and on|I've done all the troubleshooting|I did everything on your website already|yes, I've already reset it|I tried all that before I called
+see-what-we-can-do|I'd like to terminate my service|please cancel my membership|I want to close out my account|I don't want this plan anymore, cancel it|I want out of my contract
+look-at-options|I'd like to switch plans|can I move to a cheaper package|I want to change my seat|can I get a better plan|I want to modify my subscription
+no-problem|I want to send this back|can I get a refund on this|I'd like to swap it for a different size|I need to reverse that transaction|can I take it back
+check-where-things-stand|I need to amend the order I placed|can I cancel the appointment I just made|I want to edit my booking|can I change the delivery I just scheduled|I'd like to modify a pending payment
+review-with-you|can we postpone this for a while|I'd like to suspend my account for now|put my membership on pause|can I defer the payment|I need to freeze this for a bit
+pull-up-first|can you take my husband off the account|I need to fix the spelling of my name on file|please update the card you have on record|I want to swap the contact person|remove that old address please

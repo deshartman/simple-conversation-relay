@@ -360,6 +360,108 @@ text{fill:var(--fg);font-family:Inter,sans-serif;font-size:12px}.m{fill:var(--mu
 <p class="take"><b>Takeaway:</b> Jev is the most accurate, embedding is the fastest, and Laya is free and local but not yet accurate enough to pick among 100+ fillers.</p>
 </div>
 
+<h2>Why Laya loses at filler matching</h2>
+<div class="panel">
+<p class="try" style="margin:0 0 12px">Same job, three architectures. The difference is what each one sees at the moment it picks.</p>
+<div class="kt">
+<div style="--c:var(--cyan)"><b>Jev · one shot, remote</b><span>All 102 options and the utterance in one context, one call.</span><span>Weighs every option against the others, so it can judge intent and say "none of these".</span></div>
+<div style="--c:var(--green)"><b>Embedding · retrieval, local</b><span>404 curated example phrases embedded ahead of time. Only the utterance is embedded at runtime.</span><span>Cosine nearest neighbour against our own examples: domain knowledge, built in.</span></div>
+<div style="--c:#F5B84B"><b>Laya · cross-encoder, local</b><span>ModernBERT-large plus a decision head (421M, non-generative). Utterance and options packed into one sequence, each option scored at its own [MASK].</span><span>Built for a handful of options per question.</span></div>
+</div>
+<div class="tt">Why Laya loses here</div>
+<ul class="cav" style="margin-top:8px">
+<li><b>Too many options.</b> The docs say accuracy degrades past about 20 options. We send 102.</li>
+<li><b>Shared token budget.</b> Every packed option shares one 192-token option budget on the English checkpoint, so with about 50 options per group each gets roughly 3 to 4 tokens and is trimmed to fit.</li>
+<li><b>Tournament, so errors compound.</b> The server splits 102 options into two groups of 51, then a final round between the winners. Each round sees only part of the list. Smaller groups meant more rounds and about 4x the latency, and were no more accurate in our runs.</li>
+<li><b>Confidence is not usable.</b> The shipped calibration for 11+ options is invalid (temperature 0.1006, clamped to 0.5), so its scores don't line up with our 0.6 threshold.</li>
+<li><b>Wrong training.</b> Pretrained for general typed decisions (yes/no, pick among a few), not a 101-way intent match. Out of the box it has not seen our examples.</li>
+<li><b>Result.</b> 30.7% useful and 64.8% wrong among matches at about 216 ms, against Jev 88.0% / 7.5% at 230 ms and embedding 60.7% / 11.4% at 24 ms.</li>
+</ul>
+<p class="take"><b>Takeaway:</b> the right tool depends on option count. Laya fits a few typed decisions per turn, not a 100-way catalogue lookup. For catalogue lookups, retrieval (embedding) or a model that sees every option in one shot (Jev) wins. What fine-tuning on our filler bank changes, and what is still unproven, is in the next section.</p>
+</div>
+
+<h2>Fine-tuning Laya on our filler bank</h2>
+<div class="panel">
+<p class="try" style="margin:0 0 12px">We fine-tuned Laya on our own filler bank. <b>It doubled Laya's score, but it still isn't shippable.</b></p>
+<table class="otab" style="margin-top:8px"><thead><tr><th>Engine (holdout, 150 rows, threshold 0.6, margin 0)</th><th>Useful</th><th>Wrong of matches</th><th>Coherence</th><th>p50</th></tr></thead><tbody>
+<tr><td>Laya base</td><td>30.7%</td><td>64.8%</td><td>15/40</td><td>216 ms</td></tr>
+<tr><td>Laya typed</td><td>32.0%</td><td>60.0%</td><td>12/40</td><td>224 ms</td></tr>
+<tr><td><b>Laya fine-tuned</b></td><td><b>69.3%</b></td><td><b>29.5%</b></td><td><b>27/40</b></td><td><b>809 ms</b> (p95 833)</td></tr>
+<tr><td>Embedding</td><td>60.7%</td><td>11.4%</td><td>31/40</td><td>24 ms</td></tr>
+<tr><td>Jev</td><td>88.0%</td><td>7.5%</td><td>39/40</td><td>230 ms</td></tr>
+</tbody></table>
+<p class="note" style="margin-top:8px">Holdout = 150 caller phrases the model never saw. Laya's own 78% training score is measured on its training data, so it isn't evidence.</p>
+
+<div class="tt" style="margin-top:16px">What Laya can see of each option</div>
+<svg viewBox="0 0 900 280" role="img" aria-label="Laya's input is a fixed-length strip: the caller phrase followed by 51 options. Before fine-tuning the 192-token budget leaves about 4 tokens per option, so a label is cut to going-to-g. After, a 1024-token budget gives about 19 tokens per option, enough for the label and its examples.">
+<defs><pattern id="slt" width="12" height="36" patternUnits="userSpaceOnUse"><rect x="1" y="0" width="9" height="36" rx="2" fill="#F5B84B" fill-opacity=".3" stroke="#F5B84B" stroke-width="1"/></pattern></defs>
+<text x="20" y="20" style="font-weight:700;fill:#F5B84B">BEFORE · 192-token budget ÷ 51 options ≈ 4 tokens each</text>
+<rect x="20" y="32" width="100" height="36" rx="6" fill="var(--node)" stroke="var(--line2)"/><text x="70" y="55" text-anchor="middle">caller phrase</text>
+<rect x="130" y="32" width="612" height="36" fill="url(#slt)"/><text x="750" y="55" class="m">51 options</text>
+<path d="M135 68V86" stroke="#F5B84B" stroke-width="1.5" stroke-dasharray="4 3" fill="none"/>
+<rect x="130" y="86" width="330" height="36" rx="8" fill="var(--node)" stroke="#F5B84B" stroke-width="1.5"/><text x="145" y="109" style="fill:#F5B84B;font-weight:700;font-size:14px">going-to-g…</text>
+<text x="470" y="109" class="m">option 1 as Laya saw it: an ID fragment, label cut off</text>
+<text x="20" y="162" style="font-weight:700;fill:var(--green)">AFTER · 1024-token budget ÷ 51 options ≈ 19 tokens each</text>
+<rect x="20" y="174" width="100" height="36" rx="6" fill="var(--node)" stroke="var(--line2)"/><text x="70" y="197" text-anchor="middle">caller phrase</text>
+<g fill="#5FD6A4" fill-opacity=".25" stroke="#5FD6A4" stroke-width="1.2"><rect x="130" y="174" width="105" height="36" rx="4"/><rect x="242" y="174" width="105" height="36" rx="4"/><rect x="354" y="174" width="105" height="36" rx="4"/><rect x="466" y="174" width="105" height="36" rx="4"/><rect x="578" y="174" width="105" height="36" rx="4"/></g>
+<text x="692" y="197" class="m">… 51 options</text>
+<path d="M135 210V228" stroke="var(--green)" stroke-width="1.5" stroke-dasharray="4 3" fill="none"/>
+<rect x="130" y="228" width="553" height="36" rx="8" fill="var(--node)" stroke="var(--green)" stroke-width="1.5"/><text x="145" y="251" style="fill:var(--green);font-weight:700;font-size:13px">going-to-grab <tspan style="fill:var(--fg);font-weight:400">· "let me check that" · "one sec"…</tspan></text>
+<text x="692" y="251" class="m">label + examples</text>
+</svg>
+<p class="cap">Same model. Before, it was guessing from ID fragments.</p>
+
+<div class="tt" style="margin-top:16px">Work per call: why Laya is still slow</div>
+<svg viewBox="0 0 900 440" role="img" aria-label="Embedding embeds the caller phrase once and compares it with 404 precomputed vectors: 24 ms. Laya reads the caller phrase with 51 options in each of two groups, then runs a final round on the two winners: 809 ms, close to the 1000 ms timeout. Jev makes one remote call with all options in one context: 230 ms, billed.">
+<defs><marker id="ar2" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto"><path d="M0 0L10 5L0 10z" fill="#9AA6C0"/></marker></defs>
+<text x="20" y="18" style="font-weight:700;fill:var(--green)">Embedding · compare against vectors made once</text>
+<g fill="#5FD6A4" fill-opacity=".25" stroke="#5FD6A4"><rect x="298" y="34" width="90" height="16" rx="3"/><rect x="293" y="29" width="90" height="16" rx="3"/><rect x="288" y="24" width="90" height="16" rx="3"/></g>
+<text x="398" y="38" style="fill:var(--green)">404 vectors · precomputed at startup</text>
+<rect x="20" y="62" width="110" height="40" rx="8" fill="var(--node)" stroke="var(--line2)"/><text x="75" y="87" text-anchor="middle">caller phrase</text>
+<rect x="170" y="62" width="90" height="40" rx="8" fill="var(--node)" stroke="var(--green)"/><text x="215" y="87" text-anchor="middle">1 vector</text>
+<rect x="300" y="62" width="90" height="40" rx="8" fill="var(--node)" stroke="var(--green)"/><text x="345" y="87" text-anchor="middle">compare</text>
+<rect x="430" y="62" width="110" height="40" rx="8" fill="var(--node)" stroke="var(--green)"/><text x="485" y="87" text-anchor="middle">best match</text>
+<rect x="580" y="64" width="70" height="36" rx="18" fill="#5FD6A4"/><text x="615" y="87" text-anchor="middle" style="fill:#030B24;font-weight:800;font-size:14px">24 ms</text>
+<path d="M345 50V60" stroke="#9AA6C0" stroke-width="1.8" fill="none" marker-end="url(#ar2)"/>
+<g fill="none" stroke="#9AA6C0" stroke-width="1.8" marker-end="url(#ar2)"><path d="M130 82H168"/><path d="M260 82H298"/><path d="M390 82H428"/><path d="M540 82H578"/></g>
+<text x="20" y="132" style="font-weight:700;fill:#F5B84B">Laya · re-reads every option, every call</text>
+<rect x="20" y="144" width="300" height="36" rx="8" fill="var(--node)" stroke="#F5B84B"/><text x="170" y="167" text-anchor="middle">phrase + 51 options, read together (group 1)</text>
+<rect x="20" y="194" width="300" height="36" rx="8" fill="var(--node)" stroke="#F5B84B"/><text x="170" y="217" text-anchor="middle">phrase + 51 options, read together (group 2)</text>
+<rect x="360" y="144" width="70" height="36" rx="8" fill="var(--node)" stroke="var(--line2)"/><text x="395" y="167" text-anchor="middle">winner</text>
+<rect x="360" y="194" width="70" height="36" rx="8" fill="var(--node)" stroke="var(--line2)"/><text x="395" y="217" text-anchor="middle">winner</text>
+<rect x="480" y="169" width="130" height="36" rx="8" fill="var(--node)" stroke="#F5B84B"/><text x="545" y="192" text-anchor="middle">final: 2 options</text>
+<rect x="650" y="169" width="70" height="36" rx="8" fill="var(--node)" stroke="var(--line2)"/><text x="685" y="192" text-anchor="middle">answer</text>
+<rect x="760" y="169" width="80" height="36" rx="18" fill="#F5B84B"/><text x="800" y="192" text-anchor="middle" style="fill:#030B24;font-weight:800;font-size:14px">809 ms</text>
+<g fill="none" stroke="#9AA6C0" stroke-width="1.8" marker-end="url(#ar2)"><path d="M320 162H358"/><path d="M320 212H358"/><path d="M430 162C455 162 455 180 478 183"/><path d="M430 212C455 212 455 194 478 191"/><path d="M610 187H648"/><path d="M720 187H758"/></g>
+<text x="20" y="262" style="font-weight:700;fill:var(--cyan)">Jev · one remote call, billed</text>
+<rect x="20" y="272" width="420" height="36" rx="8" fill="var(--node)" stroke="var(--cyan)"/><text x="230" y="295" text-anchor="middle">phrase + all options in one context → answer</text>
+<rect x="480" y="272" width="150" height="36" rx="18" fill="#1FB5E0"/><text x="555" y="295" text-anchor="middle" style="fill:#030B24;font-weight:800;font-size:14px">230 ms · billed</text>
+<text x="20" y="342" style="font-weight:700;fill:var(--mute)">Time per call against the 1000 ms timeout</text>
+<g fill="var(--node)"><rect x="110" y="352" width="770" height="16"/><rect x="110" y="374" width="770" height="16"/><rect x="110" y="396" width="770" height="16"/></g>
+<text x="20" y="365">Embedding</text><text x="20" y="387">Jev</text><text x="20" y="409">Laya</text>
+<rect x="110" y="352" width="19" height="16" fill="#5FD6A4"/><text x="135" y="365">24 ms</text>
+<rect x="110" y="374" width="177" height="16" fill="#1FB5E0"/><text x="293" y="387">230 ms</text>
+<rect x="110" y="396" width="623" height="16" fill="#F5B84B"/><text x="739" y="409">809 ms</text>
+<path d="M880 346V418" stroke="#F22F46" stroke-width="2" stroke-dasharray="5 4"/><text x="880" y="436" text-anchor="end" style="fill:#F22F46;font-weight:700">1000 ms timeout</text>
+</svg>
+<p class="cap">A cross-encoder re-reads every option on every call; retrieval does that work once.</p>
+
+<div class="tt" style="margin-top:16px">Why it improved</div>
+<ul class="cav" style="margin-top:8px">
+<li><b>It can finally read the options.</b> The token budget was sized for a few options. With 102 options, each was cut to about 4 tokens, roughly its ID. Raising the budget from 192 to 1024 gives each option about 19 tokens: enough for the label and its examples.</li>
+<li><b>Trained on our task.</b> 953 caller phrases built from the filler bank, shaped like the live tournament. No eval rows used.</li>
+<li><b>Option order shuffled.</b> It learns what an option says, not where it sits.</li>
+</ul>
+
+<div class="tt" style="margin-top:16px">Why it still isn't shipped</div>
+<ul class="cav" style="margin-top:8px">
+<li><b>Overconfident.</b> Wrong answers score about 0.99, so the confidence threshold can't filter them: 29.5% wrong vs Embedding's 11.4%.</li>
+<li><b>Slow.</b> It re-reads 51 options of about 19 tokens on every call: 809 ms, close to the 1000 ms timeout. Embedding computes its vectors once and answers in 24 ms.</li>
+<li><b>Costly to change.</b> Every filler edit needs a 76-minute retrain. With Embedding or Jev, it's a config edit.</li>
+</ul>
+<p class="take"><b>Takeaway:</b> Fine-tuning fixed what Laya could see, not how it works. A cross-encoder re-reads every option on every call, so with 100+ options, retrieval (Embedding) or one-shot (Jev) wins.</p>
+</div>
+
 </div>
 <script>
 // ms after the prompt. match: matcher done. ack: acknowledgement sent. llm: first LLM token.
